@@ -348,11 +348,13 @@ function runCount() external view returns (uint256)
 // certificate (ERC-721 + ERC-5192, soulbound): name "Basanos Certificate", symbol "BSNC", tokenId = runId
 function balanceOf(address) external view returns (uint256)
 function ownerOf(uint256) external view returns (address)
-function tokenURI(uint256) external view returns (string memory)   // data:application/json;utf8,…
+function tokenURI(uint256) external view returns (string memory)   // data:application/json;base64,… (base64: the URL holds a '#')
 function locked(uint256) external view returns (bool)              // always true for a minted id
 function supportsInterface(bytes4) external view returns (bool)    // 0x01ffc9a7, 0x80ac58cd, 0x5b5e139f, 0xb45a3c0e
 // approve / setApprovalForAll / transferFrom / safeTransferFrom revert Soulbound()
 function setOracleDeposit(uint256 wei_) external                   // owner only
+function setBaseUrl(string calldata url) external                  // owner only (certificate external_url base, set after the Vercel deploy)
+function baseUrl() external view returns (string memory)
 function withdraw(address payable to) external                    // owner only (oracle rebates, failed requests)
 receive() external payable                                         // SomniaAgents rebates the unused deposit here
 ```

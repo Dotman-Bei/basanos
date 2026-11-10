@@ -1,0 +1,2618 @@
+# Basanos Spike and Foundation Implementation Plan
+
+**Goal:** Stand up the npm-workspaces monorepo and the shared `@basanos/core` package, then answer the day-1 unknowns (G1 a–e, R1) with on-chain evidence and land the first real Hideki order (the Nov 11 tripwire).
+**Architecture:** `@basanos/core` holds config, ABIs, the env loader, the rulebook schema and id, the Multicall3 snapshot, the raw `somnia_watch` client and close-plan math; it is browser-safe except `@basanos/core/node`. `@basanos/spike` holds evidence scripts: read-only ones run unattended, the two that sign transactions are human-gated. Every script writes a JSON evidence file under `docs/evidence/`, and a checker validates each file's shape.
+**Tech Stack:** Node 22.23.4, npm 10.9.9 workspaces, TypeScript 6.0.3 (strict, ESM, bundler resolution, run with tsx 4.23.15), vitest 4.1.12, `@somnia-chain/markets-sdk` 0.33.0 (exact; fallback 0.32.1), viem 2.57.12 (exact), ws 8.22.0 + @types/ws 8.18.2 (test server only), @types/node 22.20.5.
+**Source spec:** docs/superpowers/specs/2026-11-10-basanos-design.md
+
+**Boot notes for the orchestrator:**
+- Chain: Somnia Tokyo testnet (Hideki, 50383). Secrets only in the git-ignored `.env` under the names in spec §13; never print, log or commit a key.
+- Tasks 11 and 12 are human-gated (`human_gate: true`): they sign real transactions with burner keys that the Step 3 preflight funded. **No task in this plan ever claims a voucher**; the preflight claimed one per challenge account.
+- **Task 11 is stop-and-escalate:** if the referee's close does not land (evidence `ok: false`), stop the build and escalate to the user. The product depends on it.
+- **SDK pin timebox:** if task 11 has not landed a real order on 0.33.0 within ~2 h of starting the skeleton, stop and route a plan fix to the architect: switch `@somnia-chain/markets-sdk` to `0.32.1` in `packages/core/package.json` and `packages/spike/package.json`.
+- Commands run from the repo root. The repo path contains spaces; every command here quotes or avoids absolute paths.
+
+---
+
+### Task 1: Scaffold the monorepo and the core package
+
+**Files:**
+- Create: `package.json`
+- Create: `tsconfig.base.json`
+- Create: `.env.example`
+- Modify: `.gitignore`
+- Create: `packages/core/package.json`
+- Create: `packages/core/tsconfig.json`
+- Create: `packages/core/vitest.config.ts`
+- Create: `packages/core/src/index.ts`
+- Create: `packages/core/src/node.ts`
+- Test: `packages/core/test/smoke.test.ts`
+
+**Effort:** low
+**Model tier:** fast
+**Provides:** `npm workspaces root (packages/*, apps/*)`, `@basanos/core package with exports "." -> src/index.ts and "./node" -> src/node.ts`, `BASANOS: "basanos"`, `repoPath(rel: string): string`
+**Requires:** none
+
+- [ ] **Step 1: Write the root files**
+
+`package.json`:
+```json
+{
+  "name": "basanos",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "4.1.12"
+  }
+}
+```
+
+`tsconfig.base.json`:
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true
+  }
+}
+```
+
+`.env.example`:
+```bash
+# Basanos — copy to .env (git-ignored). Names only; never commit values.
+REFEREE_PK=
+REFEREE_ADDRESS=
+ACCOUNT_A_PK=
+ACCOUNT_A_ADDRESS=
+ACCOUNT_B_PK=
+ACCOUNT_B_ADDRESS=
+REGISTRY_ADDRESS=
+HIDEKI_RPC_HTTP=https://api.hideki.infra.testnet.somnia.network
+HIDEKI_RPC_WSS=wss://api.hideki.infra.testnet.somnia.network/ws
+ORACLE_ENABLED=true
+FEATURED_RUN_ID=
+VERCEL_TOKEN=
+CHROME_PATH=
+```
+
+Append these lines to the end of the existing `.gitignore` (keep every existing line):
+```gitignore
+dist/
+contracts/out/
+contracts/cache/
+contracts/lib/
+.vercel/
+.taste-skill/
+shots/
+```
+
+- [ ] **Step 2: Write the core package files**
+
+`packages/core/package.json`:
+```json
+{
+  "name": "@basanos/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@somnia-chain/markets-sdk": "0.33.0",
+    "viem": "2.57.12"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.2",
+    "ws": "8.22.0"
+  }
+}
+```
+
+`packages/core/tsconfig.json`:
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src", "test"]
+}
+```
+
+`packages/core/vitest.config.ts`:
+```ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    include: ["test/**/*.test.ts"],
+    testTimeout: 20_000,
+  },
+});
+```
+
+`packages/core/src/index.ts`:
+```ts
+export const BASANOS = "basanos" as const;
+```
+
+`packages/core/src/node.ts`:
+```ts
+import { fileURLToPath } from "node:url";
+
+/** Absolute path of a repo-relative path (this file lives at packages/core/src/node.ts). */
+export function repoPath(rel: string): string {
+  return fileURLToPath(new URL(`../../../${rel}`, import.meta.url));
+}
+```
+
+- [ ] **Step 3: Write the smoke test**
+
+`packages/core/test/smoke.test.ts`:
+```ts
+import { existsSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { BASANOS } from "../src/index";
+import { repoPath } from "../src/node";
+
+describe("core scaffold", () => {
+  it("exports the package marker", () => {
+    expect(BASANOS).toBe("basanos");
+  });
+  it("resolves repo-relative paths to the repo root", () => {
+    expect(existsSync(repoPath("package.json"))).toBe(true);
+    expect(existsSync(repoPath("tsconfig.base.json"))).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 4: Install and run the gate**
+Run: `npm install`
+Expected: exits 0 and writes `package-lock.json`.
+Run: `npm test -w @basanos/core`
+Expected: PASS — `2 passed`.
+
+- [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
+Message: `chore: scaffold npm workspaces and @basanos/core`
+
+---
+
+### Task 2: Core config and ABIs
+
+**Files:**
+- Create: `packages/core/src/config.ts`
+- Create: `packages/core/src/abi.ts`
+- Modify: `packages/core/src/index.ts`
+- Test: `packages/core/test/config.test.ts`
+
+**Depends on:** Task 1
+**Effort:** low
+**Provides:** `CHAIN (hidekiTestnet, id 50383)`, `CHAIN_ID = 50383`, `RPC_HTTP_DEFAULT`, `RPC_WSS_DEFAULT`, `RPC_HTTP_FALLBACK`, `RPC_WSS_FALLBACK`, `INDEXER_URL`, `EXPLORER_URL`, `MARGIN_BANK`, `USDSO`, `OPERATOR_REGISTRY`, `VOUCHER_DISTRIBUTOR`, `SOMNIA_AGENTS`, `MULTICALL3`, `PRICE_FEED_SCHEDULER`, `BTC_POOL`, `BTC_BASE_DECIMALS = 8`, `QUOTE_DECIMALS = 18`, `HIDEKI_ADDRESSES`, `PLACE_ORDER_FOR_SELECTOR`, `CANCEL_ORDER_FOR_SELECTOR`, `REDUCE_ORDER_FOR_SELECTOR`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_LIMIT = 0`, `ORDER_TYPE_IOC = 2`, `ORACLE_AGENT_ID = 9911223344556677889n`, `ORACLE_DEPOSIT = 30_900_000_000_000_000n`, `STT_WRITE_HEADROOM = 600_000_000_000_000_000n`, `farFutureNs(nowMs?: number): bigint`, `explorerTx(hash: Hex): string`, `explorerAddress(address: Address): string`, `marginBankAbi`, `perpPoolAbi`, `operatorRegistryAbi`, `multicall3Abi`, `somniaAgentsAbi`, `priceOracleAbi`, `marginBankEventsAbi`
+**Requires:** `@basanos/core package with exports "." -> src/index.ts and "./node" -> src/node.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/core/test/config.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { encodeFunctionData, toFunctionSelector, zeroAddress } from "viem";
+import {
+  CANCEL_ORDER_FOR_SELECTOR,
+  CHAIN,
+  HIDEKI_ADDRESSES,
+  MARGIN_BANK,
+  OPERATOR_REGISTRY,
+  PLACE_ORDER_FOR_SELECTOR,
+  REDUCE_ORDER_FOR_SELECTOR,
+  explorerTx,
+  farFutureNs,
+} from "../src/config";
+import { multicall3Abi, perpPoolAbi } from "../src/abi";
+
+describe("config", () => {
+  it("targets Hideki testnet", () => {
+    expect(CHAIN.id).toBe(50383);
+  });
+  it("operator selectors match their function signatures", () => {
+    expect(
+      toFunctionSelector(
+        "function placeOrderFor(address owner, bool isBid, uint64 userData, uint256 price, uint256 quantity, uint64 expireTimestampNs, uint8 orderType, uint8 selfMatchingOption, address builder, uint96 builderFeeBpsTimes1k)",
+      ),
+    ).toBe(PLACE_ORDER_FOR_SELECTOR);
+    expect(toFunctionSelector("function cancelOrderFor(address owner, uint128 orderId)")).toBe(CANCEL_ORDER_FOR_SELECTOR);
+    expect(toFunctionSelector("function reduceOrderFor(address owner, uint128 orderId, uint256 newQuantityRemaining)")).toBe(
+      REDUCE_ORDER_FOR_SELECTOR,
+    );
+  });
+  it("adds the operator registry the SDK constants omit", () => {
+    expect(HIDEKI_ADDRESSES.operatorPermissionsRegistry).toBe(OPERATOR_REGISTRY);
+    expect(HIDEKI_ADDRESSES.marginBank.toLowerCase()).toBe(MARGIN_BANK.toLowerCase());
+  });
+  it("puts the far-future expiry fifty years out, in nanoseconds", () => {
+    expect(farFutureNs(0)).toBe(50n * 365n * 86_400n * 1_000_000_000n);
+  });
+  it("builds Tokyo explorer links", () => {
+    expect(explorerTx("0xabc")).toBe("https://explorer.testnet.somnia.network/tokyo/tx/0xabc");
+  });
+  it("encodes the ABIs it declares", () => {
+    const cancel = encodeFunctionData({ abi: perpPoolAbi, functionName: "cancelOrderFor", args: [zeroAddress, 5n] });
+    expect(cancel.slice(0, 10)).toBe(CANCEL_ORDER_FOR_SELECTOR);
+    const block = encodeFunctionData({ abi: multicall3Abi, functionName: "getBlockNumber" });
+    expect(block).toBe(toFunctionSelector("function getBlockNumber()"));
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/core -- test/config.test.ts`
+Expected: FAIL — `Cannot find module '../src/config'` (or `Failed to resolve import`).
+
+- [ ] **Step 3: Write the implementation**
+
+`packages/core/src/config.ts`:
+```ts
+import type { Address, Hex } from "viem";
+import { SOMNIA_HIDEKI_TESTNET_ADDRESSES } from "@somnia-chain/markets-sdk";
+import { hidekiTestnet } from "@somnia-chain/markets-sdk/chains";
+
+export const CHAIN = hidekiTestnet;
+export const CHAIN_ID = 50383;
+
+export const RPC_HTTP_DEFAULT = "https://api.hideki.infra.testnet.somnia.network";
+export const RPC_WSS_DEFAULT = "wss://api.hideki.infra.testnet.somnia.network/ws";
+export const RPC_HTTP_FALLBACK = "https://api.hideki2.infra.testnet.somnia.network";
+export const RPC_WSS_FALLBACK = "wss://api.hideki2.infra.testnet.somnia.network/ws";
+export const INDEXER_URL = "https://hideki-dev.smk.somnia.host/v1/graphql";
+export const EXPLORER_URL = "https://explorer.testnet.somnia.network/tokyo";
+
+export const MARGIN_BANK: Address = "0x478769E1177C0773c43A593DCCc4Ad15F15F1394";
+export const USDSO: Address = "0xed7993A74dAe1e6656B704A424DcD8711aAf4F72";
+export const OPERATOR_REGISTRY: Address = "0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a";
+export const VOUCHER_DISTRIBUTOR: Address = "0x2ACD9EFdA721450906bfE1bef3edE269636E42C4";
+export const SOMNIA_AGENTS: Address = "0x7407cb35a17D511D1Bd32dD726ADb8D5344ECbE3";
+export const MULTICALL3: Address = "0xcA11bde05977b3631167028862bE2a173976CA11";
+export const PRICE_FEED_SCHEDULER: Address = "0x1998C88D54a240b8C671493f27f58eC416b81D7F";
+export const BTC_POOL: Address = "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0";
+export const BTC_BASE_DECIMALS = 8;
+export const QUOTE_DECIMALS = 18;
+
+/** The SDK's Hideki constants omit the perps OperatorPermissionsRegistry; Basanos adds it. */
+export const HIDEKI_ADDRESSES = {
+  ...SOMNIA_HIDEKI_TESTNET_ADDRESSES,
+  operatorPermissionsRegistry: OPERATOR_REGISTRY,
+};
+
+export const PLACE_ORDER_FOR_SELECTOR: Hex = "0x80054449";
+export const CANCEL_ORDER_FOR_SELECTOR: Hex = "0xe37b444b";
+export const REDUCE_ORDER_FOR_SELECTOR: Hex = "0x364c2587";
+
+export const ORDER_GAS = 10_000_000n;
+export const ORDER_TYPE_LIMIT = 0;
+export const ORDER_TYPE_IOC = 2;
+
+export const ORACLE_AGENT_ID = 9911223344556677889n;
+export const ORACLE_DEPOSIT = 30_900_000_000_000_000n;
+export const STT_WRITE_HEADROOM = 600_000_000_000_000_000n;
+
+/** Order expiry fifty years out, in nanoseconds (the bot kit's GTC convention). */
+export function farFutureNs(nowMs: number = Date.now()): bigint {
+  return (BigInt(Math.floor(nowMs / 1000)) + 50n * 365n * 86_400n) * 1_000_000_000n;
+}
+
+export function explorerTx(hash: Hex): string {
+  return `${EXPLORER_URL}/tx/${hash}`;
+}
+
+export function explorerAddress(address: Address): string {
+  return `${EXPLORER_URL}/address/${address}`;
+}
+```
+
+`packages/core/src/abi.ts`:
+```ts
+import { parseAbi } from "viem";
+
+export const marginBankAbi = parseAbi([
+  "function getAccountState(address account) view returns ((int256 unlockedCollateralBalance, uint256 lockedCollateral, address[] activePerpPools))",
+  "function getAccountEquity(address account) view returns (int256)",
+  "function tryGetAccountEquity(address account) view returns (bool ok, int256 equity)",
+  "function getPosition(address account, address perpPool) view returns ((int128 size, uint128 avgEntryPrice, int256 entryFundingIndex, uint64 lastUpdatedTimestampNs))",
+]);
+
+export const perpPoolAbi = parseAbi([
+  "function placeOrderFor(address owner, bool isBid, uint64 userData, uint256 price, uint256 quantity, uint64 expireTimestampNs, uint8 orderType, uint8 selfMatchingOption, address builder, uint96 builderFeeBpsTimes1k) payable returns (bool success, uint128 orderId)",
+  "function cancelOrderFor(address owner, uint128 orderId)",
+  "function isOperatorAuthorized(address owner, address operator, bytes4 selector) view returns (bool)",
+  "function getOwnOpenOrders() view returns (uint128[])",
+  "function tryGetMarkPrice() view returns (bool ok, uint256 price)",
+  "function getMarkPrice() view returns (uint256)",
+  "function getOrderBookParameters() view returns ((uint256 tickSize, uint256 minQuantity, uint256 lotSize))",
+  "function getBookLevels(bool isBid, uint64 numLevels) view returns ((uint256 price, uint256 quantity)[])",
+]);
+
+export const operatorRegistryAbi = parseAbi([
+  "function setOperatorApprovalForPool(address pool, address operator, bytes4[] selectors, bool approved)",
+  "function isApprovedForPool(address pool, address owner, address operator, bytes4 selector) view returns (bool)",
+]);
+
+export const multicall3Abi = parseAbi([
+  "struct Call3 { address target; bool allowFailure; bytes callData; }",
+  "struct Result { bool success; bytes returnData; }",
+  "function aggregate3(Call3[] calls) payable returns (Result[] returnData)",
+  "function getBlockNumber() view returns (uint256 blockNumber)",
+  "function getCurrentBlockTimestamp() view returns (uint256 timestamp)",
+]);
+
+export const somniaAgentsAbi = parseAbi([
+  "struct Response { address validator; bytes result; uint8 status; uint256 receipt; uint256 timestamp; uint256 executionCost; }",
+  "struct Request { uint256 id; address requester; address callbackAddress; bytes4 callbackSelector; address[] subcommittee; Response[] responses; uint256 responseCount; uint256 failureCount; uint256 threshold; uint256 createdAt; uint256 deadline; uint8 status; uint8 consensusType; uint256 remainingBudget; uint256 perAgentBudget; }",
+  "function createRequest(uint256 agentId, address callbackAddress, bytes4 callbackSelector, bytes payload) payable returns (uint256 requestId)",
+  "function getRequest(uint256 requestId) view returns (Request)",
+  "function getRequestDeposit() view returns (uint256)",
+  "event RequestCreated(uint256 indexed requestId, uint256 indexed agentId, uint256 perAgentBudget, bytes payload, address[] subcommittee)",
+  "event RequestFinalized(uint256 indexed requestId, uint8 status)",
+]);
+
+export const priceOracleAbi = parseAbi([
+  "function getPrices(string[] symbols, uint8 decimals) returns (uint256[] prices, uint8[] numSources, uint64[] lastUpdated)",
+]);
+
+export const marginBankEventsAbi = parseAbi([
+  "event PositionUpdated(address indexed account, address indexed perpPool, int128 newSize, uint128 avgEntryPrice, int256 realizedPnl, int256 entryFundingIndex)",
+]);
+```
+
+Replace `packages/core/src/index.ts` with:
+```ts
+export const BASANOS = "basanos" as const;
+export * from "./config";
+export * from "./abi";
+```
+
+- [ ] **Step 4: Run to confirm it passes (the gate)**
+Run: `npm test -w @basanos/core -- test/config.test.ts`
+Expected: PASS — `6 passed`.
+
+- [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
+Message: `feat(core): Hideki config, operator selectors and ABIs`
+
+---
+
+### Task 3: Env loader and rulebook schema
+
+**Files:**
+- Create: `packages/core/src/env.ts`
+- Create: `packages/core/src/rulebook.ts`
+- Modify: `packages/core/src/node.ts`
+- Modify: `packages/core/src/index.ts`
+- Create: `rulebooks/tokyo-sprint.json`
+- Create: `rulebooks/tokyo-sprint-demo.json`
+- Test: `packages/core/test/env.test.ts`
+- Test: `packages/core/test/rulebook.test.ts`
+
+**Depends on:** Task 1, Task 2
+**Effort:** medium
+**Provides:** `type SecretName = "REFEREE_PK" | "ACCOUNT_A_PK" | "ACCOUNT_B_PK"`, `type AddressName = "REFEREE_ADDRESS" | "ACCOUNT_A_ADDRESS" | "ACCOUNT_B_ADDRESS" | "REGISTRY_ADDRESS"`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `rpcWss(env?: NodeJS.ProcessEnv): string`, `flag(name: "ORACLE_ENABLED", env?: NodeJS.ProcessEnv): boolean`, `interface Rulebook`, `canonicalJson(value: unknown): string`, `rulebookId(rb: Rulebook): Hex`, `parseRulebook(raw: unknown): Rulebook`, `RULEBOOK_FILES: { "tokyo-sprint": string; "tokyo-sprint-demo": string }`, `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`
+**Requires:** `RPC_HTTP_DEFAULT`, `RPC_WSS_DEFAULT`, `repoPath(rel: string): string`
+
+- [ ] **Step 1: Write the rulebook files**
+
+`rulebooks/tokyo-sprint.json`:
+```json
+{
+  "schema": "basanos.rulebook/1",
+  "name": "Tokyo Sprint",
+  "variant": "standard",
+  "label": "Tokyo Sprint",
+  "chainId": 50383,
+  "market": { "symbol": "BTC-PERP", "pool": "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0", "baseDecimals": 8 },
+  "profitTargetBps": 150,
+  "dailyLossBps": 150,
+  "trailingDrawdownBps": 200,
+  "maxExposureX": 15,
+  "minDurationSec": 120,
+  "timeLimitSec": 1800,
+  "oracleSymbol": "BTC/USDC:PERP",
+  "voidOn": ["flow", "foreignMarket", "grantRevoked"]
+}
+```
+
+`rulebooks/tokyo-sprint-demo.json`:
+```json
+{
+  "schema": "basanos.rulebook/1",
+  "name": "Tokyo Sprint",
+  "variant": "demo",
+  "label": "Tokyo Sprint · Demo",
+  "chainId": 50383,
+  "market": { "symbol": "BTC-PERP", "pool": "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0", "baseDecimals": 8 },
+  "profitTargetBps": 50,
+  "dailyLossBps": 50,
+  "trailingDrawdownBps": 75,
+  "maxExposureX": 15,
+  "minDurationSec": 60,
+  "timeLimitSec": 900,
+  "oracleSymbol": "BTC/USDC:PERP",
+  "voidOn": ["flow", "foreignMarket", "grantRevoked"]
+}
+```
+
+- [ ] **Step 2: Write the failing tests**
+
+`packages/core/test/env.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { flag, requireAddress, requirePrivateKey, rpcHttp, rpcWss } from "../src/env";
+
+const KEY = `0x${"11".repeat(32)}`;
+
+describe("env", () => {
+  it("returns a well-formed private key", () => {
+    expect(requirePrivateKey("REFEREE_PK", { REFEREE_PK: KEY })).toBe(KEY);
+  });
+  it("names the variable but never echoes the value", () => {
+    const bad = "0xdeadbeef";
+    let message = "";
+    try {
+      requirePrivateKey("ACCOUNT_A_PK", { ACCOUNT_A_PK: bad });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("ACCOUNT_A_PK");
+    expect(message).not.toContain(bad);
+    expect(() => requirePrivateKey("ACCOUNT_B_PK", {})).toThrow(/ACCOUNT_B_PK is not set/);
+  });
+  it("validates addresses", () => {
+    expect(requireAddress("REGISTRY_ADDRESS", { REGISTRY_ADDRESS: "0x478769E1177C0773c43A593DCCc4Ad15F15F1394" })).toBe(
+      "0x478769E1177C0773c43A593DCCc4Ad15F15F1394",
+    );
+    expect(() => requireAddress("REGISTRY_ADDRESS", { REGISTRY_ADDRESS: "nope" })).toThrow(/REGISTRY_ADDRESS/);
+  });
+  it("defaults the RPC endpoints and reads flags", () => {
+    expect(rpcHttp({})).toBe("https://api.hideki.infra.testnet.somnia.network");
+    expect(rpcWss({ HIDEKI_RPC_WSS: "wss://x/ws" })).toBe("wss://x/ws");
+    expect(flag("ORACLE_ENABLED", { ORACLE_ENABLED: "TRUE" })).toBe(true);
+    expect(flag("ORACLE_ENABLED", {})).toBe(false);
+  });
+});
+```
+
+`packages/core/test/rulebook.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { keccak256, toBytes } from "viem";
+import { canonicalJson, parseRulebook, rulebookId } from "../src/rulebook";
+import { loadRulebook } from "../src/node";
+
+describe("canonicalJson", () => {
+  it("sorts keys recursively and drops whitespace", () => {
+    expect(canonicalJson({ b: 1, a: { d: 2, c: [3, { f: 1, e: 2 }] } })).toBe('{"a":{"c":[3,{"e":2,"f":1}],"d":2},"b":1}');
+  });
+  it("writes bigints as decimal strings", () => {
+    expect(canonicalJson({ x: 10n ** 20n })).toBe('{"x":"100000000000000000000"}');
+  });
+});
+
+describe("rulebooks", () => {
+  it("loads both Tokyo Sprint variants", () => {
+    const standard = loadRulebook("tokyo-sprint");
+    const demo = loadRulebook("tokyo-sprint-demo");
+    expect(standard.variant).toBe("standard");
+    expect(demo.variant).toBe("demo");
+    expect(demo.label).toBe("Tokyo Sprint · Demo");
+    expect(standard.profitTargetBps).toBe(150);
+    expect(demo.profitTargetBps).toBe(50);
+    expect(rulebookId(standard)).not.toBe(rulebookId(demo));
+  });
+  it("hashes the canonical JSON, independent of key order", () => {
+    const rb = loadRulebook("tokyo-sprint");
+    expect(rulebookId(rb)).toBe(keccak256(toBytes(canonicalJson(rb))));
+    const reordered = parseRulebook(Object.fromEntries(Object.entries(rb).reverse()));
+    expect(rulebookId(reordered)).toBe(rulebookId(rb));
+  });
+  it("rejects a rulebook with a missing field", () => {
+    const rb = loadRulebook("tokyo-sprint") as unknown as Record<string, unknown>;
+    const broken = { ...rb };
+    delete broken.profitTargetBps;
+    expect(() => parseRulebook(broken)).toThrow(/profitTargetBps/);
+  });
+});
+```
+
+- [ ] **Step 3: Run to confirm they fail**
+Run: `npm test -w @basanos/core -- test/env.test.ts test/rulebook.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/env"`.
+
+- [ ] **Step 4: Write the implementation**
+
+`packages/core/src/env.ts`:
+```ts
+import { existsSync } from "node:fs";
+import { isAddress, type Address, type Hex } from "viem";
+import { RPC_HTTP_DEFAULT, RPC_WSS_DEFAULT } from "./config";
+
+export type SecretName = "REFEREE_PK" | "ACCOUNT_A_PK" | "ACCOUNT_B_PK";
+export type AddressName = "REFEREE_ADDRESS" | "ACCOUNT_A_ADDRESS" | "ACCOUNT_B_ADDRESS" | "REGISTRY_ADDRESS";
+
+/** Loads KEY=VALUE pairs from the git-ignored .env into process.env (existing values win). */
+export function loadDotEnv(path = ".env"): boolean {
+  if (!existsSync(path)) return false;
+  process.loadEnvFile(path);
+  return true;
+}
+
+/** Never includes the value in an error: keys must not reach logs. */
+export function requirePrivateKey(name: SecretName, env: NodeJS.ProcessEnv = process.env): Hex {
+  const value = env[name];
+  if (!value) throw new Error(`${name} is not set (see .env.example)`);
+  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) throw new Error(`${name} is not a 0x-prefixed 32-byte hex key`);
+  return value as Hex;
+}
+
+export function requireAddress(name: AddressName, env: NodeJS.ProcessEnv = process.env): Address {
+  const value = env[name];
+  if (!value) throw new Error(`${name} is not set (see .env.example)`);
+  if (!isAddress(value, { strict: false })) throw new Error(`${name} is not an address`);
+  return value as Address;
+}
+
+export function rpcHttp(env: NodeJS.ProcessEnv = process.env): string {
+  return env.HIDEKI_RPC_HTTP && env.HIDEKI_RPC_HTTP.length > 0 ? env.HIDEKI_RPC_HTTP : RPC_HTTP_DEFAULT;
+}
+
+export function rpcWss(env: NodeJS.ProcessEnv = process.env): string {
+  return env.HIDEKI_RPC_WSS && env.HIDEKI_RPC_WSS.length > 0 ? env.HIDEKI_RPC_WSS : RPC_WSS_DEFAULT;
+}
+
+export function flag(name: "ORACLE_ENABLED", env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env[name] ?? "").toLowerCase() === "true";
+}
+```
+
+`packages/core/src/rulebook.ts`:
+```ts
+import { isAddress, keccak256, toBytes, type Address, type Hex } from "viem";
+
+export interface Rulebook {
+  schema: "basanos.rulebook/1";
+  name: string;
+  variant: "standard" | "demo";
+  label: string;
+  chainId: number;
+  market: { symbol: string; pool: Address; baseDecimals: number };
+  profitTargetBps: number;
+  dailyLossBps: number;
+  trailingDrawdownBps: number;
+  maxExposureX: number;
+  minDurationSec: number;
+  timeLimitSec: number;
+  oracleSymbol: string;
+  voidOn: string[];
+}
+
+/** JSON with object keys sorted recursively, no whitespace, bigints as decimal strings. */
+export function canonicalJson(value: unknown): string {
+  if (typeof value === "bigint") return JSON.stringify(value.toString());
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((v) => canonicalJson(v)).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj)
+    .filter((k) => obj[k] !== undefined)
+    .sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(",")}}`;
+}
+
+export function rulebookId(rb: Rulebook): Hex {
+  return keccak256(toBytes(canonicalJson(rb)));
+}
+
+function need<T>(ok: boolean, field: string, value: T): T {
+  if (!ok) throw new Error(`rulebook field ${field} is missing or invalid`);
+  return value;
+}
+
+export function parseRulebook(raw: unknown): Rulebook {
+  const r = raw as Record<string, unknown>;
+  const m = (r.market ?? {}) as Record<string, unknown>;
+  const int = (k: string): number => need(Number.isInteger(r[k]) && (r[k] as number) >= 0, k, r[k] as number);
+  return {
+    schema: need(r.schema === "basanos.rulebook/1", "schema", "basanos.rulebook/1"),
+    name: need(typeof r.name === "string", "name", r.name as string),
+    variant: need(r.variant === "standard" || r.variant === "demo", "variant", r.variant as "standard" | "demo"),
+    label: need(typeof r.label === "string", "label", r.label as string),
+    chainId: int("chainId"),
+    market: {
+      symbol: need(typeof m.symbol === "string", "market.symbol", m.symbol as string),
+      pool: need(typeof m.pool === "string" && isAddress(m.pool, { strict: false }), "market.pool", m.pool as Address),
+      baseDecimals: need(Number.isInteger(m.baseDecimals), "market.baseDecimals", m.baseDecimals as number),
+    },
+    profitTargetBps: int("profitTargetBps"),
+    dailyLossBps: int("dailyLossBps"),
+    trailingDrawdownBps: int("trailingDrawdownBps"),
+    maxExposureX: int("maxExposureX"),
+    minDurationSec: int("minDurationSec"),
+    timeLimitSec: int("timeLimitSec"),
+    oracleSymbol: need(typeof r.oracleSymbol === "string", "oracleSymbol", r.oracleSymbol as string),
+    voidOn: need(Array.isArray(r.voidOn), "voidOn", r.voidOn as string[]),
+  };
+}
+```
+
+Replace `packages/core/src/node.ts` with:
+```ts
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { parseRulebook, type Rulebook } from "./rulebook";
+
+export * from "./env";
+
+/** Absolute path of a repo-relative path (this file lives at packages/core/src/node.ts). */
+export function repoPath(rel: string): string {
+  return fileURLToPath(new URL(`../../../${rel}`, import.meta.url));
+}
+
+export const RULEBOOK_FILES = {
+  "tokyo-sprint": "rulebooks/tokyo-sprint.json",
+  "tokyo-sprint-demo": "rulebooks/tokyo-sprint-demo.json",
+} as const;
+
+export function loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook {
+  return parseRulebook(JSON.parse(readFileSync(repoPath(RULEBOOK_FILES[name]), "utf8")));
+}
+```
+
+Replace `packages/core/src/index.ts` with:
+```ts
+export const BASANOS = "basanos" as const;
+export * from "./config";
+export * from "./abi";
+export * from "./rulebook";
+```
+
+- [ ] **Step 5: Run to confirm they pass (the gate)**
+Run: `npm test -w @basanos/core -- test/env.test.ts test/rulebook.test.ts`
+Expected: PASS — `9 passed`.
+
+- [ ] **Step 6: Commit (kernel-performed — no agent runs this)**
+Message: `feat(core): env loader and Tokyo Sprint rulebooks with canonical ids`
+
+---
+
+### Task 4: Snapshot multicall (block, time, mark and per-account equity in one call)
+
+**Files:**
+- Create: `packages/core/src/snapshot.ts`
+- Modify: `packages/core/src/index.ts`
+- Test: `packages/core/test/snapshot.test.ts`
+
+**Depends on:** Task 2, Task 3
+**Effort:** medium
+**Provides:** `interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }`, `interface Snapshot { blockNumber: bigint; timestamp: bigint; pool: Address; markOk: boolean; markPrice: bigint; accounts: AccountSnapshot[] }`, `snapshotCall(accounts: readonly Address[], pool: Address): { to: Address; data: Hex }`, `decodeSnapshot(result: Hex, accounts: readonly Address[], pool: Address): Snapshot`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`
+**Requires:** `MARGIN_BANK`, `MULTICALL3`, `marginBankAbi`, `perpPoolAbi`, `multicall3Abi`
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/core/test/snapshot.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { decodeFunctionData, encodeFunctionResult, type Address, type Hex } from "viem";
+import { marginBankAbi, multicall3Abi, perpPoolAbi } from "../src/abi";
+import { BTC_POOL, MULTICALL3 } from "../src/config";
+import { decodeSnapshot, snapshotCall } from "../src/snapshot";
+
+const A: Address = "0x00000000000000000000000000000000000000a1";
+const B: Address = "0x00000000000000000000000000000000000000b2";
+
+function ok(data: Hex) {
+  return { success: true, returnData: data };
+}
+
+describe("snapshot", () => {
+  it("batches block, timestamp, mark and three reads per account", () => {
+    const call = snapshotCall([A, B], BTC_POOL);
+    expect(call.to).toBe(MULTICALL3);
+    const decoded = decodeFunctionData({ abi: multicall3Abi, data: call.data });
+    expect(decoded.functionName).toBe("aggregate3");
+    expect((decoded.args[0] as readonly unknown[]).length).toBe(3 + 2 * 3);
+  });
+
+  it("decodes equity, locked collateral, pools and size; a failed sub-call marks the account unpriceable", () => {
+    const rows = [
+      ok(encodeFunctionResult({ abi: multicall3Abi, functionName: "getBlockNumber", result: 46_725_618n })),
+      ok(encodeFunctionResult({ abi: multicall3Abi, functionName: "getCurrentBlockTimestamp", result: 1_794_326_598n })),
+      ok(encodeFunctionResult({ abi: perpPoolAbi, functionName: "tryGetMarkPrice", result: [true, 74_500n * 10n ** 18n] })),
+      ok(encodeFunctionResult({ abi: marginBankAbi, functionName: "tryGetAccountEquity", result: [true, 990n * 10n ** 18n] })),
+      ok(
+        encodeFunctionResult({
+          abi: marginBankAbi,
+          functionName: "getAccountState",
+          result: { unlockedCollateralBalance: 980n * 10n ** 18n, lockedCollateral: 10n * 10n ** 18n, activePerpPools: [BTC_POOL] },
+        }),
+      ),
+      ok(
+        encodeFunctionResult({
+          abi: marginBankAbi,
+          functionName: "getPosition",
+          result: { size: -13_000n, avgEntryPrice: 74_000n * 10n ** 18n, entryFundingIndex: 0n, lastUpdatedTimestampNs: 1n },
+        }),
+      ),
+      { success: false, returnData: "0x" as Hex },
+      ok(
+        encodeFunctionResult({
+          abi: marginBankAbi,
+          functionName: "getAccountState",
+          result: { unlockedCollateralBalance: 0n, lockedCollateral: 0n, activePerpPools: [] },
+        }),
+      ),
+      ok(
+        encodeFunctionResult({
+          abi: marginBankAbi,
+          functionName: "getPosition",
+          result: { size: 0n, avgEntryPrice: 0n, entryFundingIndex: 0n, lastUpdatedTimestampNs: 0n },
+        }),
+      ),
+    ];
+    const result = encodeFunctionResult({ abi: multicall3Abi, functionName: "aggregate3", result: rows });
+    const snap = decodeSnapshot(result, [A, B], BTC_POOL);
+    expect(snap.blockNumber).toBe(46_725_618n);
+    expect(snap.timestamp).toBe(1_794_326_598n);
+    expect(snap.markOk).toBe(true);
+    expect(snap.markPrice).toBe(74_500n * 10n ** 18n);
+    const [a, b] = snap.accounts;
+    expect(a?.equityOk).toBe(true);
+    expect(a?.totalEquity).toBe(1000n * 10n ** 18n);
+    expect(a?.lockedCollateral).toBe(10n * 10n ** 18n);
+    expect(a?.activePools).toEqual([BTC_POOL]);
+    expect(a?.size).toBe(-13_000n);
+    expect(b?.equityOk).toBe(false);
+    expect(b?.totalEquity).toBe(0n);
+  });
+
+  it("rejects a result with the wrong number of rows", () => {
+    const result = encodeFunctionResult({ abi: multicall3Abi, functionName: "aggregate3", result: [] });
+    expect(() => decodeSnapshot(result, [A], BTC_POOL)).toThrow(/expected 6 rows/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/core -- test/snapshot.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/snapshot"`.
+
+- [ ] **Step 3: Write the implementation**
+
+`packages/core/src/snapshot.ts`:
+```ts
+import { decodeFunctionResult, encodeFunctionData, type Address, type Hex, type PublicClient } from "viem";
+import { marginBankAbi, multicall3Abi, perpPoolAbi } from "./abi";
+import { MARGIN_BANK, MULTICALL3 } from "./config";
+
+export interface AccountSnapshot {
+  account: Address;
+  equityOk: boolean;
+  equity: bigint;
+  lockedCollateral: bigint;
+  totalEquity: bigint;
+  activePools: Address[];
+  size: bigint;
+}
+
+export interface Snapshot {
+  blockNumber: bigint;
+  timestamp: bigint;
+  pool: Address;
+  markOk: boolean;
+  markPrice: bigint;
+  accounts: AccountSnapshot[];
+}
+
+interface Row {
+  success: boolean;
+  returnData: Hex;
+}
+
+function calls(accounts: readonly Address[], pool: Address) {
+  const head = [
+    { target: MULTICALL3, allowFailure: true, callData: encodeFunctionData({ abi: multicall3Abi, functionName: "getBlockNumber" }) },
+    {
+      target: MULTICALL3,
+      allowFailure: true,
+      callData: encodeFunctionData({ abi: multicall3Abi, functionName: "getCurrentBlockTimestamp" }),
+    },
+    { target: pool, allowFailure: true, callData: encodeFunctionData({ abi: perpPoolAbi, functionName: "tryGetMarkPrice" }) },
+  ];
+  const perAccount = accounts.flatMap((account) => [
+    {
+      target: MARGIN_BANK,
+      allowFailure: true,
+      callData: encodeFunctionData({ abi: marginBankAbi, functionName: "tryGetAccountEquity", args: [account] }),
+    },
+    {
+      target: MARGIN_BANK,
+      allowFailure: true,
+      callData: encodeFunctionData({ abi: marginBankAbi, functionName: "getAccountState", args: [account] }),
+    },
+    {
+      target: MARGIN_BANK,
+      allowFailure: true,
+      callData: encodeFunctionData({ abi: marginBankAbi, functionName: "getPosition", args: [account, pool] }),
+    },
+  ]);
+  return [...head, ...perAccount];
+}
+
+/** One Multicall3 call: usable as a somnia_watch eth_call or as a head/historical read. */
+export function snapshotCall(accounts: readonly Address[], pool: Address): { to: Address; data: Hex } {
+  return { to: MULTICALL3, data: encodeFunctionData({ abi: multicall3Abi, functionName: "aggregate3", args: [calls(accounts, pool)] }) };
+}
+
+export function decodeSnapshot(result: Hex, accounts: readonly Address[], pool: Address): Snapshot {
+  const rows = decodeFunctionResult({ abi: multicall3Abi, functionName: "aggregate3", data: result }) as readonly Row[];
+  const expected = 3 + accounts.length * 3;
+  if (rows.length !== expected) throw new Error(`snapshot: expected ${expected} rows, got ${rows.length}`);
+  const row = (i: number): Row => rows[i] as Row;
+  const blockNumber = row(0).success
+    ? (decodeFunctionResult({ abi: multicall3Abi, functionName: "getBlockNumber", data: row(0).returnData }) as bigint)
+    : 0n;
+  const timestamp = row(1).success
+    ? (decodeFunctionResult({ abi: multicall3Abi, functionName: "getCurrentBlockTimestamp", data: row(1).returnData }) as bigint)
+    : 0n;
+  let markOk = false;
+  let markPrice = 0n;
+  if (row(2).success) {
+    const [okMark, price] = decodeFunctionResult({ abi: perpPoolAbi, functionName: "tryGetMarkPrice", data: row(2).returnData });
+    markOk = okMark;
+    markPrice = price;
+  }
+  const out: AccountSnapshot[] = accounts.map((account, i) => {
+    const base = 3 + i * 3;
+    const eqRow = row(base);
+    const stRow = row(base + 1);
+    const posRow = row(base + 2);
+    let equityOk = false;
+    let equity = 0n;
+    if (eqRow.success) {
+      const [okEq, value] = decodeFunctionResult({ abi: marginBankAbi, functionName: "tryGetAccountEquity", data: eqRow.returnData });
+      equityOk = okEq;
+      equity = value;
+    }
+    let lockedCollateral = 0n;
+    let activePools: Address[] = [];
+    if (stRow.success) {
+      const st = decodeFunctionResult({ abi: marginBankAbi, functionName: "getAccountState", data: stRow.returnData });
+      lockedCollateral = st.lockedCollateral;
+      activePools = [...st.activePerpPools];
+    } else {
+      equityOk = false;
+    }
+    let size = 0n;
+    if (posRow.success) {
+      const pos = decodeFunctionResult({ abi: marginBankAbi, functionName: "getPosition", data: posRow.returnData });
+      size = pos.size;
+    }
+    return { account, equityOk, equity, lockedCollateral, totalEquity: equityOk ? equity + lockedCollateral : 0n, activePools, size };
+  });
+  return { blockNumber, timestamp, pool, markOk, markPrice, accounts: out };
+}
+
+export async function readSnapshot(
+  client: PublicClient,
+  accounts: readonly Address[],
+  pool: Address,
+  blockNumber?: bigint,
+): Promise<Snapshot> {
+  const call = snapshotCall(accounts, pool);
+  const res = await client.call({ to: call.to, data: call.data, ...(blockNumber === undefined ? {} : { blockNumber }) });
+  if (!res.data) throw new Error("snapshot: the multicall returned no data");
+  return decodeSnapshot(res.data, accounts, pool);
+}
+```
+
+Replace `packages/core/src/index.ts` with:
+```ts
+export const BASANOS = "basanos" as const;
+export * from "./config";
+export * from "./abi";
+export * from "./rulebook";
+export * from "./snapshot";
+```
+
+- [ ] **Step 4: Run to confirm it passes (the gate)**
+Run: `npm test -w @basanos/core -- test/snapshot.test.ts`
+Expected: PASS — `3 passed`.
+
+- [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
+Message: `feat(core): snapshot multicall for block, time, mark and account equity`
+
+---
+
+### Task 5: Raw somnia_watch client with resubscribe and gap reporting
+
+**Files:**
+- Create: `packages/core/src/watch.ts`
+- Modify: `packages/core/src/index.ts`
+- Test: `packages/core/test/watch.test.ts`
+
+**Depends on:** Task 1, Task 4
+**Effort:** high
+**Provides:** `interface WatchFilter { address: Address | readonly Address[]; topics?: readonly (Hex | readonly Hex[] | null)[]; ethCalls: readonly { to: Address; data: Hex }[]; pushChangesOnly?: boolean }`, `interface WatchPush { address: Address; topics: Hex[]; data: Hex; simulationResults: Hex[] }`, `interface WatchHandlers { onPush: (push: WatchPush) => void; onConnected?: (info: { subscriptionId: string; reconnects: number }) => void; onGap?: (info: { atMs: number; reason: string }) => void }`, `interface WatchOptions { initialBackoffMs?: number; maxBackoffMs?: number; WebSocketImpl?: typeof WebSocket }`, `interface WatchHandle { close: () => void; readonly connected: boolean }`, `watchParams(filter: WatchFilter): Record<string, unknown>`, `startWatch(url: string, filter: WatchFilter, handlers: WatchHandlers, opts?: WatchOptions): WatchHandle`
+**Requires:** `@basanos/core package with exports "." -> src/index.ts and "./node" -> src/node.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/core/test/watch.test.ts`:
+```ts
+import type { AddressInfo } from "node:net";
+import { afterEach, describe, expect, it } from "vitest";
+import { WebSocketServer, type WebSocket as ServerSocket } from "ws";
+import { startWatch, watchParams, type WatchHandle, type WatchPush } from "../src/watch";
+
+const FILTER = {
+  address: "0x1998C88D54a240b8C671493f27f58eC416b81D7F" as const,
+  ethCalls: [{ to: "0xcA11bde05977b3631167028862bE2a173976CA11" as const, data: "0x42cbb15c" as const }],
+  pushChangesOnly: true,
+};
+
+let server: WebSocketServer | null = null;
+let handle: WatchHandle | null = null;
+
+afterEach(() => {
+  handle?.close();
+  handle = null;
+  server?.close();
+  server = null;
+});
+
+function serve(onSocket: (sock: ServerSocket, n: number, params: unknown) => void): Promise<string> {
+  return new Promise((resolve) => {
+    let n = 0;
+    server = new WebSocketServer({ port: 0 }, () => {
+      const { port } = server?.address() as AddressInfo;
+      resolve(`ws://127.0.0.1:${port}`);
+    });
+    server.on("connection", (sock) => {
+      n += 1;
+      const mine = n;
+      sock.on("message", (raw) => {
+        const msg = JSON.parse(String(raw)) as { id: number; params: unknown[] };
+        sock.send(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: `0xsub${mine}` }));
+        onSocket(sock, mine, msg.params[1]);
+      });
+    });
+  });
+}
+
+const PUSH: WatchPush = {
+  address: "0x1998c88d54a240b8c671493f27f58ec416b81d7f",
+  topics: ["0x01"],
+  data: "0x",
+  simulationResults: ["0xaa"],
+};
+
+describe("watchParams", () => {
+  it("maps the filter to somnia_watch request fields", () => {
+    expect(watchParams(FILTER)).toEqual({
+      address: FILTER.address,
+      eth_calls: FILTER.ethCalls,
+      push_changes_only: true,
+    });
+  });
+});
+
+describe("startWatch", () => {
+  it("subscribes with somnia_watch and delivers pushes", async () => {
+    let seenParams: unknown = null;
+    const url = await serve((sock, _n, params) => {
+      seenParams = params;
+      sock.send(JSON.stringify({ jsonrpc: "2.0", method: "eth_subscription", params: { subscription: "0xsub1", result: PUSH } }));
+    });
+    const push = await new Promise<WatchPush>((resolve) => {
+      handle = startWatch(url, FILTER, { onPush: resolve });
+    });
+    expect(push.simulationResults).toEqual(["0xaa"]);
+    expect(seenParams).toEqual(watchParams(FILTER));
+  });
+
+  it("reports one gap on disconnect, then resubscribes", async () => {
+    const url = await serve((sock, n) => {
+      if (n === 1) setTimeout(() => sock.terminate(), 20);
+    });
+    const events: string[] = [];
+    await new Promise<void>((resolve) => {
+      handle = startWatch(
+        url,
+        FILTER,
+        {
+          onPush: () => undefined,
+          onConnected: ({ reconnects }) => {
+            events.push(`connected:${reconnects}`);
+            if (reconnects === 1) resolve();
+          },
+          onGap: () => events.push("gap"),
+        },
+        { initialBackoffMs: 20, maxBackoffMs: 100 },
+      );
+    });
+    expect(events).toEqual(["connected:0", "gap", "connected:1"]);
+    expect(handle?.connected).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/core -- test/watch.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/watch"`.
+
+- [ ] **Step 3: Write the implementation**
+
+`packages/core/src/watch.ts`:
+```ts
+import type { Address, Hex } from "viem";
+
+export interface WatchFilter {
+  address: Address | readonly Address[];
+  topics?: readonly (Hex | readonly Hex[] | null)[];
+  ethCalls: readonly { to: Address; data: Hex }[];
+  pushChangesOnly?: boolean;
+}
+
+export interface WatchPush {
+  address: Address;
+  topics: Hex[];
+  data: Hex;
+  simulationResults: Hex[];
+}
+
+export interface WatchHandlers {
+  onPush: (push: WatchPush) => void;
+  onConnected?: (info: { subscriptionId: string; reconnects: number }) => void;
+  onGap?: (info: { atMs: number; reason: string }) => void;
+}
+
+export interface WatchOptions {
+  initialBackoffMs?: number;
+  maxBackoffMs?: number;
+  WebSocketImpl?: typeof WebSocket;
+}
+
+export interface WatchHandle {
+  close: () => void;
+  readonly connected: boolean;
+}
+
+/** The somnia_watch request object (eth_getLogs-style filter plus eth_calls). */
+export function watchParams(filter: WatchFilter): Record<string, unknown> {
+  return {
+    address: filter.address,
+    ...(filter.topics ? { topics: filter.topics } : {}),
+    eth_calls: filter.ethCalls,
+    ...(filter.pushChangesOnly ? { push_changes_only: true } : {}),
+  };
+}
+
+interface RpcMessage {
+  id?: number;
+  result?: unknown;
+  error?: { message?: string };
+  method?: string;
+  params?: { result?: WatchPush };
+}
+
+/**
+ * Subscribes with somnia_watch and keeps the subscription alive. The node does not buffer events across
+ * a disconnect, so every outage is reported once through onGap; the caller must re-read state at head
+ * before trusting pushes again (spec §8, R3). Reconnects back off from initialBackoffMs, doubling to
+ * maxBackoffMs, and the backoff resets after a successful subscribe.
+ */
+export function startWatch(url: string, filter: WatchFilter, handlers: WatchHandlers, opts: WatchOptions = {}): WatchHandle {
+  const Impl = opts.WebSocketImpl ?? globalThis.WebSocket;
+  const initial = opts.initialBackoffMs ?? 500;
+  const max = opts.maxBackoffMs ?? 30_000;
+  let socket: WebSocket | null = null;
+  let closedByUser = false;
+  let connected = false;
+  let reconnects = 0;
+  let backoff = initial;
+  let gapReported = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const detach = (): void => {
+    if (!socket) return;
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onclose = null;
+    socket.onerror = null;
+    try {
+      socket.close();
+    } catch {
+      // the socket is already closed
+    }
+    socket = null;
+  };
+
+  const fail = (reason: string): void => {
+    if (closedByUser) return;
+    connected = false;
+    if (!gapReported) {
+      gapReported = true;
+      handlers.onGap?.({ atMs: Date.now(), reason });
+    }
+    detach();
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      reconnects += 1;
+      connect();
+    }, backoff);
+    backoff = Math.min(backoff * 2, max);
+  };
+
+  const connect = (): void => {
+    const sock = new Impl(url);
+    socket = sock;
+    sock.onopen = () => {
+      sock.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_subscribe", params: ["somnia_watch", watchParams(filter)] }));
+    };
+    sock.onmessage = (ev: MessageEvent) => {
+      const msg = JSON.parse(String(ev.data)) as RpcMessage;
+      if (msg.id === 1) {
+        if (typeof msg.result === "string") {
+          connected = true;
+          gapReported = false;
+          backoff = initial;
+          handlers.onConnected?.({ subscriptionId: msg.result, reconnects });
+        } else {
+          fail(`subscribe rejected: ${msg.error?.message ?? "no result"}`);
+        }
+        return;
+      }
+      if (msg.method === "eth_subscription" && msg.params?.result) handlers.onPush(msg.params.result);
+    };
+    sock.onclose = () => fail("socket closed");
+    sock.onerror = () => fail("socket error");
+  };
+
+  connect();
+
+  return {
+    close: () => {
+      closedByUser = true;
+      connected = false;
+      if (timer) clearTimeout(timer);
+      timer = null;
+      detach();
+    },
+    get connected() {
+      return connected;
+    },
+  };
+}
+```
+
+Replace `packages/core/src/index.ts` with:
+```ts
+export const BASANOS = "basanos" as const;
+export * from "./config";
+export * from "./abi";
+export * from "./rulebook";
+export * from "./snapshot";
+export * from "./watch";
+```
+
+- [ ] **Step 4: Run to confirm it passes (the gate)**
+Run: `npm test -w @basanos/core -- test/watch.test.ts`
+Expected: PASS — `3 passed`.
+
+- [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
+Message: `feat(core): somnia_watch client with resubscribe and gap reporting`
+
+---
+
+### Task 6: Close-plan math (IOC price, lot alignment, leverage sizing)
+
+**Files:**
+- Create: `packages/core/src/close.ts`
+- Modify: `packages/core/src/index.ts`
+- Test: `packages/core/test/close.test.ts`
+
+**Depends on:** Task 1, Task 5
+**Effort:** medium
+**Provides:** `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`, `interface OrderPlan { isBid: boolean; quantity: bigint; price: bigint }`, `CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]`, `alignDown(x: bigint, step: bigint): bigint`, `alignUp(x: bigint, step: bigint): bigint`, `iocPrice(isBid: boolean, mark: bigint, tickSize: bigint, slippageBps: number): bigint`, `planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null`, `planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan`, `quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`
+**Requires:** `@basanos/core package with exports "." -> src/index.ts and "./node" -> src/node.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/core/test/close.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { alignDown, alignUp, iocPrice, planClose, planOpen, quantityForLeverage, type BookParams } from "../src/close";
+
+const E18 = 10n ** 18n;
+const MARK = 74_500n * E18;
+const BOOK: BookParams = { tickSize: E18 / 10n, minQuantity: 13_000n, lotSize: 1_000n };
+
+describe("alignment", () => {
+  it("aligns down and up to a step", () => {
+    expect(alignDown(12_500n, 1_000n)).toBe(12_000n);
+    expect(alignUp(12_500n, 1_000n)).toBe(13_000n);
+    expect(alignUp(13_000n, 1_000n)).toBe(13_000n);
+    expect(() => alignDown(1n, 0n)).toThrow(/step/);
+  });
+});
+
+describe("iocPrice", () => {
+  it("prices a sell below the mark and a buy above, on the tick", () => {
+    expect(iocPrice(false, MARK, BOOK.tickSize, 20)).toBe(74_351n * E18);
+    expect(iocPrice(true, MARK, BOOK.tickSize, 20)).toBe(74_649n * E18);
+  });
+});
+
+describe("planClose", () => {
+  it("closes a long with a sell sized to the position", () => {
+    expect(planClose(13_000n, MARK, BOOK, 20)).toEqual({ isBid: false, quantity: 13_000n, price: 74_351n * E18 });
+  });
+  it("closes a short with a buy, lot-aligned down", () => {
+    expect(planClose(-12_500n, MARK, BOOK, 20)).toEqual({ isBid: true, quantity: 12_000n, price: 74_649n * E18 });
+  });
+  it("returns null when flat or below one lot", () => {
+    expect(planClose(0n, MARK, BOOK, 20)).toBeNull();
+    expect(planClose(500n, MARK, BOOK, 20)).toBeNull();
+  });
+});
+
+describe("planOpen and sizing", () => {
+  it("refuses a quantity below the market minimum", () => {
+    expect(() => planOpen(true, 12_000n, MARK, BOOK, 20)).toThrow(/minQuantity/);
+  });
+  it("sizes 12x on 1,000 USDso at 74,500", () => {
+    expect(quantityForLeverage(1_000n * E18, 12, MARK, 8, BOOK)).toBe(16_107_000n);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/core -- test/close.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/close"`.
+
+- [ ] **Step 3: Write the implementation**
+
+`packages/core/src/close.ts`:
+```ts
+export interface BookParams {
+  tickSize: bigint;
+  minQuantity: bigint;
+  lotSize: bigint;
+}
+
+export interface OrderPlan {
+  isBid: boolean;
+  quantity: bigint;
+  price: bigint;
+}
+
+/** The referee widens the IOC price band on each retry (spec §8). */
+export const CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100] as const;
+
+export function alignDown(x: bigint, step: bigint): bigint {
+  if (step <= 0n) throw new Error("alignDown: step must be positive");
+  return x - (x % step);
+}
+
+export function alignUp(x: bigint, step: bigint): bigint {
+  if (step <= 0n) throw new Error("alignUp: step must be positive");
+  const r = x % step;
+  return r === 0n ? x : x + (step - r);
+}
+
+/** An IOC limit price "through the book with slippage room": above the mark to buy, below to sell. */
+export function iocPrice(isBid: boolean, mark: bigint, tickSize: bigint, slippageBps: number): bigint {
+  if (mark <= 0n) throw new Error("iocPrice: mark must be positive");
+  const s = BigInt(slippageBps);
+  return isBid ? alignUp((mark * (10_000n + s)) / 10_000n, tickSize) : alignDown((mark * (10_000n - s)) / 10_000n, tickSize);
+}
+
+/** The opposite-side IOC that closes `size` (signed, raw base units). There is no reduce-only flag. */
+export function planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null {
+  if (size === 0n) return null;
+  const abs = size < 0n ? -size : size;
+  const quantity = alignDown(abs, book.lotSize);
+  if (quantity === 0n) return null;
+  const isBid = size < 0n;
+  return { isBid, quantity, price: iocPrice(isBid, mark, book.tickSize, slippageBps) };
+}
+
+export function planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan {
+  const q = alignDown(quantity, book.lotSize);
+  if (q < book.minQuantity) throw new Error(`planOpen: quantity ${q} is below minQuantity ${book.minQuantity}`);
+  return { isBid, quantity: q, price: iocPrice(isBid, mark, book.tickSize, slippageBps) };
+}
+
+/** Base quantity whose notional is `leverageX` times `equity` (both 18-decimal quote units). */
+export function quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint {
+  if (mark <= 0n) throw new Error("quantityForLeverage: mark must be positive");
+  const notional = equity * BigInt(leverageX);
+  return alignDown((notional * 10n ** BigInt(baseDecimals)) / mark, book.lotSize);
+}
+```
+
+Replace `packages/core/src/index.ts` with:
+```ts
+export const BASANOS = "basanos" as const;
+export * from "./config";
+export * from "./abi";
+export * from "./rulebook";
+export * from "./snapshot";
+export * from "./watch";
+export * from "./close";
+```
+
+- [ ] **Step 4: Run to confirm it passes (the gate)**
+Run: `npm test -w @basanos/core -- test/close.test.ts`
+Expected: PASS — `7 passed`.
+
+- [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
+Message: `feat(core): close-plan math for IOC closes and leverage sizing`
+
+---
+
+### Task 7: Spike package — evidence writer, checker and RPC helpers
+
+**Files:**
+- Create: `packages/spike/package.json`
+- Create: `packages/spike/tsconfig.json`
+- Create: `packages/spike/vitest.config.ts`
+- Create: `packages/spike/src/evidence.ts`
+- Create: `packages/spike/src/check-evidence.ts`
+- Create: `packages/spike/src/rpc.ts`
+- Create: `packages/spike/src/find-active.ts`
+- Test: `packages/spike/test/evidence.test.ts`
+
+**Depends on:** Task 1, Task 2, Task 3
+**Effort:** medium
+**Provides:** `type EvidenceName = "g1a-close" | "g1b-watch" | "g1c-history" | "g1d-oracle" | "r1-indexer" | "tape"`, `evidencePath(name: EvidenceName): string`, `toJsonSafe(value: unknown): unknown`, `writeEvidence(name: EvidenceName, data: Record<string, unknown>): string`, `readEvidence(name: EvidenceName): Record<string, unknown> | null`, `checkEvidence(name: EvidenceName, data: Record<string, unknown> | null): string[]`, `publicClient(): PublicClient`, `walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account`, `marketsFor(pk?: Hex): SomniaMarkets`, `pickMostFrequent(accounts: readonly Address[]): Address | null`, `findActiveAccount(client: PublicClient, windows?: number): Promise<Address>`, `CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS`
+**Requires:** `CHAIN (hidekiTestnet, id 50383)`, `INDEXER_URL`, `HIDEKI_ADDRESSES`, `MARGIN_BANK`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `repoPath(rel: string): string`
+
+- [ ] **Step 1: Write the package files**
+
+`packages/spike/package.json`:
+```json
+{
+  "name": "@basanos/spike",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@basanos/core": "*",
+    "@somnia-chain/markets-sdk": "0.33.0",
+    "viem": "2.57.12"
+  }
+}
+```
+
+`packages/spike/tsconfig.json`:
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src", "test"]
+}
+```
+
+`packages/spike/vitest.config.ts`:
+```ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    include: ["test/**/*.test.ts"],
+    testTimeout: 20_000,
+  },
+});
+```
+
+- [ ] **Step 2: Write the failing test**
+
+`packages/spike/test/evidence.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { checkEvidence, toJsonSafe } from "../src/evidence";
+import { pickMostFrequent } from "../src/find-active";
+
+describe("toJsonSafe", () => {
+  it("turns bigints into decimal strings, deeply", () => {
+    expect(toJsonSafe({ a: 1n, b: [2n, { c: 3n }], d: "x" })).toEqual({ a: "1", b: ["2", { c: "3" }], d: "x" });
+  });
+});
+
+describe("checkEvidence", () => {
+  it("flags a missing file", () => {
+    expect(checkEvidence("g1c-history", null)).toEqual(["g1c-history: evidence file is missing"]);
+  });
+  it("accepts a complete history file and rejects an empty one", () => {
+    const good = { account: "0x1", depths: [{ back: 10, block: "1", ok: true }], maxServedBack: 10 };
+    expect(checkEvidence("g1c-history", good)).toEqual([]);
+    expect(checkEvidence("g1c-history", { account: "0x1", depths: [] })).not.toEqual([]);
+  });
+  it("requires ok: true and a flat end state for the referee close", () => {
+    const base = {
+      ok: true,
+      txs: [
+        { label: "grant", hash: "0x1", status: "success" },
+        { label: "open", hash: "0x2", status: "success" },
+        { label: "close", hash: "0x3", status: "success" },
+      ],
+      finalPositionSize: "0",
+      leverage: { voucherLeverageCapX: 20 },
+      costs: { totalWei: "1" },
+    };
+    expect(checkEvidence("g1a-close", base)).toEqual([]);
+    expect(checkEvidence("g1a-close", { ...base, ok: false })).toContain("g1a-close: ok is not true (STOP and escalate)");
+    expect(checkEvidence("g1a-close", { ...base, finalPositionSize: "13000" })).not.toEqual([]);
+  });
+  it("accepts an oracle file whatever the final status, as long as it was recorded", () => {
+    expect(checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "TimedOut", symbols: [] })).toEqual([]);
+    expect(checkEvidence("g1d-oracle", { requestId: "7" })).not.toEqual([]);
+  });
+  it("needs three indexer reads, a watch with pushes and a tape with points", () => {
+    expect(checkEvidence("r1-indexer", { reads: [{}, {}, {}] })).toEqual([]);
+    expect(checkEvidence("g1b-watch", { pushes: 3, blockNumbers: ["1"], timestampUnit: "seconds", equityDecoded: true })).toEqual([]);
+    expect(checkEvidence("tape", { pool: "0x1", points: [{ block: "1", ts: "2", mark: "3" }] })).toEqual([]);
+    expect(checkEvidence("tape", { pool: "0x1", points: [] })).not.toEqual([]);
+  });
+});
+
+describe("pickMostFrequent", () => {
+  it("returns the address seen most often, or null", () => {
+    expect(pickMostFrequent([])).toBeNull();
+    expect(pickMostFrequent(["0xa", "0xb", "0xb"] as `0x${string}`[])).toBe("0xb");
+  });
+});
+```
+
+- [ ] **Step 3: Run to confirm it fails**
+Run: `npm install`
+Expected: exits 0 (links the new workspace).
+Run: `npm test -w @basanos/spike`
+Expected: FAIL — `Failed to resolve import "../src/evidence"`.
+
+- [ ] **Step 4: Write the implementation**
+
+`packages/spike/src/evidence.ts`:
+```ts
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { repoPath } from "@basanos/core/node";
+
+export type EvidenceName = "g1a-close" | "g1b-watch" | "g1c-history" | "g1d-oracle" | "r1-indexer" | "tape";
+
+export function evidencePath(name: EvidenceName): string {
+  return name === "tape" ? repoPath("packages/core/test/fixtures/btc-tape.json") : repoPath(`docs/evidence/${name}.json`);
+}
+
+export function toJsonSafe(value: unknown): unknown {
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map((v) => toJsonSafe(v));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, toJsonSafe(v)]));
+  }
+  return value;
+}
+
+export function writeEvidence(name: EvidenceName, data: Record<string, unknown>): string {
+  const path = evidencePath(name);
+  mkdirSync(dirname(path), { recursive: true });
+  const body = { evidence: name, writtenAt: new Date().toISOString(), ...data };
+  writeFileSync(path, `${JSON.stringify(toJsonSafe(body), null, 2)}\n`);
+  return path;
+}
+
+export function readEvidence(name: EvidenceName): Record<string, unknown> | null {
+  const path = evidencePath(name);
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+}
+
+const isArr = (v: unknown): v is unknown[] => Array.isArray(v);
+
+export function checkEvidence(name: EvidenceName, data: Record<string, unknown> | null): string[] {
+  if (!data) return [`${name}: evidence file is missing`];
+  const p: string[] = [];
+  const need = (cond: boolean, msg: string) => {
+    if (!cond) p.push(`${name}: ${msg}`);
+  };
+  switch (name) {
+    case "g1a-close": {
+      need(data.ok === true, "ok is not true (STOP and escalate)");
+      const txs = isArr(data.txs) ? (data.txs as Record<string, unknown>[]) : [];
+      need(txs.length >= 3, "fewer than 3 transactions recorded");
+      need(
+        txs.every((t) => typeof t.hash === "string" && typeof t.label === "string"),
+        "every tx needs a label and a hash",
+      );
+      need(
+        txs.some((t) => t.label === "close" && t.status === "success"),
+        "no successful referee close tx",
+      );
+      need(data.finalPositionSize === "0", "the account is not flat at the end");
+      const lev = (data.leverage ?? {}) as Record<string, unknown>;
+      need(typeof lev.voucherLeverageCapX === "number", "leverage.voucherLeverageCapX missing");
+      need(typeof data.costs === "object" && data.costs !== null, "costs missing");
+      break;
+    }
+    case "g1b-watch":
+      need(typeof data.pushes === "number" && data.pushes > 0, "no pushes recorded");
+      need(isArr(data.blockNumbers) && data.blockNumbers.length > 0, "no block numbers decoded");
+      need(data.timestampUnit === "seconds" || data.timestampUnit === "milliseconds", "timestampUnit missing");
+      need(data.equityDecoded === true, "the attached equity multicall was not decoded");
+      break;
+    case "g1c-history":
+      need(typeof data.account === "string", "account missing");
+      need(isArr(data.depths) && data.depths.length > 0, "no depths measured");
+      need(typeof data.maxServedBack === "number", "maxServedBack missing");
+      break;
+    case "g1d-oracle":
+      need(typeof data.requestId === "string", "requestId missing");
+      need(typeof data.finalStatus === "string", "finalStatus missing");
+      need(isArr(data.symbols), "symbols missing");
+      break;
+    case "r1-indexer":
+      need(isArr(data.reads) && data.reads.length === 3, "expected exactly 3 indexer reads");
+      break;
+    case "tape":
+      need(typeof data.pool === "string", "pool missing");
+      need(isArr(data.points) && data.points.length > 0, "no tape points");
+      break;
+  }
+  return p;
+}
+```
+
+`packages/spike/src/check-evidence.ts`:
+```ts
+import { checkEvidence, readEvidence, type EvidenceName } from "./evidence";
+
+const NAMES: EvidenceName[] = ["g1a-close", "g1b-watch", "g1c-history", "g1d-oracle", "r1-indexer", "tape"];
+const asked = process.argv.slice(2) as EvidenceName[];
+if (asked.length === 0 || asked.some((n) => !NAMES.includes(n))) {
+  console.error(`usage: check-evidence <${NAMES.join("|")}>...`);
+  process.exit(2);
+}
+let failed = 0;
+for (const name of asked) {
+  const problems = checkEvidence(name, readEvidence(name));
+  if (problems.length === 0) {
+    console.log(`PASS ${name}`);
+  } else {
+    failed += 1;
+    for (const p of problems) console.log(`FAIL ${p}`);
+  }
+}
+process.exit(failed === 0 ? 0 : 1);
+```
+
+`packages/spike/src/rpc.ts`:
+```ts
+import { createPublicClient, createWalletClient, http, type Hex, type PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { SomniaMarkets } from "@somnia-chain/markets-sdk";
+import { CHAIN, HIDEKI_ADDRESSES, INDEXER_URL } from "@basanos/core";
+import { rpcHttp } from "@basanos/core/node";
+
+export function publicClient(): PublicClient {
+  return createPublicClient({ chain: CHAIN, transport: http(rpcHttp()) }) as unknown as PublicClient;
+}
+
+/** Inferred return type: the wallet is bound to CHAIN and the key's account, so writes need neither. */
+export function walletFor(pk: Hex) {
+  return createWalletClient({ account: privateKeyToAccount(pk), chain: CHAIN, transport: http(rpcHttp()) });
+}
+
+/** Read-only without a key; a trader-capable instance with one. */
+export function marketsFor(pk?: Hex): SomniaMarkets {
+  return new SomniaMarkets({
+    chain: CHAIN,
+    indexerUrl: INDEXER_URL,
+    addresses: HIDEKI_ADDRESSES,
+    ...(pk ? { privateKey: pk } : {}),
+  });
+}
+```
+
+`packages/spike/src/find-active.ts`:
+```ts
+import { getAddress, toEventSelector, type Address, type PublicClient } from "viem";
+import { MARGIN_BANK } from "@basanos/core";
+
+const POSITION_UPDATED = toEventSelector(
+  "event PositionUpdated(address indexed account, address indexed perpPool, int128 newSize, uint128 avgEntryPrice, int256 realizedPnl, int256 entryFundingIndex)",
+);
+
+export function pickMostFrequent(accounts: readonly Address[]): Address | null {
+  const counts = new Map<Address, number>();
+  for (const a of accounts) counts.set(a, (counts.get(a) ?? 0) + 1);
+  let best: Address | null = null;
+  let bestN = 0;
+  for (const [a, n] of counts) {
+    if (n > bestN) {
+      best = a;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
+/** A recently trading account, from MarginBank PositionUpdated logs (eth_getLogs ranges are capped at 1,000 blocks). */
+export async function findActiveAccount(client: PublicClient, windows = 20): Promise<Address> {
+  const head = await client.getBlockNumber();
+  const seen: Address[] = [];
+  for (let w = 0; w < windows && seen.length === 0; w++) {
+    const toBlock = head - BigInt(w) * 1_000n;
+    const fromBlock = toBlock - 999n;
+    const logs = await client.request({
+      method: "eth_getLogs",
+      params: [{ address: MARGIN_BANK, topics: [POSITION_UPDATED], fromBlock: `0x${fromBlock.toString(16)}`, toBlock: `0x${toBlock.toString(16)}` }],
+    });
+    for (const log of logs as { topics: string[] }[]) {
+      const t = log.topics[1];
+      if (t) seen.push(getAddress(`0x${t.slice(26)}`));
+    }
+  }
+  const best = pickMostFrequent(seen);
+  if (!best) throw new Error("findActiveAccount: no PositionUpdated logs in the scanned windows");
+  return best;
+}
+```
+
+- [ ] **Step 5: Run to confirm it passes (the gate)**
+Run: `npm test -w @basanos/spike`
+Expected: PASS — `7 passed`.
+
+- [ ] **Step 6: Commit (kernel-performed — no agent runs this)**
+Message: `feat(spike): evidence writer, checker and RPC helpers`
+
+---
+
+### Task 8: Read-only spike scripts — history depth + R1 reads, watch with equity, BTC mark tape
+
+**Files:**
+- Create: `packages/spike/src/lib.ts`
+- Create: `packages/spike/src/history.ts`
+- Create: `packages/spike/src/watch-equity.ts`
+- Create: `packages/spike/src/tape.ts`
+- Test: `packages/spike/test/lib.test.ts`
+
+**Depends on:** Task 2, Task 3, Task 4, Task 5, Task 7
+**Effort:** medium
+**Provides:** `HISTORY_DEPTHS: readonly number[]`, `depthBlocks(head: bigint, depths: readonly number[]): { back: number; block: bigint }[]`, `maxServed(results: readonly { back: number; ok: boolean }[]): number`, `timestampUnit(chainTs: bigint, nowMs: number): "seconds" | "milliseconds"`, `interface TapePoint { block: bigint; ts: bigint; mark: bigint }`, `appendTapePoint(points: TapePoint[], p: TapePoint): TapePoint[]`, `CLI: npx tsx packages/spike/src/history.ts [account]`, `CLI: npx tsx packages/spike/src/watch-equity.ts [seconds]`, `CLI: npx tsx packages/spike/src/tape.ts [seconds]`
+**Requires:** `BTC_POOL`, `MARGIN_BANK`, `PRICE_FEED_SCHEDULER`, `marginBankAbi`, `snapshotCall(accounts: readonly Address[], pool: Address): { to: Address; data: Hex }`, `decodeSnapshot(result: Hex, accounts: readonly Address[], pool: Address): Snapshot`, `startWatch(url: string, filter: WatchFilter, handlers: WatchHandlers, opts?: WatchOptions): WatchHandle`, `writeEvidence(name: EvidenceName, data: Record<string, unknown>): string`, `publicClient(): PublicClient`, `marketsFor(pk?: Hex): SomniaMarkets`, `findActiveAccount(client: PublicClient, windows?: number): Promise<Address>`, `loadDotEnv(path?: string): boolean`, `rpcWss(env?: NodeJS.ProcessEnv): string`
+
+These scripts are read-only: no key, no transaction, no STT. The Somnia SDK and the RPC are untrusted network input; the scripts only record what they return.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/spike/test/lib.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { HISTORY_DEPTHS, appendTapePoint, depthBlocks, maxServed, timestampUnit } from "../src/lib";
+
+describe("history depth helpers", () => {
+  it("lists depths from 10 blocks to 20M", () => {
+    expect(HISTORY_DEPTHS[0]).toBe(10);
+    expect(HISTORY_DEPTHS.at(-1)).toBe(20_000_000);
+  });
+  it("skips depths that would go below block 0", () => {
+    expect(depthBlocks(1_500n, [10, 1_000, 36_000])).toEqual([
+      { back: 10, block: 1_490n },
+      { back: 1_000, block: 500n },
+    ]);
+  });
+  it("reports the deepest contiguous depth that was served", () => {
+    expect(maxServed([{ back: 10, ok: true }, { back: 1_000, ok: true }, { back: 36_000, ok: false }, { back: 864_000, ok: true }])).toBe(1_000);
+    expect(maxServed([{ back: 10, ok: false }])).toBe(0);
+  });
+});
+
+describe("timestampUnit", () => {
+  it("tells seconds from milliseconds against the wall clock", () => {
+    expect(timestampUnit(1_794_326_598n, 1_794_326_600_000)).toBe("seconds");
+    expect(timestampUnit(1_794_326_598_000n, 1_794_326_600_000)).toBe("milliseconds");
+  });
+});
+
+describe("appendTapePoint", () => {
+  it("keeps one point per block, in order", () => {
+    let pts = appendTapePoint([], { block: 1n, ts: 10n, mark: 5n });
+    pts = appendTapePoint(pts, { block: 1n, ts: 10n, mark: 6n });
+    pts = appendTapePoint(pts, { block: 2n, ts: 11n, mark: 7n });
+    pts = appendTapePoint(pts, { block: 1n, ts: 10n, mark: 8n });
+    expect(pts).toEqual([
+      { block: 1n, ts: 10n, mark: 5n },
+      { block: 2n, ts: 11n, mark: 7n },
+    ]);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/spike -- test/lib.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/lib"`.
+
+- [ ] **Step 3: Write the pure helpers**
+
+`packages/spike/src/lib.ts`:
+```ts
+export const HISTORY_DEPTHS: readonly number[] = [10, 1_000, 36_000, 864_000, 3_000_000, 10_000_000, 20_000_000];
+
+export function depthBlocks(head: bigint, depths: readonly number[]): { back: number; block: bigint }[] {
+  return depths.filter((d) => BigInt(d) <= head).map((back) => ({ back, block: head - BigInt(back) }));
+}
+
+/** The deepest depth such that it and every shallower depth were served. */
+export function maxServed(results: readonly { back: number; ok: boolean }[]): number {
+  let deepest = 0;
+  for (const r of results) {
+    if (!r.ok) break;
+    deepest = r.back;
+  }
+  return deepest;
+}
+
+export function timestampUnit(chainTs: bigint, nowMs: number): "seconds" | "milliseconds" {
+  const asSeconds = Math.abs(Number(chainTs) - nowMs / 1000);
+  const asMillis = Math.abs(Number(chainTs) - nowMs);
+  return asSeconds <= asMillis ? "seconds" : "milliseconds";
+}
+
+export interface TapePoint {
+  block: bigint;
+  ts: bigint;
+  mark: bigint;
+}
+
+export function appendTapePoint(points: TapePoint[], p: TapePoint): TapePoint[] {
+  const last = points.at(-1);
+  if (last && p.block <= last.block) return points;
+  return [...points, p];
+}
+```
+
+- [ ] **Step 4: Run to confirm the helpers pass**
+Run: `npm test -w @basanos/spike -- test/lib.test.ts`
+Expected: PASS — `5 passed`.
+
+- [ ] **Step 5: Write the three scripts**
+
+`packages/spike/src/history.ts` (G1(c) history depth with the equity view, and R1's three indexer reads):
+```ts
+import { getAddress, type Address } from "viem";
+import { MARGIN_BANK, marginBankAbi } from "@basanos/core";
+import { loadDotEnv } from "@basanos/core/node";
+import { writeEvidence } from "./evidence";
+import { findActiveAccount } from "./find-active";
+import { HISTORY_DEPTHS, depthBlocks, maxServed } from "./lib";
+import { marketsFor, publicClient } from "./rpc";
+
+loadDotEnv();
+const client = publicClient();
+const account: Address = process.argv[2] ? getAddress(process.argv[2]) : await findActiveAccount(client);
+const head = await client.getBlockNumber();
+console.log(`history: account ${account}, head ${head}`);
+
+const depths: { back: number; block: bigint; ok: boolean; equityOk?: boolean; equity?: bigint; error?: string }[] = [];
+for (const { back, block } of depthBlocks(head, HISTORY_DEPTHS)) {
+  try {
+    const [equityOk, equity] = await client.readContract({
+      address: MARGIN_BANK,
+      abi: marginBankAbi,
+      functionName: "tryGetAccountEquity",
+      args: [account],
+      blockNumber: block,
+    });
+    depths.push({ back, block, ok: true, equityOk, equity });
+    console.log(`  back ${back}: served (equityOk=${equityOk})`);
+  } catch (e) {
+    depths.push({ back, block, ok: false, error: (e as Error).message.slice(0, 300) });
+    console.log(`  back ${back}: NOT served`);
+  }
+}
+writeEvidence("g1c-history", { account, head, depths, maxServedBack: maxServed(depths), call: "MarginBank.tryGetAccountEquity(account)" });
+
+const markets = marketsFor();
+const reads: { name: string; ok: boolean; rows?: number; sample?: unknown; error?: string }[] = [];
+async function attempt(name: string, fn: () => Promise<unknown[]>): Promise<void> {
+  try {
+    const rows = await fn();
+    reads.push({ name, ok: true, rows: rows.length, sample: rows.slice(0, 2) });
+    console.log(`  ${name}: ok, ${rows.length} rows`);
+  } catch (e) {
+    const err = e as Error;
+    reads.push({ name, ok: false, error: `${err.name}: ${err.message}`.slice(0, 600) });
+    console.log(`  ${name}: FAILED (${err.name})`);
+  }
+}
+await attempt("getMarginEvents", () => markets.client.getMarginEvents(account));
+await attempt("listPerpMarginPulls", () => markets.client.listPerpMarginPulls({ account, limit: 5 }));
+await attempt("listPerpMainFundingEvents", () => markets.client.listPerpMainFundingEvents({ account, limit: 5 }));
+writeEvidence("r1-indexer", { account, sdkVersion: "0.33.0", indexer: "https://hideki-dev.smk.somnia.host/v1/graphql", reads });
+process.exit(0);
+```
+
+`packages/spike/src/watch-equity.ts` (G1(b): somnia_watch with the snapshot multicall attached):
+```ts
+import { pad, type Address, type Hex } from "viem";
+import { BTC_POOL, MARGIN_BANK, PRICE_FEED_SCHEDULER, decodeSnapshot, snapshotCall, startWatch } from "@basanos/core";
+import { loadDotEnv, rpcWss } from "@basanos/core/node";
+import { writeEvidence } from "./evidence";
+import { findActiveAccount } from "./find-active";
+import { timestampUnit } from "./lib";
+import { publicClient } from "./rpc";
+
+loadDotEnv();
+const seconds = Number(process.argv[2] ?? "30");
+const account: Address = await findActiveAccount(publicClient());
+const call = snapshotCall([account], BTC_POOL);
+const blockNumbers: bigint[] = [];
+let pushes = 0;
+let accountPushes = 0;
+let equityDecoded = false;
+let unit: "seconds" | "milliseconds" | null = null;
+let first: unknown = null;
+const gaps: { atMs: number; reason: string }[] = [];
+
+function take(results: Hex[]): void {
+  const raw = results[0];
+  if (!raw) return;
+  const snap = decodeSnapshot(raw, [account], BTC_POOL);
+  equityDecoded = true;
+  if (blockNumbers.length < 50) blockNumbers.push(snap.blockNumber);
+  unit ??= timestampUnit(snap.timestamp, Date.now());
+  first ??= snap;
+}
+
+const prices = startWatch(rpcWss(), { address: PRICE_FEED_SCHEDULER, ethCalls: [call], pushChangesOnly: true }, {
+  onPush: (p) => {
+    pushes += 1;
+    take(p.simulationResults);
+  },
+  onGap: (g) => gaps.push(g),
+});
+const own = startWatch(rpcWss(), { address: MARGIN_BANK, topics: [null, pad(account)], ethCalls: [call] }, {
+  onPush: (p) => {
+    accountPushes += 1;
+    take(p.simulationResults);
+  },
+  onGap: (g) => gaps.push(g),
+});
+
+await new Promise((r) => setTimeout(r, seconds * 1000));
+prices.close();
+own.close();
+writeEvidence("g1b-watch", {
+  account,
+  seconds,
+  pushes,
+  accountPushes,
+  blockNumbers,
+  timestampUnit: unit,
+  equityDecoded,
+  firstSnapshot: first,
+  gaps,
+  watches: ["PriceFeedScheduler + snapshot multicall (push_changes_only)", "MarginBank topic1=account + snapshot multicall"],
+});
+console.log(`watch-equity: ${pushes} price pushes, ${accountPushes} account pushes, unit ${unit}`);
+process.exit(0);
+```
+
+`packages/spike/src/tape.ts` (G4 evidence: a live BTC mark tape for the evaluator test):
+```ts
+import { BTC_POOL, PRICE_FEED_SCHEDULER, decodeSnapshot, snapshotCall, startWatch } from "@basanos/core";
+import { loadDotEnv, rpcWss } from "@basanos/core/node";
+import { writeEvidence } from "./evidence";
+import { appendTapePoint, type TapePoint } from "./lib";
+
+loadDotEnv();
+const seconds = Number(process.argv[2] ?? "600");
+const call = snapshotCall([], BTC_POOL);
+let points: TapePoint[] = [];
+const gaps: { atMs: number; reason: string }[] = [];
+const startedAt = new Date().toISOString();
+
+const handle = startWatch(rpcWss(), { address: PRICE_FEED_SCHEDULER, ethCalls: [call], pushChangesOnly: true }, {
+  onPush: (p) => {
+    const raw = p.simulationResults[0];
+    if (!raw) return;
+    const snap = decodeSnapshot(raw, [], BTC_POOL);
+    if (snap.markOk) points = appendTapePoint(points, { block: snap.blockNumber, ts: snap.timestamp, mark: snap.markPrice });
+  },
+  onGap: (g) => gaps.push(g),
+});
+
+await new Promise((r) => setTimeout(r, seconds * 1000));
+handle.close();
+writeEvidence("tape", { pool: BTC_POOL, market: "BTC-PERP", startedAt, seconds, gaps, points });
+console.log(`tape: ${points.length} points over ${seconds}s`);
+process.exit(0);
+```
+
+- [ ] **Step 6: Run the package tests (the gate)**
+Run: `npm test -w @basanos/spike`
+Expected: PASS — `12 passed`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `feat(spike): read-only history, indexer, watch and tape scripts`
+
+---
+
+### Task 9: Run the read-only spike live (no key, no STT)
+
+**Files:**
+- Create: `docs/evidence/g1b-watch.json`
+- Create: `docs/evidence/g1c-history.json`
+- Create: `docs/evidence/r1-indexer.json`
+- Create: `packages/core/test/fixtures/btc-tape.json`
+
+**Depends on:** Task 7, Task 8
+**Effort:** low
+**Provides:** `docs/evidence/g1b-watch.json`, `docs/evidence/g1c-history.json`, `docs/evidence/r1-indexer.json`, `packages/core/test/fixtures/btc-tape.json (live BTC mark tape: { pool, points: [{ block, ts, mark }] })`
+**Requires:** `CLI: npx tsx packages/spike/src/history.ts [account]`, `CLI: npx tsx packages/spike/src/watch-equity.ts [seconds]`, `CLI: npx tsx packages/spike/src/tape.ts [seconds]`, `CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS`
+
+Read-only network calls against the public Hideki RPC and indexer. Nothing is signed. A failing indexer read is a valid result (R1): it is recorded, not retried into success, and later becomes a feedback item.
+
+- [ ] **Step 1: Measure history depth and run the three R1 indexer reads**
+Run: `npx tsx packages/spike/src/history.ts`
+Expected: prints one line per depth and one per indexer read, then writes `docs/evidence/g1c-history.json` and `docs/evidence/r1-indexer.json`.
+
+- [ ] **Step 2: Prove the watch with the equity multicall (30 s)**
+Run: `npx tsx packages/spike/src/watch-equity.ts 30`
+Expected: `watch-equity: <N> price pushes, <M> account pushes, unit seconds` with N > 0; writes `docs/evidence/g1b-watch.json`.
+
+- [ ] **Step 3: Record a 10-minute BTC mark tape**
+Run: `npx tsx packages/spike/src/tape.ts 600`
+Expected: `tape: <N> points over 600s` with N > 100; writes `packages/core/test/fixtures/btc-tape.json`.
+
+- [ ] **Step 4: Check the evidence (the gate)**
+Run: `npx tsx packages/spike/src/check-evidence.ts g1b-watch g1c-history r1-indexer tape`
+Expected: PASS — four lines `PASS g1b-watch`, `PASS g1c-history`, `PASS r1-indexer`, `PASS tape`.
+
+- [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
+Message: `docs(evidence): read-only spike — history depth, indexer reads, watch, BTC tape`
+
+---
+
+### Task 10: Live spike scripts — referee close skeleton (G1 a, e) and Price Oracle probe (G1 d), with dry-run
+
+**Files:**
+- Create: `packages/spike/src/live-lib.ts`
+- Create: `packages/spike/src/skeleton-close.ts`
+- Create: `packages/spike/src/oracle-probe.ts`
+- Test: `packages/spike/test/live-lib.test.ts`
+
+**Depends on:** Task 2, Task 3, Task 4, Task 6, Task 7
+**Effort:** high
+**Model tier:** top
+**Provides:** `interface TxRecord { label: string; hash: Hex; status: "success" | "reverted"; gasUsed: bigint; costWei: bigint; explorer: string }`, `txRecord(label: string, receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord`, `sumCosts(txs: readonly TxRecord[]): bigint`, `isFlat(s: AccountSnapshot): boolean`, `ORACLE_STATUS: readonly ["None", "Pending", "Success", "Failed", "TimedOut"]`, `decodeOraclePrices(result: Hex, symbols: readonly string[]): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[]`, `CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run]`, `CLI: npx tsx packages/spike/src/oracle-probe.ts [--dry-run]`
+**Requires:** `BTC_POOL`, `MARGIN_BANK`, `OPERATOR_REGISTRY`, `SOMNIA_AGENTS`, `PLACE_ORDER_FOR_SELECTOR`, `CANCEL_ORDER_FOR_SELECTOR`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_LIMIT = 0`, `ORDER_TYPE_IOC = 2`, `ORACLE_AGENT_ID = 9911223344556677889n`, `ORACLE_DEPOSIT = 30_900_000_000_000_000n`, `STT_WRITE_HEADROOM = 600_000_000_000_000_000n`, `farFutureNs(nowMs?: number): bigint`, `explorerTx(hash: Hex): string`, `perpPoolAbi`, `somniaAgentsAbi`, `priceOracleAbi`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }`, `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`, `CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]`, `alignUp(x: bigint, step: bigint): bigint`, `planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null`, `planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `writeEvidence(name: EvidenceName, data: Record<string, unknown>): string`, `publicClient(): PublicClient`, `walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account`, `marketsFor(pk?: Hex): SomniaMarkets`
+
+Key safety: the scripts read `ACCOUNT_A_PK` and `REFEREE_PK` only through `requirePrivateKey`, never print them, and write only addresses, hashes and numbers into evidence. This task only writes code and runs unit tests; it sends nothing. Tasks 11 and 12 run the scripts live under a human gate. Neither script claims a voucher: `skeleton-close` refuses to run unless account A already holds a claimed voucher.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/spike/test/live-lib.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { encodeFunctionResult } from "viem";
+import { priceOracleAbi } from "@basanos/core";
+import { ORACLE_STATUS, decodeOraclePrices, isFlat, sumCosts, txRecord } from "../src/live-lib";
+
+describe("txRecord", () => {
+  it("records cost as gasUsed x effectiveGasPrice with an explorer link", () => {
+    const r = txRecord("close", { transactionHash: "0xab", status: "success", gasUsed: 3_000_000n, effectiveGasPrice: 6_000_000_000n });
+    expect(r.costWei).toBe(18_000_000_000_000_000n);
+    expect(r.explorer).toBe("https://explorer.testnet.somnia.network/tokyo/tx/0xab");
+    expect(sumCosts([r, r])).toBe(36_000_000_000_000_000n);
+  });
+});
+
+describe("isFlat", () => {
+  it("needs no position, no locked collateral and no active pools", () => {
+    const base = { account: "0x1" as const, equityOk: true, equity: 1n, lockedCollateral: 0n, totalEquity: 1n, activePools: [], size: 0n };
+    expect(isFlat(base)).toBe(true);
+    expect(isFlat({ ...base, size: 1n })).toBe(false);
+    expect(isFlat({ ...base, lockedCollateral: 1n })).toBe(false);
+    expect(isFlat({ ...base, activePools: ["0x2"] })).toBe(false);
+  });
+});
+
+describe("oracle decoding", () => {
+  it("names statuses in the SomniaAgents enum order", () => {
+    expect(ORACLE_STATUS[2]).toBe("Success");
+    expect(ORACLE_STATUS[4]).toBe("TimedOut");
+  });
+  it("pairs each symbol with its median, sources and update time", () => {
+    const data = encodeFunctionResult({
+      abi: priceOracleAbi,
+      functionName: "getPrices",
+      result: [[74_500n * 10n ** 18n, 0n], [3, 0], [1_794_326_598_000n, 0n]],
+    });
+    expect(decodeOraclePrices(data, ["BTC/USDC:PERP", "BTC/USDC"])).toEqual([
+      { symbol: "BTC/USDC:PERP", price: 74_500n * 10n ** 18n, numSources: 3, lastUpdated: 1_794_326_598_000n },
+      { symbol: "BTC/USDC", price: 0n, numSources: 0, lastUpdated: 0n },
+    ]);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/spike -- test/live-lib.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/live-lib"`.
+
+- [ ] **Step 3: Write the helpers**
+
+`packages/spike/src/live-lib.ts`:
+```ts
+import { decodeFunctionResult, type Hex } from "viem";
+import { explorerTx, priceOracleAbi, type AccountSnapshot } from "@basanos/core";
+
+export interface TxRecord {
+  label: string;
+  hash: Hex;
+  status: "success" | "reverted";
+  gasUsed: bigint;
+  costWei: bigint;
+  explorer: string;
+}
+
+export function txRecord(
+  label: string,
+  receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint },
+): TxRecord {
+  return {
+    label,
+    hash: receipt.transactionHash,
+    status: receipt.status,
+    gasUsed: receipt.gasUsed,
+    costWei: receipt.gasUsed * receipt.effectiveGasPrice,
+    explorer: explorerTx(receipt.transactionHash),
+  };
+}
+
+export function sumCosts(txs: readonly TxRecord[]): bigint {
+  return txs.reduce((acc, t) => acc + t.costWei, 0n);
+}
+
+export function isFlat(s: AccountSnapshot): boolean {
+  return s.size === 0n && s.lockedCollateral === 0n && s.activePools.length === 0;
+}
+
+/** SomniaAgents ResponseStatus, in declaration order. */
+export const ORACLE_STATUS = ["None", "Pending", "Success", "Failed", "TimedOut"] as const;
+
+export function decodeOraclePrices(
+  result: Hex,
+  symbols: readonly string[],
+): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[] {
+  const [prices, numSources, lastUpdated] = decodeFunctionResult({ abi: priceOracleAbi, functionName: "getPrices", data: result });
+  return symbols.map((symbol, i) => ({
+    symbol,
+    price: prices[i] ?? 0n,
+    numSources: numSources[i] ?? 0,
+    lastUpdated: lastUpdated[i] ?? 0n,
+  }));
+}
+```
+
+- [ ] **Step 4: Run to confirm the helpers pass**
+Run: `npm test -w @basanos/spike -- test/live-lib.test.ts`
+Expected: PASS — `4 passed`.
+
+- [ ] **Step 5: Write the referee close skeleton**
+
+`packages/spike/src/skeleton-close.ts`:
+```ts
+// G1(a)+(e): account A grants the referee place+cancel on BTC-PERP, opens a minimum-size long and rests one
+// far bid; the referee cancels the resting order, closes the long with an IOC placeOrderFor (no reduce-only
+// flag exists), reads back flat. Follows the spec §8 close protocol: cancel first, fresh position read, IOC,
+// read-back, at most 3 attempts with widening slippage, final cancel sweep. --dry-run only reads.
+import { zeroAddress, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import {
+  BTC_POOL,
+  CANCEL_ORDER_FOR_SELECTOR,
+  CLOSE_SLIPPAGE_STEPS_BPS,
+  MARGIN_BANK,
+  OPERATOR_REGISTRY,
+  ORDER_GAS,
+  ORDER_TYPE_IOC,
+  ORDER_TYPE_LIMIT,
+  PLACE_ORDER_FOR_SELECTOR,
+  STT_WRITE_HEADROOM,
+  alignUp,
+  farFutureNs,
+  perpPoolAbi,
+  planClose,
+  planOpen,
+  readSnapshot,
+  type BookParams,
+} from "@basanos/core";
+import { loadDotEnv, requirePrivateKey } from "@basanos/core/node";
+import { writeEvidence } from "./evidence";
+import { isFlat, sumCosts, txRecord, type TxRecord } from "./live-lib";
+import { marketsFor, publicClient, walletFor } from "./rpc";
+
+loadDotEnv();
+const dryRun = process.argv.includes("--dry-run");
+const ownerPk = requirePrivateKey("ACCOUNT_A_PK");
+const refereePk = requirePrivateKey("REFEREE_PK");
+const owner: Address = privateKeyToAccount(ownerPk).address;
+const referee: Address = privateKeyToAccount(refereePk).address;
+const client = publicClient();
+const refWallet = walletFor(refereePk);
+const ownerMarkets = marketsFor(ownerPk);
+const txs: TxRecord[] = [];
+const notes: string[] = [];
+
+function stop(reason: string, extra: Record<string, unknown> = {}): never {
+  console.error(`skeleton-close: STOP — ${reason}`);
+  if (!dryRun) writeEvidence("g1a-close", { ok: false, reason, owner, referee, pool: BTC_POOL, txs, notes, ...extra });
+  process.exit(1);
+}
+
+async function authorized(selector: Hex): Promise<boolean> {
+  return client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [owner, referee, selector] });
+}
+
+async function openOrderIds(): Promise<readonly bigint[]> {
+  // The pool answers for msg.sender, so read as the owner via eth_call `from` (never through Multicall3).
+  return client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "getOwnOpenOrders", account: owner });
+}
+
+async function refereeCancelAll(label: string): Promise<void> {
+  for (const id of await openOrderIds()) {
+    const hash = await refWallet.writeContract({
+      address: BTC_POOL,
+      abi: perpPoolAbi,
+      functionName: "cancelOrderFor",
+      args: [owner, id],
+      gas: ORDER_GAS,
+    });
+    txs.push(txRecord(label, await client.waitForTransactionReceipt({ hash })));
+  }
+}
+
+// 1. Preflight (reads only).
+const [ownerStt, refereeStt] = await Promise.all([client.getBalance({ address: owner }), client.getBalance({ address: referee })]);
+if (ownerStt < STT_WRITE_HEADROOM || refereeStt < STT_WRITE_HEADROOM) {
+  stop(`STT below the 0.6 write headroom (owner ${ownerStt}, referee ${refereeStt}); top up from the Tokyo faucet`);
+}
+const voucher = await ownerMarkets.client.getPerpVoucher(MARGIN_BANK, owner);
+if (!voucher?.claimed) stop("account A has no claimed voucher; the Step 3 preflight claims it (this script never claims)");
+const leverage = await ownerMarkets.client.getPerpLeverage({ marginBank: MARGIN_BANK, account: owner, pool: BTC_POOL });
+const params = await client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "getOrderBookParameters" });
+const book: BookParams = { tickSize: params.tickSize, minQuantity: params.minQuantity, lotSize: params.lotSize };
+const markets = await ownerMarkets.client.listPerpMarkets();
+const btcRow = markets.find((m) => m.baseSymbol === "BTC");
+if (!btcRow || btcRow.poolAddress.toLowerCase() !== BTC_POOL.toLowerCase()) stop("the live BTC-PERP pool differs from BTC_POOL in config");
+const start = await readSnapshot(client, [owner], BTC_POOL);
+const startAccount = start.accounts[0];
+if (!startAccount || !isFlat(startAccount)) stop("account A is not flat; flatten it in the dreamDEX app first");
+if (!start.markOk) stop("BTC-PERP has no fresh mark price");
+const openQty = alignUp(book.minQuantity, book.lotSize);
+console.log(
+  `preflight ok: owner ${owner}, referee ${referee}, voucher floor ${voucher?.floor}, voucher cap ${leverage.voucherLeverageCapX}x, ` +
+    `mark ${start.markPrice}, open qty ${openQty}`,
+);
+if (dryRun) {
+  console.log("dry-run: no transaction sent");
+  process.exit(0);
+}
+
+// 2. Owner grants the referee place + cancel on the BTC pool only (the SDK writes the per-pool grant on the registry).
+if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_ORDER_FOR_SELECTOR))) {
+  const grant = await ownerMarkets.trader.setOperatorApprovalForPool({
+    pool: BTC_POOL,
+    operator: referee,
+    selectors: [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR],
+    approved: true,
+    operatorRegistry: OPERATOR_REGISTRY,
+  });
+  txs.push(txRecord("grant", grant.receipt));
+}
+if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_ORDER_FOR_SELECTOR))) stop("the grant did not take effect");
+
+// 3. Owner opens the minimum long (IOC) and rests one far bid (GTC) for the referee to cancel.
+const open = planOpen(true, openQty, start.markPrice, book, 20);
+const opened = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: open.price, quantity: open.quantity, orderType: ORDER_TYPE_IOC });
+txs.push(txRecord("open", opened.receipt));
+const restPrice = (start.markPrice * 9_000n) / 10_000n - ((start.markPrice * 9_000n) / 10_000n) % book.tickSize;
+const rested = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: restPrice, quantity: openQty, orderType: ORDER_TYPE_LIMIT });
+txs.push(txRecord("rest", rested.receipt));
+
+// 4. Referee: cancel first, fresh read, IOC close, read back; at most 3 attempts.
+await refereeCancelAll("cancel");
+let attempts = 0;
+for (const slippage of CLOSE_SLIPPAGE_STEPS_BPS) {
+  const snap = await readSnapshot(client, [owner], BTC_POOL);
+  const acct = snap.accounts[0];
+  if (!acct || acct.size === 0n) break;
+  const plan = planClose(acct.size, snap.markPrice, book, slippage);
+  if (!plan) {
+    notes.push(`residual ${acct.size} is below one lot`);
+    break;
+  }
+  attempts += 1;
+  const hash = await refWallet.writeContract({
+    address: BTC_POOL,
+    abi: perpPoolAbi,
+    functionName: "placeOrderFor",
+    args: [owner, plan.isBid, 0n, plan.price, plan.quantity, farFutureNs(), ORDER_TYPE_IOC, 0, zeroAddress, 0n],
+    gas: ORDER_GAS,
+  });
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  txs.push(txRecord("close", receipt));
+  if (receipt.status === "reverted") notes.push(`close attempt ${attempts} at ${slippage} bps reverted (replay with eth_call at the parent block)`);
+}
+await refereeCancelAll("sweep");
+
+// 5. Read back and record.
+const end = await readSnapshot(client, [owner], BTC_POOL);
+const endAccount = end.accounts[0];
+const flat = endAccount ? isFlat(endAccount) : false;
+writeEvidence("g1a-close", {
+  ok: flat && txs.some((t) => t.label === "close" && t.status === "success"),
+  sdkVersion: "0.33.0",
+  owner,
+  referee,
+  pool: BTC_POOL,
+  operatorRegistry: OPERATOR_REGISTRY,
+  leverage: {
+    voucherLeverageCapX: leverage.voucherLeverageCapX,
+    accountMaxLeverageX: leverage.accountMaxLeverageX,
+    protocolMaxLeverageX: leverage.protocolMaxLeverageX,
+    creditFloor: leverage.creditFloor,
+  },
+  book,
+  startSnapshot: start,
+  endSnapshot: end,
+  closeAttempts: attempts,
+  finalPositionSize: endAccount?.size ?? -1n,
+  finalLocked: endAccount?.lockedCollateral ?? -1n,
+  txs,
+  costs: { totalWei: sumCosts(txs), perTx: txs.map((t) => ({ label: t.label, gasUsed: t.gasUsed, costWei: t.costWei })) },
+  notes,
+});
+console.log(`skeleton-close: ${flat ? "FLAT" : "NOT FLAT"} after ${attempts} close attempt(s); ${txs.length} txs`);
+for (const t of txs) console.log(`  ${t.label} ${t.status} ${t.explorer}`);
+process.exit(flat ? 0 : 1);
+```
+
+- [ ] **Step 6: Write the Price Oracle probe**
+
+`packages/spike/src/oracle-probe.ts`:
+```ts
+// G1(d): one Price Oracle request on Tokyo testnet from the referee EOA (callback = the EOA itself),
+// read back through getRequest. Sends 0.0309 STT, the practical deposit (never the bare floor).
+import { decodeEventLog, encodeFunctionData, type Address } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { ORACLE_AGENT_ID, ORACLE_DEPOSIT, SOMNIA_AGENTS, priceOracleAbi, somniaAgentsAbi } from "@basanos/core";
+import { loadDotEnv, requirePrivateKey } from "@basanos/core/node";
+import { writeEvidence } from "./evidence";
+import { ORACLE_STATUS, decodeOraclePrices, txRecord } from "./live-lib";
+import { publicClient, walletFor } from "./rpc";
+
+loadDotEnv();
+const dryRun = process.argv.includes("--dry-run");
+const refereePk = requirePrivateKey("REFEREE_PK");
+const referee: Address = privateKeyToAccount(refereePk).address;
+const client = publicClient();
+const wallet = walletFor(refereePk);
+const SYMBOLS = ["BTC/USDC:PERP", "BTC/USDC"] as const;
+const payload = encodeFunctionData({ abi: priceOracleAbi, functionName: "getPrices", args: [[...SYMBOLS], 18] });
+const floor = await client.readContract({ address: SOMNIA_AGENTS, abi: somniaAgentsAbi, functionName: "getRequestDeposit" });
+const value = floor >= ORACLE_DEPOSIT ? floor + 900_000_000_000_000n : ORACLE_DEPOSIT;
+console.log(`oracle-probe: floor ${floor} wei, sending ${value} wei from ${referee}`);
+if (dryRun) {
+  console.log("dry-run: no transaction sent");
+  process.exit(0);
+}
+const hash = await wallet.writeContract({
+  address: SOMNIA_AGENTS,
+  abi: somniaAgentsAbi,
+  functionName: "createRequest",
+  args: [ORACLE_AGENT_ID, referee, "0x00000000", payload],
+  value,
+});
+const receipt = await client.waitForTransactionReceipt({ hash });
+let requestId: bigint | null = null;
+for (const log of receipt.logs) {
+  if (log.address.toLowerCase() !== SOMNIA_AGENTS.toLowerCase()) continue;
+  try {
+    const ev = decodeEventLog({ abi: somniaAgentsAbi, data: log.data, topics: log.topics });
+    if (ev.eventName === "RequestCreated") requestId = ev.args.requestId;
+  } catch {
+    // another SomniaAgents event
+  }
+}
+if (requestId === null) {
+  writeEvidence("g1d-oracle", { requestId: "none", finalStatus: "NoRequestCreated", symbols: [], tx: txRecord("createRequest", receipt) });
+  process.exit(1);
+}
+let status = 1;
+let symbols: ReturnType<typeof decodeOraclePrices> = [];
+let responses = 0;
+const deadline = Date.now() + 180_000;
+let readError: string | null = null;
+while (Date.now() < deadline) {
+  try {
+    const req = await client.readContract({ address: SOMNIA_AGENTS, abi: somniaAgentsAbi, functionName: "getRequest", args: [requestId] });
+    status = req.status;
+    responses = req.responses.length;
+    if (status >= 2) {
+      const success = req.responses.find((r) => r.status === 2);
+      if (success) symbols = decodeOraclePrices(success.result, SYMBOLS);
+      break;
+    }
+  } catch (e) {
+    readError = (e as Error).message.slice(0, 400);
+  }
+  await new Promise((r) => setTimeout(r, 3_000));
+}
+writeEvidence("g1d-oracle", {
+  requestId,
+  agentId: ORACLE_AGENT_ID,
+  callback: "referee EOA",
+  depositFloorWei: floor,
+  sentWei: value,
+  finalStatus: ORACLE_STATUS[status] ?? `status ${status}`,
+  readError,
+  responses,
+  symbols,
+  tx: txRecord("createRequest", receipt),
+});
+console.log(`oracle-probe: request ${requestId} -> ${ORACLE_STATUS[status] ?? status}`);
+for (const s of symbols) console.log(`  ${s.symbol}: price ${s.price} (${s.numSources} sources)`);
+process.exit(0);
+```
+
+- [ ] **Step 7: Run the package tests (the gate)**
+Run: `npm test -w @basanos/spike`
+Expected: PASS — `16 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `feat(spike): referee close skeleton and Price Oracle probe with dry-run`
+
+---
+
+### Task 11: LIVE — the referee closes a voucher account (G1 a, e; the Nov 11 tripwire)
+
+**Files:**
+- Create: `docs/evidence/g1a-close.json`
+
+**Depends on:** Task 7, Task 9, Task 10
+**Effort:** medium
+**Model tier:** top
+**Provides:** `docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage.voucherLeverageCapX, costs)`
+**Requires:** `CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run]`, `CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS`
+
+**Human-gated.** This signs real transactions with the account A and referee burners (`ACCOUNT_A_PK`, `REFEREE_PK` in `.env`). It needs: account A funded with ≥ 0.6 STT and holding its claimed voucher (Step 3 preflight), the referee funded with ≥ 0.6 STT, account A flat. It never claims a voucher. Expected spend: about 5–7 transactions.
+
+- [ ] **Step 1: Dry-run the preflight**
+Run: `npx tsx packages/spike/src/skeleton-close.ts --dry-run`
+Expected: `preflight ok: owner 0x…, referee 0x…, voucher floor …, voucher cap 20x, mark …, open qty …` then `dry-run: no transaction sent`. A `STOP —` line means a prerequisite is missing: fix it (faucet, preflight) and re-run; do not continue.
+
+- [ ] **Step 2: Run live**
+Run: `npx tsx packages/spike/src/skeleton-close.ts`
+Expected: `skeleton-close: FLAT after 1 close attempt(s); <N> txs`, then one explorer link per transaction (grant, open, rest, cancel, close).
+**If the output says NOT FLAT, or no close succeeded: STOP the build and escalate to the user** with the evidence file and the explorer links. If the failure is a reproducible SDK, docs or contract defect, it also becomes a `feedback/` item later. If no real order has landed on SDK 0.33.0 within ~2 h of starting this task, stop and route a plan fix to the architect (switch to 0.32.1).
+
+- [ ] **Step 3: Check the evidence (the gate)**
+Run: `npx tsx packages/spike/src/check-evidence.ts g1a-close`
+Expected: PASS — `PASS g1a-close`.
+
+- [ ] **Step 4: Commit (kernel-performed — no agent runs this)**
+Message: `docs(evidence): G1(a) referee closes a voucher account on Hideki`
+
+---
+
+### Task 12: LIVE — one Price Oracle request on Tokyo testnet (G1 d)
+
+**Files:**
+- Create: `docs/evidence/g1d-oracle.json`
+
+**Depends on:** Task 7, Task 10
+**Effort:** low
+**Model tier:** top
+**Provides:** `docs/evidence/g1d-oracle.json (requestId, finalStatus, symbols: BTC/USDC:PERP and BTC/USDC with price and numSources)`
+**Requires:** `CLI: npx tsx packages/spike/src/oracle-probe.ts [--dry-run]`, `CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS`
+
+**Human-gated.** Spends about 0.0309 STT plus gas from the referee burner (`REFEREE_PK`). A `TimedOut`, `Failed` or zero-source result is a valid answer: it decides the cut order (spec §1: the Price Oracle cross-check is cut first) and whether the rulebooks switch `oracleSymbol` to `BTC/USDC` before deploy.
+
+- [ ] **Step 1: Dry-run**
+Run: `npx tsx packages/spike/src/oracle-probe.ts --dry-run`
+Expected: `oracle-probe: floor <wei> wei, sending <wei> wei from 0x…` then `dry-run: no transaction sent`.
+
+- [ ] **Step 2: Run live**
+Run: `npx tsx packages/spike/src/oracle-probe.ts`
+Expected: `oracle-probe: request <id> -> Success` (or `TimedOut` / `Failed`), then one line per symbol with its price and source count.
+
+- [ ] **Step 3: Check the evidence (the gate)**
+Run: `npx tsx packages/spike/src/check-evidence.ts g1d-oracle`
+Expected: PASS — `PASS g1d-oracle`.
+
+- [ ] **Step 4: Commit (kernel-performed — no agent runs this)**
+Message: `docs(evidence): G1(d) Price Oracle request on Tokyo testnet`
+
+---
+
+### Task 13: Write the spike answers into the spec (§2 horizon, §3a)
+
+**Files:**
+- Create: `packages/spike/src/spec-evidence.ts`
+- Modify: `docs/superpowers/specs/2026-11-10-basanos-design.md`
+- Test: `packages/spike/test/spec-evidence.test.ts`
+
+**Depends on:** Task 1, Task 7, Task 9, Task 11, Task 12
+**Effort:** low
+**Provides:** `summarize(name: EvidenceName, data: Record<string, unknown> | null): string`, `fillSpec(spec: string, results: Record<EvidenceName, string>): string`, `CLI: npx tsx packages/spike/src/spec-evidence.ts [--write] -> rewrites spec §3a result cells and the §2 horizon line; exits 1 if any "written by \`spike:13\`" cell remains`
+**Requires:** `type EvidenceName = "g1a-close" | "g1b-watch" | "g1c-history" | "g1d-oracle" | "r1-indexer" | "tape"`, `readEvidence(name: EvidenceName): Record<string, unknown> | null`, `repoPath(rel: string): string`
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/spike/test/spec-evidence.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { fillSpec, summarize } from "../src/spec-evidence";
+
+const SPEC = [
+  "served `USDso.totalSupply()` at **10,000,000 blocks back (2026-10-30, ≈ 11.6 days)**, with values that",
+  "| G1(a) referee close on a voucher account | `docs/evidence/g1a-close.json` | written by `spike:13` |",
+  "| G1(c) equity history depth | `docs/evidence/g1c-history.json` | written by `spike:13` |",
+].join("\n");
+
+describe("summarize", () => {
+  it("summarises the close and the history depth", () => {
+    expect(summarize("g1a-close", { ok: true, closeAttempts: 1, txs: [{}, {}, {}], leverage: { voucherLeverageCapX: 20 } })).toBe(
+      "PASS — flat after 1 close attempt(s), 3 txs; voucher cap 20x",
+    );
+    expect(summarize("g1c-history", { maxServedBack: 10_000_000 })).toBe("equity view served 10,000,000 blocks back (≈ 11.6 days)");
+    expect(summarize("g1d-oracle", null)).toBe("not run");
+  });
+});
+
+describe("fillSpec", () => {
+  it("replaces every result cell it has a result for and the horizon line", () => {
+    const out = fillSpec(SPEC, {
+      "g1a-close": "PASS — x",
+      "g1b-watch": "w",
+      "g1c-history": "equity view served 20,000,000 blocks back (≈ 23.1 days)",
+      "g1d-oracle": "o",
+      "r1-indexer": "r",
+      tape: "t",
+    });
+    expect(out).toContain("| `docs/evidence/g1a-close.json` | PASS — x |");
+    expect(out).toContain("| `docs/evidence/g1c-history.json` | equity view served 20,000,000 blocks back (≈ 23.1 days) |");
+    expect(out).toContain("measured with the equity view: equity view served 20,000,000 blocks back (≈ 23.1 days)");
+    expect(out).not.toContain("written by `spike:13`");
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/spike -- test/spec-evidence.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/spec-evidence"`.
+
+- [ ] **Step 3: Write the implementation**
+
+`packages/spike/src/spec-evidence.ts`:
+```ts
+import { readFileSync, writeFileSync } from "node:fs";
+import { repoPath } from "@basanos/core/node";
+import { readEvidence, type EvidenceName } from "./evidence";
+
+const SPEC_PATH = "docs/superpowers/specs/2026-11-10-basanos-design.md";
+const FILES: Record<EvidenceName, string> = {
+  "g1a-close": "`docs/evidence/g1a-close.json`",
+  "g1b-watch": "`docs/evidence/g1b-watch.json`",
+  "g1c-history": "`docs/evidence/g1c-history.json`",
+  "g1d-oracle": "`docs/evidence/g1d-oracle.json`",
+  "r1-indexer": "`docs/evidence/r1-indexer.json`",
+  tape: "`packages/core/test/fixtures/btc-tape.json`",
+};
+const HORIZON_RE = /served `USDso\.totalSupply\(\)` at \*\*10,000,000 blocks back \(2026-10-30, ≈ 11\.6 days\)\*\*/;
+
+const fmt = (n: number): string => n.toLocaleString("en-US");
+const days = (blocks: number): string => (blocks / 10 / 86_400).toFixed(1);
+
+export function summarize(name: EvidenceName, data: Record<string, unknown> | null): string {
+  if (!data) return "not run";
+  const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+  switch (name) {
+    case "g1a-close": {
+      const lev = (data.leverage ?? {}) as Record<string, unknown>;
+      const head = data.ok === true ? "PASS" : "FAIL (escalated)";
+      return `${head} — flat after ${String(data.closeAttempts)} close attempt(s), ${arr(data.txs).length} txs; voucher cap ${String(lev.voucherLeverageCapX)}x`;
+    }
+    case "g1b-watch":
+      return `${String(data.pushes)} price pushes and ${String(data.accountPushes ?? 0)} account pushes in ${String(data.seconds ?? "?")}s; equity decoded: ${String(data.equityDecoded)}; block timestamp unit: ${String(data.timestampUnit)}`;
+    case "g1c-history": {
+      const back = Number(data.maxServedBack ?? 0);
+      return `equity view served ${fmt(back)} blocks back (≈ ${days(back)} days)`;
+    }
+    case "g1d-oracle": {
+      const syms = arr(data.symbols) as { symbol?: string; numSources?: number }[];
+      const parts = syms.map((s) => `${s.symbol}: ${s.numSources ?? 0} sources`).join(", ");
+      return `${String(data.finalStatus)}${parts ? ` — ${parts}` : ""}`;
+    }
+    case "r1-indexer": {
+      const reads = arr(data.reads) as { name?: string; ok?: boolean }[];
+      return reads.map((r) => `${r.name}: ${r.ok ? "ok" : "FAILED (feedback candidate)"}`).join("; ");
+    }
+    case "tape":
+      return `${arr(data.points).length} BTC mark points over ${String(data.seconds ?? "?")}s`;
+  }
+}
+
+export function fillSpec(spec: string, results: Record<EvidenceName, string>): string {
+  let out = spec;
+  for (const name of Object.keys(FILES) as EvidenceName[]) {
+    out = out.split(`| ${FILES[name]} | written by \`spike:13\` |`).join(`| ${FILES[name]} | ${results[name]} |`);
+  }
+  out = out.split("| `docs/evidence/g1a-close.json` (`leverage` field) | written by `spike:13` |").join(
+    `| \`docs/evidence/g1a-close.json\` (\`leverage\` field) | ${results["g1a-close"]} |`,
+  );
+  out = out.split("| `docs/evidence/g1a-close.json` (`costs`) | written by `spike:13` |").join(
+    `| \`docs/evidence/g1a-close.json\` (\`costs\`) | ${results["g1a-close"]} |`,
+  );
+  return out.replace(HORIZON_RE, (m) => `${m}; measured with the equity view: ${results["g1c-history"]}`);
+}
+
+const isMain = process.argv[1]?.endsWith("spec-evidence.ts") ?? false;
+if (isMain) {
+  const names = Object.keys(FILES) as EvidenceName[];
+  const results = Object.fromEntries(names.map((n) => [n, summarize(n, readEvidence(n))])) as Record<EvidenceName, string>;
+  const path = repoPath(SPEC_PATH);
+  const filled = fillSpec(readFileSync(path, "utf8"), results);
+  if (process.argv.includes("--write")) writeFileSync(path, filled);
+  const left = filled.includes("written by `spike:13`");
+  console.log(left ? "FAIL spec §3a still has unfilled cells" : "PASS spec §3a filled");
+  process.exit(left ? 1 : 0);
+}
+```
+
+- [ ] **Step 4: Run to confirm the helpers pass**
+Run: `npm test -w @basanos/spike -- test/spec-evidence.test.ts`
+Expected: PASS — `2 passed`.
+
+- [ ] **Step 5: Write the evidence into the spec**
+Run: `npx tsx packages/spike/src/spec-evidence.ts --write`
+Expected: `PASS spec §3a filled`.
+
+- [ ] **Step 6: Re-check the spec (the gate)**
+Run: `npx tsx packages/spike/src/spec-evidence.ts`
+Expected: PASS — `PASS spec §3a filled`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `docs(spec): record day-1 spike evidence (G1 a-e, R1, replay horizon)`
