@@ -228,8 +228,16 @@ with its own id and labelled "Tokyo Sprint · Demo" on every surface that shows 
 terminal or by the runner, bot short), and streams both runs. Whichever way BTC drifts by ≈ 0.04%, one
 account reaches the target (PASS after the 60 s minimum) and the other its daily-loss floor (FAIL). A
 PASS still needs real movement; if the market is still, `--exposure-breach` adds bot size past 15× for a
-FAIL on demand while the PASS waits. The skeleton proves the math: the spike records a live 10-minute
-BTC mark tape, and an evaluator test replays it at 12× and asserts the demo rulebook resolves.
+FAIL on demand while the PASS waits. The wait is bounded: if no account has a verdict 10 minutes after
+the positions open, the runner reports "market still — take aborted", sends `--exposure-breach` for the
+bot (FAIL) and leaves the human run to resolve or hit `TimeLimit` at 900 s; the next take starts after a
+faucet top-up. The skeleton proves the math: the spike records a live 10-minute BTC mark tape, and an
+evaluator test replays it at 12× and asserts the demo rulebook resolves.
+
+**Clock.** The evaluator's `nowSec` is the snapshot block's timestamp (from the multicall's
+`getCurrentBlockTimestamp`), never the referee's wall clock, so `recordFail(TimeLimit)` and
+`recordPass` see the same clock the contract checks. The spike records the timestamp unit (seconds
+expected; the RPC's block headers are seconds).
 
 **Evaluation order per snapshot (referee, pure function in `@basanos/core`):**
 1. `equityOk` or `markOk` false → `pause` (unpriceable; no verdict, no breach).
@@ -346,7 +354,12 @@ function supportsInterface(bytes4) external view returns (bool)    // 0x01ffc9a7
 // approve / setApprovalForAll / transferFrom / safeTransferFrom revert Soulbound()
 function setOracleDeposit(uint256 wei_) external                   // owner only
 function withdraw(address payable to) external                    // owner only (oracle rebates, failed requests)
+receive() external payable                                         // SomniaAgents rebates the unused deposit here
 ```
+
+Only `recordPass` and `recordFail` are payable and only they request the oracle; `recordVoid` and
+`voidRevoked` never do. `recordVoid` reverts `InvalidVoidReason()` for `GrantRevoked` (and `None`):
+only `voidRevoked`, after its on-chain check, can set `GrantRevoked`.
 
 `previewStart` codes: 0 ok, 1 unknown rulebook, 2 account already has an active run, 3 place or cancel
 grant missing, 4 not flat (active pools or locked collateral), 5 unpriceable, 6 non-positive equity.
@@ -381,7 +394,8 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
   0x80054449`, `CANCEL_ORDER_FOR 0xe37b444b`, `REDUCE_ORDER_FOR 0x364c2587`, `ORDER_GAS =
   10_000_000n`, `ORACLE_AGENT_ID = 9911223344556677889n`, `ORACLE_DEPOSIT = 30_900_000_000_000_000n`.
 - `abi.ts`: viem `parseAbi` constants for MarginBank reads, PerpPool reads + operator writes, the
-  OperatorPermissionsRegistry write, Multicall3 (`aggregate3`, `getBlockNumber`), SomniaAgents
+  OperatorPermissionsRegistry write, Multicall3 (`aggregate3`, `getBlockNumber`,
+  `getCurrentBlockTimestamp`), SomniaAgents
   (`createRequest`, `getRequest`), the Price Oracle `getPrices`.
 - `env.ts`: typed loader for §13 names; validates 0x-hex keys; never prints a value.
 - `rulebook.ts`: `Rulebook` type, `canonicalJson`, `rulebookId`, `loadRulebook(path)`.
@@ -413,7 +427,8 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
   the close succeeding; a close that still leaves a position after 3 attempts is recorded as such.
 - **Verdict writes:** `recordFail(runId, rule, breachRead, evidenceHash, closeTxs)` and, after a lock,
   `recordPass(runId)`, both with `value = ORACLE_DEPOSIT` when `ORACLE_ENABLED=true`; `recordVoid` for
-  flows and foreign markets. `evidenceHash = keccak256(canonicalJson(bundle))`; bundles are written to
+  flows and foreign markets. **A VOID is recorded only: the referee does not cancel or close on a VOID**
+  (no rule was breached; the run is simply not judged). It closes only on a FAIL and on a PASS lock. `evidenceHash = keccak256(canonicalJson(bundle))`; bundles are written to
   `docs/evidence/runs/<runId>.json`.
 - **CLI:** `basanos-referee start`, `basanos-referee enroll <account> --rulebook <name>` (bring-your-own
   account that already granted the referee, e.g. via dreamDEX Link a Bot), `basanos-referee status`.
@@ -427,6 +442,8 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
   start both runs on `tokyo-sprint-demo`, open opposite 12× positions, stream both runs until both have a
   verdict, print every tx hash with explorer links.
 - No bot or demo command ever claims a voucher; claims happen once per account in the Step 3 preflight.
+  The web terminal's "Claim voucher" button (§10) is the only claim path in the product; it fires only on
+  an explicit user click, and every test and dev run mocks it.
 
 ## 10. Web app (`@basanos/web`, served at `/app/`)
 
@@ -453,7 +470,8 @@ Required scope (user directive 2026-11-10). Static page built from the frontend 
 
 - **Content, in order:** what it is in one line + the trust line → three steps (published rulebook →
   referee → verdict + certificate) → a real verdict (the actual verdict card as live HTML inside one
-  `app-frame`, rendered from `featured-verdict.json`, plus a `shoot.mjs` screenshot of the real terminal)
+  `app-frame`, rendered from `featured-verdict.json`, plus a `shoot.mjs` screenshot of the real terminal
+  taken during the featured run's own session, so every figure in the image belongs to that run)
   → "Replay any verdict" (links to that run's replay) → testnet notice ("Somnia Tokyo testnet, paper
   USDso, no real funds, no payouts, not a financial service") → the touchstone name story.
 - **CTAs:** primary → `/app/#/challenge`; second → `/app/#/run/<FEATURED_RUN_ID>`, a real run.
