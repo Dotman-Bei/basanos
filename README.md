@@ -1,6 +1,6 @@
-# dreamdex-perps-bounty-2026
+# Basanos
 
-Workspace for the **dreamDEX Perps Builder Bounty** (DoraHacks, Somnia Tokyo testnet) — MVP track + Feedback track.
+Basanos is our entry in the **dreamDEX Perps Builder Bounty** (DoraHacks, Somnia Tokyo testnet) — MVP track + Feedback track.
 
 Event: https://dorahacks.io/hackathon/dreamdex-perps-bounty/detail
 
