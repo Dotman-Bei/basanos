@@ -1,0 +1,1326 @@
+{
+  "project": "basanos",
+  "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
+  "push": 1,
+  "note": "Push 1 of 2. Push 2 appends the referee, web, landing and ship plans; it never changes a push-1 task's id, files or gate.",
+  "subsystems": [
+    "spike",
+    "contracts"
+  ],
+  "plans": [
+    "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+    "docs/superpowers/plans/2026-11-10-basanos-contracts.md"
+  ],
+  "env": [
+    {
+      "name": "REFEREE_PK",
+      "secret": true,
+      "holder": "referee / deployer / registry owner burner",
+      "usedBy": [
+        "spike:11",
+        "spike:12",
+        "contracts:10",
+        "referee daemon"
+      ]
+    },
+    {
+      "name": "REFEREE_ADDRESS",
+      "secret": false,
+      "holder": "referee burner address",
+      "usedBy": [
+        "web build (VITE_REFEREE_ADDRESS)",
+        "referee"
+      ]
+    },
+    {
+      "name": "ACCOUNT_A_PK",
+      "secret": true,
+      "holder": "human challenge account burner (voucher claimed in the Step 3 preflight)",
+      "usedBy": [
+        "spike:11",
+        "demo (pasted into the browser challenge wallet)"
+      ]
+    },
+    {
+      "name": "ACCOUNT_A_ADDRESS",
+      "secret": false,
+      "holder": "account A address",
+      "usedBy": [
+        "contracts:11"
+      ]
+    },
+    {
+      "name": "ACCOUNT_B_PK",
+      "secret": true,
+      "holder": "bot challenge account burner (voucher claimed in the Step 3 preflight)",
+      "usedBy": [
+        "bot",
+        "demo"
+      ]
+    },
+    {
+      "name": "ACCOUNT_B_ADDRESS",
+      "secret": false,
+      "holder": "account B address",
+      "usedBy": [
+        "bot",
+        "demo"
+      ]
+    },
+    {
+      "name": "REGISTRY_ADDRESS",
+      "secret": false,
+      "holder": "written after contracts:10 (also deployments/hideki.json)",
+      "usedBy": [
+        "referee",
+        "bot",
+        "web",
+        "landing"
+      ]
+    },
+    {
+      "name": "HIDEKI_RPC_HTTP",
+      "secret": false,
+      "holder": "optional override (default https://api.hideki.infra.testnet.somnia.network)",
+      "usedBy": [
+        "all"
+      ]
+    },
+    {
+      "name": "HIDEKI_RPC_WSS",
+      "secret": false,
+      "holder": "optional override (default wss://api.hideki.infra.testnet.somnia.network/ws)",
+      "usedBy": [
+        "all"
+      ]
+    },
+    {
+      "name": "ORACLE_ENABLED",
+      "secret": false,
+      "holder": "true/false cut-order switch",
+      "usedBy": [
+        "referee"
+      ]
+    },
+    {
+      "name": "FEATURED_RUN_ID",
+      "secret": false,
+      "holder": "the real run the landing shows",
+      "usedBy": [
+        "landing build"
+      ]
+    },
+    {
+      "name": "VERCEL_TOKEN",
+      "secret": true,
+      "holder": "Vercel deploy token (closing; concierge signup gate)",
+      "usedBy": [
+        "ship deploy"
+      ]
+    },
+    {
+      "name": "CHROME_PATH",
+      "secret": false,
+      "holder": "optional, for the frontend kit checkers",
+      "usedBy": [
+        "landing gate"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "spike:1",
+      "subsystem": "spike",
+      "title": "Scaffold the monorepo and the core package",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [],
+      "effort": "low",
+      "model_tier": "fast",
+      "files": {
+        "create": [
+          "package.json",
+          "tsconfig.base.json",
+          ".env.example",
+          "packages/core/package.json",
+          "packages/core/tsconfig.json",
+          "packages/core/vitest.config.ts",
+          "packages/core/src/index.ts",
+          "packages/core/src/node.ts"
+        ],
+        "modify": [
+          ".gitignore"
+        ],
+        "test": [
+          "packages/core/test/smoke.test.ts"
+        ]
+      },
+      "provides": [
+        "npm workspaces root (packages/*, apps/*)",
+        "@basanos/core package with exports \".\" -> src/index.ts and \"./node\" -> src/node.ts",
+        "BASANOS: \"basanos\"",
+        "repoPath(rel: string): string"
+      ],
+      "requires": [],
+      "gate": {
+        "run": "npm test -w @basanos/core",
+        "expect": "PASS — `3 passed` (run from this repo path, which contains a space)."
+      },
+      "commit": "chore: scaffold npm workspaces and @basanos/core",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:2",
+      "subsystem": "spike",
+      "title": "Core config and ABIs",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:1"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "packages/core/src/config.ts",
+          "packages/core/src/abi.ts"
+        ],
+        "modify": [
+          "packages/core/src/index.ts"
+        ],
+        "test": [
+          "packages/core/test/config.test.ts"
+        ]
+      },
+      "provides": [
+        "CHAIN (hidekiTestnet, id 50383)",
+        "CHAIN_ID = 50383",
+        "RPC_HTTP_DEFAULT",
+        "RPC_WSS_DEFAULT",
+        "RPC_HTTP_FALLBACK",
+        "RPC_WSS_FALLBACK",
+        "INDEXER_URL",
+        "EXPLORER_URL",
+        "MARGIN_BANK",
+        "USDSO",
+        "OPERATOR_REGISTRY",
+        "VOUCHER_DISTRIBUTOR",
+        "SOMNIA_AGENTS",
+        "MULTICALL3",
+        "PRICE_FEED_SCHEDULER",
+        "BTC_POOL",
+        "BTC_BASE_DECIMALS = 8",
+        "QUOTE_DECIMALS = 18",
+        "HIDEKI_ADDRESSES",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "REDUCE_ORDER_FOR_SELECTOR",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_LIMIT = 0",
+        "ORDER_TYPE_IOC = 2",
+        "ORACLE_AGENT_ID = 9911223344556677889n",
+        "ORACLE_DEPOSIT = 30_900_000_000_000_000n",
+        "STT_WRITE_HEADROOM = 600_000_000_000_000_000n",
+        "farFutureNs(nowMs?: number): bigint",
+        "explorerTx(hash: Hex): string",
+        "explorerAddress(address: Address): string",
+        "marginBankAbi",
+        "perpPoolAbi",
+        "operatorRegistryAbi",
+        "multicall3Abi",
+        "somniaAgentsAbi",
+        "priceOracleAbi",
+        "marginBankEventsAbi"
+      ],
+      "requires": [
+        "@basanos/core package with exports \".\" -> src/index.ts and \"./node\" -> src/node.ts"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/config.test.ts",
+        "expect": "PASS — `6 passed`."
+      },
+      "commit": "feat(core): Hideki config, operator selectors and ABIs",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:3",
+      "subsystem": "spike",
+      "title": "Env loader and rulebook schema",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:1",
+        "spike:2"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "packages/core/src/env.ts",
+          "packages/core/src/rulebook.ts",
+          "rulebooks/tokyo-sprint.json",
+          "rulebooks/tokyo-sprint-demo.json"
+        ],
+        "modify": [
+          "packages/core/src/node.ts",
+          "packages/core/src/index.ts"
+        ],
+        "test": [
+          "packages/core/test/env.test.ts",
+          "packages/core/test/rulebook.test.ts"
+        ]
+      },
+      "provides": [
+        "type SecretName = \"REFEREE_PK\" | \"ACCOUNT_A_PK\" | \"ACCOUNT_B_PK\"",
+        "type AddressName = \"REFEREE_ADDRESS\" | \"ACCOUNT_A_ADDRESS\" | \"ACCOUNT_B_ADDRESS\" | \"REGISTRY_ADDRESS\"",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "rpcWss(env?: NodeJS.ProcessEnv): string",
+        "flag(name: \"ORACLE_ENABLED\", env?: NodeJS.ProcessEnv): boolean",
+        "interface Rulebook",
+        "canonicalJson(value: unknown): string",
+        "rulebookId(rb: Rulebook): Hex",
+        "parseRulebook(raw: unknown): Rulebook",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string }",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook"
+      ],
+      "requires": [
+        "RPC_HTTP_DEFAULT",
+        "RPC_WSS_DEFAULT",
+        "repoPath(rel: string): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/env.test.ts test/rulebook.test.ts",
+        "expect": "PASS — `9 passed`."
+      },
+      "commit": "feat(core): env loader and Tokyo Sprint rulebooks with canonical ids",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:4",
+      "subsystem": "spike",
+      "title": "Snapshot multicall (block, time, mark and per-account equity in one call)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:2",
+        "spike:3"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "packages/core/src/snapshot.ts"
+        ],
+        "modify": [
+          "packages/core/src/index.ts"
+        ],
+        "test": [
+          "packages/core/test/snapshot.test.ts"
+        ]
+      },
+      "provides": [
+        "interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }",
+        "interface Snapshot { blockNumber: bigint; timestamp: bigint; pool: Address; markOk: boolean; markPrice: bigint; accounts: AccountSnapshot[] }",
+        "snapshotCall(accounts: readonly Address[], pool: Address): { to: Address; data: Hex }",
+        "decodeSnapshot(result: Hex, accounts: readonly Address[], pool: Address): Snapshot",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>"
+      ],
+      "requires": [
+        "MARGIN_BANK",
+        "MULTICALL3",
+        "marginBankAbi",
+        "perpPoolAbi",
+        "multicall3Abi"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/snapshot.test.ts",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "feat(core): snapshot multicall for block, time, mark and account equity",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:5",
+      "subsystem": "spike",
+      "title": "Raw somnia_watch client with resubscribe and gap reporting",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:1",
+        "spike:4"
+      ],
+      "effort": "high",
+      "files": {
+        "create": [
+          "packages/core/src/watch.ts"
+        ],
+        "modify": [
+          "packages/core/src/index.ts"
+        ],
+        "test": [
+          "packages/core/test/watch.test.ts"
+        ]
+      },
+      "provides": [
+        "interface WatchFilter { address: Address | readonly Address[]; topics?: readonly (Hex | readonly Hex[] | null)[]; ethCalls: readonly { to: Address; data: Hex }[]; pushChangesOnly?: boolean }",
+        "interface WatchPush { address: Address; topics: Hex[]; data: Hex; simulationResults: Hex[] }",
+        "interface WatchHandlers { onPush: (push: WatchPush) => void; onConnected?: (info: { subscriptionId: string; reconnects: number }) => void; onGap?: (info: { atMs: number; reason: string }) => void }",
+        "interface WatchOptions { initialBackoffMs?: number; maxBackoffMs?: number; WebSocketImpl?: typeof WebSocket }",
+        "interface WatchHandle { close: () => void; readonly connected: boolean }",
+        "watchParams(filter: WatchFilter): Record<string, unknown>",
+        "startWatch(url: string, filter: WatchFilter, handlers: WatchHandlers, opts?: WatchOptions): WatchHandle"
+      ],
+      "requires": [
+        "@basanos/core package with exports \".\" -> src/index.ts and \"./node\" -> src/node.ts"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/watch.test.ts",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "feat(core): somnia_watch client with resubscribe and gap reporting",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:6",
+      "subsystem": "spike",
+      "title": "Close-plan math (IOC price, lot alignment, leverage sizing)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:1",
+        "spike:5"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "packages/core/src/close.ts"
+        ],
+        "modify": [
+          "packages/core/src/index.ts"
+        ],
+        "test": [
+          "packages/core/test/close.test.ts"
+        ]
+      },
+      "provides": [
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "interface OrderPlan { isBid: boolean; quantity: bigint; price: bigint }",
+        "CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]",
+        "alignDown(x: bigint, step: bigint): bigint",
+        "alignUp(x: bigint, step: bigint): bigint",
+        "iocPrice(isBid: boolean, mark: bigint, tickSize: bigint, slippageBps: number): bigint",
+        "planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null",
+        "planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint"
+      ],
+      "requires": [
+        "@basanos/core package with exports \".\" -> src/index.ts and \"./node\" -> src/node.ts"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/close.test.ts",
+        "expect": "PASS — `7 passed`."
+      },
+      "commit": "feat(core): close-plan math for IOC closes and leverage sizing",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:7",
+      "subsystem": "spike",
+      "title": "Spike package — evidence writer, checker and RPC helpers",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:1",
+        "spike:2",
+        "spike:3"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "packages/spike/package.json",
+          "packages/spike/tsconfig.json",
+          "packages/spike/vitest.config.ts",
+          "packages/spike/src/evidence.ts",
+          "packages/spike/src/check-evidence.ts",
+          "packages/spike/src/rpc.ts",
+          "packages/spike/src/find-active.ts"
+        ],
+        "modify": [],
+        "test": [
+          "packages/spike/test/evidence.test.ts"
+        ]
+      },
+      "provides": [
+        "type EvidenceName = \"g1a-close\" | \"g1b-watch\" | \"g1c-history\" | \"g1d-oracle\" | \"r1-indexer\" | \"tape\"",
+        "evidencePath(name: EvidenceName): string",
+        "toJsonSafe(value: unknown): unknown",
+        "writeEvidence(name: EvidenceName, data: Record<string, unknown>): string",
+        "readEvidence(name: EvidenceName): Record<string, unknown> | null",
+        "checkEvidence(name: EvidenceName, data: Record<string, unknown> | null): string[]",
+        "publicClient(): PublicClient",
+        "walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account",
+        "marketsFor(pk?: Hex): SomniaMarkets",
+        "pickMostFrequent(accounts: readonly Address[]): Address | null",
+        "findActiveAccount(client: PublicClient, windows?: number): Promise<Address>",
+        "CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS"
+      ],
+      "requires": [
+        "CHAIN (hidekiTestnet, id 50383)",
+        "INDEXER_URL",
+        "HIDEKI_ADDRESSES",
+        "MARGIN_BANK",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "repoPath(rel: string): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/spike",
+        "expect": "PASS — `7 passed`."
+      },
+      "commit": "feat(spike): evidence writer, checker and RPC helpers",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:8",
+      "subsystem": "spike",
+      "title": "Read-only spike scripts — history depth + R1 reads, watch with equity, BTC mark tape",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:5",
+        "spike:7"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "packages/spike/src/lib.ts",
+          "packages/spike/src/history.ts",
+          "packages/spike/src/watch-equity.ts",
+          "packages/spike/src/tape.ts"
+        ],
+        "modify": [],
+        "test": [
+          "packages/spike/test/lib.test.ts"
+        ]
+      },
+      "provides": [
+        "HISTORY_DEPTHS: readonly number[]",
+        "depthBlocks(head: bigint, depths: readonly number[]): { back: number; block: bigint }[]",
+        "maxServed(results: readonly { back: number; ok: boolean }[]): number",
+        "timestampUnit(chainTs: bigint, nowMs: number): \"seconds\" | \"milliseconds\"",
+        "interface TapePoint { block: bigint; ts: bigint; mark: bigint }",
+        "appendTapePoint(points: TapePoint[], p: TapePoint): TapePoint[]",
+        "CLI: npx tsx packages/spike/src/history.ts [account]",
+        "CLI: npx tsx packages/spike/src/watch-equity.ts [seconds]",
+        "CLI: npx tsx packages/spike/src/tape.ts [seconds]"
+      ],
+      "requires": [
+        "BTC_POOL",
+        "MARGIN_BANK",
+        "PRICE_FEED_SCHEDULER",
+        "marginBankAbi",
+        "snapshotCall(accounts: readonly Address[], pool: Address): { to: Address; data: Hex }",
+        "decodeSnapshot(result: Hex, accounts: readonly Address[], pool: Address): Snapshot",
+        "startWatch(url: string, filter: WatchFilter, handlers: WatchHandlers, opts?: WatchOptions): WatchHandle",
+        "writeEvidence(name: EvidenceName, data: Record<string, unknown>): string",
+        "publicClient(): PublicClient",
+        "marketsFor(pk?: Hex): SomniaMarkets",
+        "findActiveAccount(client: PublicClient, windows?: number): Promise<Address>",
+        "loadDotEnv(path?: string): boolean",
+        "rpcWss(env?: NodeJS.ProcessEnv): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/spike",
+        "expect": "PASS — `12 passed`."
+      },
+      "commit": "feat(spike): read-only history, indexer, watch and tape scripts",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:9",
+      "subsystem": "spike",
+      "title": "Run the read-only spike live (no key, no STT)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:7",
+        "spike:8"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "docs/evidence/g1b-watch.json",
+          "docs/evidence/g1c-history.json",
+          "docs/evidence/r1-indexer.json",
+          "packages/core/test/fixtures/btc-tape.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/g1b-watch.json",
+        "docs/evidence/g1c-history.json",
+        "docs/evidence/r1-indexer.json",
+        "packages/core/test/fixtures/btc-tape.json (live BTC mark tape: { pool, points: [{ block, ts, mark }] })"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/spike/src/history.ts [account]",
+        "CLI: npx tsx packages/spike/src/watch-equity.ts [seconds]",
+        "CLI: npx tsx packages/spike/src/tape.ts [seconds]",
+        "CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS"
+      ],
+      "gate": {
+        "run": "npx tsx packages/spike/src/check-evidence.ts g1b-watch g1c-history r1-indexer tape",
+        "expect": "PASS — four lines `PASS g1b-watch`, `PASS g1c-history`, `PASS r1-indexer`, `PASS tape`."
+      },
+      "commit": "docs(evidence): read-only spike — history depth, indexer reads, watch, BTC tape",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:10",
+      "subsystem": "spike",
+      "title": "Live spike scripts — referee close skeleton (G1 a, e) and Price Oracle probe (G1 d), with dry-run",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6",
+        "spike:7"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/spike/src/live-lib.ts",
+          "packages/spike/src/skeleton-close.ts",
+          "packages/spike/src/oracle-probe.ts"
+        ],
+        "modify": [],
+        "test": [
+          "packages/spike/test/live-lib.test.ts"
+        ]
+      },
+      "provides": [
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "sumCosts(txs: readonly TxRecord[]): bigint",
+        "isFlat(s: AccountSnapshot): boolean",
+        "ORACLE_STATUS: readonly [\"None\", \"Pending\", \"Success\", \"Failed\", \"TimedOut\"]",
+        "decodeOraclePrices(result: Hex, symbols: readonly string[]): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[]",
+        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run]",
+        "CLI: npx tsx packages/spike/src/oracle-probe.ts [--dry-run]"
+      ],
+      "requires": [
+        "BTC_POOL",
+        "MARGIN_BANK",
+        "OPERATOR_REGISTRY",
+        "SOMNIA_AGENTS",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_LIMIT = 0",
+        "ORDER_TYPE_IOC = 2",
+        "ORACLE_AGENT_ID = 9911223344556677889n",
+        "ORACLE_DEPOSIT = 30_900_000_000_000_000n",
+        "STT_WRITE_HEADROOM = 600_000_000_000_000_000n",
+        "farFutureNs(nowMs?: number): bigint",
+        "explorerTx(hash: Hex): string",
+        "perpPoolAbi",
+        "somniaAgentsAbi",
+        "priceOracleAbi",
+        "marginBankAbi",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]",
+        "alignUp(x: bigint, step: bigint): bigint",
+        "planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null",
+        "planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "writeEvidence(name: EvidenceName, data: Record<string, unknown>): string",
+        "publicClient(): PublicClient",
+        "walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account",
+        "marketsFor(pk?: Hex): SomniaMarkets"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/spike",
+        "expect": "PASS — `16 passed`."
+      },
+      "commit": "feat(spike): referee close skeleton and Price Oracle probe with dry-run",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:11",
+      "subsystem": "spike",
+      "title": "LIVE — the referee closes a voucher account (G1 a, e; the Nov 11 tripwire)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:7",
+        "spike:9",
+        "spike:10"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "docs/evidence/g1a-close.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage.voucherLeverageCapX, entry { markBefore, avgEntryPrice, costBps }, costs)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run]",
+        "CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS"
+      ],
+      "gate": {
+        "run": "npx tsx packages/spike/src/check-evidence.ts g1a-close",
+        "expect": "PASS — `PASS g1a-close`."
+      },
+      "commit": "docs(evidence): G1(a) referee closes a voucher account on Hideki",
+      "human_gate": true,
+      "gate_profile": "wallet",
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:12",
+      "subsystem": "spike",
+      "title": "LIVE — one Price Oracle request on Tokyo testnet (G1 d)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:7",
+        "spike:10"
+      ],
+      "effort": "low",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "docs/evidence/g1d-oracle.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/g1d-oracle.json (requestId, finalStatus, symbols: BTC/USDC:PERP and BTC/USDC with price and numSources)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/spike/src/oracle-probe.ts [--dry-run]",
+        "CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS"
+      ],
+      "gate": {
+        "run": "npx tsx packages/spike/src/check-evidence.ts g1d-oracle",
+        "expect": "PASS — `PASS g1d-oracle`."
+      },
+      "commit": "docs(evidence): G1(d) Price Oracle request on Tokyo testnet",
+      "human_gate": true,
+      "gate_profile": "wallet",
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:13",
+      "subsystem": "spike",
+      "title": "Write the spike answers into the spec (§2 horizon, §3a)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:1",
+        "spike:7",
+        "spike:9",
+        "spike:11",
+        "spike:12"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "packages/spike/src/spec-evidence.ts"
+        ],
+        "modify": [
+          "docs/superpowers/specs/2026-11-10-basanos-design.md"
+        ],
+        "test": [
+          "packages/spike/test/spec-evidence.test.ts"
+        ]
+      },
+      "provides": [
+        "summarize(name: EvidenceName, data: Record<string, unknown> | null): string",
+        "fillSpec(spec: string, results: Record<EvidenceName, string>): string",
+        "CLI: npx tsx packages/spike/src/spec-evidence.ts [--write] -> rewrites spec §3a result cells and the §2 horizon line; exits 1 if any unfilled spike:13 cell remains"
+      ],
+      "requires": [
+        "type EvidenceName = \"g1a-close\" | \"g1b-watch\" | \"g1c-history\" | \"g1d-oracle\" | \"r1-indexer\" | \"tape\"",
+        "readEvidence(name: EvidenceName): Record<string, unknown> | null",
+        "repoPath(rel: string): string"
+      ],
+      "gate": {
+        "run": "npx tsx packages/spike/src/spec-evidence.ts",
+        "expect": "PASS — `PASS spec §3a filled`."
+      },
+      "commit": "docs(spec): record day-1 spike evidence (G1 a-e, R1, replay horizon)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:1",
+      "subsystem": "contracts",
+      "title": "Foundry scaffold, external interfaces, forge wrapper",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "spike:1"
+      ],
+      "effort": "low",
+      "model_tier": "fast",
+      "files": {
+        "create": [
+          "contracts/foundry.toml",
+          "contracts/remappings.txt",
+          "contracts/script/forge.mjs",
+          "contracts/src/interfaces/IMarginBank.sol",
+          "contracts/src/interfaces/IPerpPool.sol",
+          "contracts/src/interfaces/ISomniaAgents.sol"
+        ],
+        "modify": [],
+        "test": [
+          "contracts/test/Interfaces.t.sol"
+        ]
+      },
+      "provides": [
+        "CLI: node contracts/script/forge.mjs <forge args> (installs forge-std v1.16.2 on demand, adds --root contracts)",
+        "interface IMarginBank { struct AccountState { int256 unlockedCollateralBalance; uint256 lockedCollateral; address[] activePerpPools; } struct Position { int128 size; uint128 avgEntryPrice; int256 entryFundingIndex; uint64 lastUpdatedTimestampNs; } getAccountState(address) returns (AccountState); tryGetAccountEquity(address) returns (bool ok, int256 equity); getPosition(address account, address perpPool) returns (Position) }",
+        "interface IPerpPool { isOperatorAuthorized(address owner, address operator, bytes4 selector) returns (bool); tryGetMarkPrice() returns (bool ok, uint256 price) }",
+        "enum ConsensusType { Majority, Threshold, FirstQuorum }",
+        "enum ResponseStatus { None, Pending, Success, Failed, TimedOut }",
+        "struct Response { address validator; bytes result; ResponseStatus status; uint256 receipt; uint256 timestamp; uint256 executionCost; }",
+        "struct Request { uint256 id; address requester; address callbackAddress; bytes4 callbackSelector; address[] subcommittee; Response[] responses; uint256 responseCount; uint256 failureCount; uint256 threshold; uint256 createdAt; uint256 deadline; ResponseStatus status; ConsensusType consensusType; uint256 remainingBudget; uint256 perAgentBudget; }",
+        "interface ISomniaAgents { createRequest(uint256 agentId, address callbackAddress, bytes4 callbackSelector, bytes payload) payable returns (uint256 requestId) }",
+        "interface IPriceOracleAgent { getPrices(string[] symbols, uint8 decimals) returns (uint256[] prices, uint8[] numSources, uint64[] lastUpdated) }"
+      ],
+      "requires": [
+        "npm workspaces root (packages/*, apps/*)"
+      ],
+      "gate": {
+        "run": "node contracts/script/forge.mjs test --match-contract InterfacesTest",
+        "expect": "PASS — `Suite result: ok. 1 passed; 0 failed`."
+      },
+      "commit": "chore(contracts): foundry scaffold, dreamDEX and SomniaAgents interfaces",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:2",
+      "subsystem": "contracts",
+      "title": "Base64 library and test mocks",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:1"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "contracts/src/Base64.sol",
+          "contracts/test/mocks/MockMarginBank.sol",
+          "contracts/test/mocks/MockPerpPool.sol",
+          "contracts/test/mocks/MockSomniaAgents.sol"
+        ],
+        "modify": [],
+        "test": [
+          "contracts/test/Base64.t.sol"
+        ]
+      },
+      "provides": [
+        "library Base64 { encode(bytes memory data) internal pure returns (string memory) }",
+        "contract MockMarginBank { setEquity(address a, bool ok, int256 equity); setLocked(address a, uint256 locked); setPools(address a, address[] pools); setSize(address a, int128 size) }",
+        "contract MockPerpPool { setAuthorized(address owner, address operator, bytes4 selector, bool on); setMark(bool ok, uint256 price) }",
+        "contract MockSomniaAgents { nextId; setShouldRevert(bool); pendingPayload(uint256) returns (bytes); pendingValue(uint256) returns (uint256); pendingAgentId(uint256) returns (uint256); pendingCallback(uint256) returns (address); fulfill(uint256 id, bytes result, ResponseStatus status) }"
+      ],
+      "requires": [
+        "interface IMarginBank { struct AccountState { int256 unlockedCollateralBalance; uint256 lockedCollateral; address[] activePerpPools; } struct Position { int128 size; uint128 avgEntryPrice; int256 entryFundingIndex; uint64 lastUpdatedTimestampNs; } getAccountState(address) returns (AccountState); tryGetAccountEquity(address) returns (bool ok, int256 equity); getPosition(address account, address perpPool) returns (Position) }",
+        "enum ResponseStatus { None, Pending, Success, Failed, TimedOut }",
+        "struct Response { address validator; bytes result; ResponseStatus status; uint256 receipt; uint256 timestamp; uint256 executionCost; }",
+        "struct Request { uint256 id; address requester; address callbackAddress; bytes4 callbackSelector; address[] subcommittee; Response[] responses; uint256 responseCount; uint256 failureCount; uint256 threshold; uint256 createdAt; uint256 deadline; ResponseStatus status; ConsensusType consensusType; uint256 remainingBudget; uint256 perAgentBudget; }",
+        "CLI: node contracts/script/forge.mjs <forge args> (installs forge-std v1.16.2 on demand, adds --root contracts)"
+      ],
+      "gate": {
+        "run": "node contracts/script/forge.mjs test --match-contract Base64Test",
+        "expect": "PASS — `Suite result: ok. 2 passed; 0 failed`."
+      },
+      "commit": "feat(contracts): base64 library and dreamDEX/SomniaAgents mocks",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:3",
+      "subsystem": "contracts",
+      "title": "Registry core — rulebooks, chain-checked start, views",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:1",
+        "contracts:2"
+      ],
+      "effort": "high",
+      "files": {
+        "create": [
+          "contracts/src/BasanosRegistry.sol",
+          "contracts/test/Fixture.sol"
+        ],
+        "modify": [],
+        "test": [
+          "contracts/test/Start.t.sol"
+        ]
+      },
+      "provides": [
+        "contract BasanosRegistry (with anchors // [[oracle]], // [[pass]], // [[fail-void]], // [[metadata]])",
+        "enum Status { None, Active, Passed, Failed, Voided }",
+        "enum Rule { None, DailyLoss, TrailingDrawdown, MaxExposure, TimeLimit, Liquidated }",
+        "enum VoidReason { None, Flow, ForeignMarket, GrantRevoked }",
+        "struct Read { uint64 blockNumber; bool equityOk; int256 equity; uint256 lockedCollateral; int128 positionSize; bool markOk; uint256 markPrice; }",
+        "struct RulebookParams { address pool; uint32 profitTargetBps; uint32 minDurationSec; uint32 timeLimitSec; string oracleSymbol; bool exists; }",
+        "struct Run { address account; bytes32 rulebookId; Status status; Rule rule; VoidReason voidReason; uint64 startTime; uint64 endTime; Read start; Read breach; Read end; bytes32 evidenceHash; bytes32 voidTxHash; uint256 oracleRequestId; uint256 oraclePrice; uint8 oracleSources; uint64 oracleUpdatedAt; bool oracleDone; }",
+        "constructor(address marginBank, address somniaAgents, address referee, string memory baseUrl)",
+        "registerRulebook(bytes32 id, address pool, uint32 profitTargetBps, uint32 minDurationSec, uint32 timeLimitSec, string calldata oracleSymbol)",
+        "getRulebook(bytes32 id) returns (RulebookParams memory)",
+        "setBaseUrl(string calldata url)",
+        "previewStart(address account, bytes32 rulebookId) returns (uint8 code, Read memory read)",
+        "startRun(address account, bytes32 rulebookId) returns (uint256 runId)",
+        "getRun(uint256 runId) returns (Run memory)",
+        "getCloseTxs(uint256 runId) returns (bytes32[] memory)",
+        "getActiveRunIds() returns (uint256[] memory)",
+        "activeRunOf(address) returns (uint256)",
+        "runCount() returns (uint256)",
+        "internal _readFull(address account, address pool) returns (Read memory read, uint256 activePools)",
+        "internal _granted(address account, address pool) returns (bool)",
+        "internal _finish(uint256 runId, address account)",
+        "abstract contract Fixture is Test (bank, pool, agents, registry, referee, trader, stranger, DEMO, START, _deploy(), _grant(address,bool), _start())"
+      ],
+      "requires": [
+        "interface IMarginBank { struct AccountState { int256 unlockedCollateralBalance; uint256 lockedCollateral; address[] activePerpPools; } struct Position { int128 size; uint128 avgEntryPrice; int256 entryFundingIndex; uint64 lastUpdatedTimestampNs; } getAccountState(address) returns (AccountState); tryGetAccountEquity(address) returns (bool ok, int256 equity); getPosition(address account, address perpPool) returns (Position) }",
+        "interface IPerpPool { isOperatorAuthorized(address owner, address operator, bytes4 selector) returns (bool); tryGetMarkPrice() returns (bool ok, uint256 price) }",
+        "library Base64 { encode(bytes memory data) internal pure returns (string memory) }",
+        "contract MockMarginBank { setEquity(address a, bool ok, int256 equity); setLocked(address a, uint256 locked); setPools(address a, address[] pools); setSize(address a, int128 size) }",
+        "contract MockPerpPool { setAuthorized(address owner, address operator, bytes4 selector, bool on); setMark(bool ok, uint256 price) }",
+        "contract MockSomniaAgents { nextId; setShouldRevert(bool); pendingPayload(uint256) returns (bytes); pendingValue(uint256) returns (uint256); pendingAgentId(uint256) returns (uint256); pendingCallback(uint256) returns (address); fulfill(uint256 id, bytes result, ResponseStatus status) }",
+        "CLI: node contracts/script/forge.mjs <forge args> (installs forge-std v1.16.2 on demand, adds --root contracts)"
+      ],
+      "gate": {
+        "run": "node contracts/script/forge.mjs test --match-contract StartTest",
+        "expect": "PASS — `Suite result: ok. 8 passed; 0 failed`."
+      },
+      "commit": "feat(contracts): registry core with chain-checked startRun",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:4",
+      "subsystem": "contracts",
+      "title": "Price Oracle request and callback (replaces `// [[oracle]]`)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:1",
+        "contracts:2",
+        "contracts:3"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "contracts/src/BasanosRegistry.sol"
+        ],
+        "test": [
+          "contracts/test/Oracle.t.sol"
+        ]
+      },
+      "provides": [
+        "internal _requestOracle(uint256 runId) (uses msg.value; never reverts the caller)",
+        "handleOracle(uint256 requestId, Response[] calldata responses, ResponseStatus status, Request calldata details) (SomniaAgents only)",
+        "setOracleDeposit(uint256 wei_)",
+        "withdraw(address payable to)",
+        "receive() external payable"
+      ],
+      "requires": [
+        "contract BasanosRegistry (with anchors // [[oracle]], // [[pass]], // [[fail-void]], // [[metadata]])",
+        "abstract contract Fixture is Test (bank, pool, agents, registry, referee, trader, stranger, DEMO, START, _deploy(), _grant(address,bool), _start())",
+        "contract MockSomniaAgents { nextId; setShouldRevert(bool); pendingPayload(uint256) returns (bytes); pendingValue(uint256) returns (uint256); pendingAgentId(uint256) returns (uint256); pendingCallback(uint256) returns (address); fulfill(uint256 id, bytes result, ResponseStatus status) }",
+        "interface IPriceOracleAgent { getPrices(string[] symbols, uint8 decimals) returns (uint256[] prices, uint8[] numSources, uint64[] lastUpdated) }",
+        "enum ResponseStatus { None, Pending, Success, Failed, TimedOut }"
+      ],
+      "gate": {
+        "run": "node contracts/script/forge.mjs test --match-contract OracleTest",
+        "expect": "PASS — `Suite result: ok. 7 passed; 0 failed`."
+      },
+      "commit": "feat(contracts): Price Oracle request and consensus callback",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:5",
+      "subsystem": "contracts",
+      "title": "Chain-checked PASS and the soulbound certificate (replaces `// [[pass]]`)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:3",
+        "contracts:4"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "contracts/src/BasanosRegistry.sol"
+        ],
+        "test": [
+          "contracts/test/Pass.t.sol"
+        ]
+      },
+      "provides": [
+        "recordPass(uint256 runId) payable (referee only; checks min time, time limit, flat, grant, priceable, equity >= target; mints tokenId = runId)",
+        "ownerOf(uint256 tokenId) returns (address)",
+        "locked(uint256 tokenId) returns (bool)",
+        "getApproved(uint256) returns (address)",
+        "isApprovedForAll(address, address) returns (bool)",
+        "approve / setApprovalForAll / transferFrom / safeTransferFrom revert Soulbound()",
+        "internal _mint(address to, uint256 tokenId)"
+      ],
+      "requires": [
+        "contract BasanosRegistry (with anchors // [[oracle]], // [[pass]], // [[fail-void]], // [[metadata]])",
+        "internal _requestOracle(uint256 runId) (uses msg.value; never reverts the caller)",
+        "internal _readFull(address account, address pool) returns (Read memory read, uint256 activePools)",
+        "internal _granted(address account, address pool) returns (bool)",
+        "internal _finish(uint256 runId, address account)",
+        "abstract contract Fixture is Test (bank, pool, agents, registry, referee, trader, stranger, DEMO, START, _deploy(), _grant(address,bool), _start())"
+      ],
+      "gate": {
+        "run": "node contracts/script/forge.mjs test --match-contract PassTest",
+        "expect": "PASS — `Suite result: ok. 8 passed; 0 failed`."
+      },
+      "commit": "feat(contracts): chain-checked recordPass and soulbound certificate",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:6",
+      "subsystem": "contracts",
+      "title": "FAIL and VOID verdicts (replaces `// [[fail-void]]`)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:3",
+        "contracts:4",
+        "contracts:5"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [],
+        "modify": [
+          "contracts/src/BasanosRegistry.sol"
+        ],
+        "test": [
+          "contracts/test/FailVoid.t.sol"
+        ]
+      },
+      "provides": [
+        "recordFail(uint256 runId, Rule rule, Read calldata breach, bytes32 evidenceHash, bytes32[] calldata closeTxs) payable (referee only; TimeLimit checked against block.timestamp)",
+        "recordVoid(uint256 runId, VoidReason reason, bytes32 txHash, bytes32 evidenceHash) (referee only; Flow or ForeignMarket only)",
+        "voidRevoked(uint256 runId) (anyone; requires the place or cancel grant to be gone)"
+      ],
+      "requires": [
+        "contract BasanosRegistry (with anchors // [[oracle]], // [[pass]], // [[fail-void]], // [[metadata]])",
+        "internal _requestOracle(uint256 runId) (uses msg.value; never reverts the caller)",
+        "internal _readFull(address account, address pool) returns (Read memory read, uint256 activePools)",
+        "internal _granted(address account, address pool) returns (bool)",
+        "internal _finish(uint256 runId, address account)",
+        "ownerOf(uint256 tokenId) returns (address)",
+        "abstract contract Fixture is Test (bank, pool, agents, registry, referee, trader, stranger, DEMO, START, _deploy(), _grant(address,bool), _start())"
+      ],
+      "gate": {
+        "run": "node contracts/script/forge.mjs test --match-contract FailVoidTest",
+        "expect": "PASS — `Suite result: ok. 6 passed; 0 failed`."
+      },
+      "commit": "feat(contracts): referee-recorded FAIL and VOID verdicts with raw reads",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:7",
+      "subsystem": "contracts",
+      "title": "Certificate metadata and ERC-165 (replaces `// [[metadata]]`)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:2",
+        "contracts:3",
+        "contracts:5",
+        "contracts:6"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [],
+        "modify": [
+          "contracts/src/BasanosRegistry.sol"
+        ],
+        "test": [
+          "contracts/test/Metadata.t.sol"
+        ]
+      },
+      "provides": [
+        "tokenURI(uint256 tokenId) returns (string) — data:application/json;base64, of {\"name\":\"Basanos Certificate #<id>\",\"description\":\"Every certificate is chain-checked at mint; every verdict is replayable.\",\"external_url\":\"<baseUrl><id>\",\"attributes\":[rulebook, startBlock, endBlock, startEquity, endEquity]}",
+        "supportsInterface(bytes4 id) returns (bool) — 0x01ffc9a7, 0x80ac58cd, 0x5b5e139f, 0xb45a3c0e"
+      ],
+      "requires": [
+        "contract BasanosRegistry (with anchors // [[oracle]], // [[pass]], // [[fail-void]], // [[metadata]])",
+        "library Base64 { encode(bytes memory data) internal pure returns (string memory) }",
+        "recordPass(uint256 runId) payable (referee only; checks min time, time limit, flat, grant, priceable, equity >= target; mints tokenId = runId)",
+        "abstract contract Fixture is Test (bank, pool, agents, registry, referee, trader, stranger, DEMO, START, _deploy(), _grant(address,bool), _start())"
+      ],
+      "gate": {
+        "run": "node contracts/script/forge.mjs test",
+        "expect": "PASS — `Ran 7 test suites` and every suite `ok` (36 tests passed, 0 failed)."
+      },
+      "commit": "feat(contracts): base64 certificate metadata and ERC-165",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:8",
+      "subsystem": "contracts",
+      "title": "Export the registry ABI and rulebook registration args into `@basanos/core`",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:1",
+        "contracts:7",
+        "spike:3",
+        "spike:6"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "contracts/script/export-abi.mjs",
+          "packages/core/src/abi/basanosRegistry.ts",
+          "packages/core/src/registry.ts"
+        ],
+        "modify": [
+          "packages/core/src/index.ts"
+        ],
+        "test": [
+          "packages/core/test/registry.test.ts"
+        ]
+      },
+      "provides": [
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "type RegisterArgs = readonly [Hex, Address, number, number, number, string]",
+        "registerArgs(rb: Rulebook): RegisterArgs",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "RULE_NAMES = [\"None\", \"DailyLoss\", \"TrailingDrawdown\", \"MaxExposure\", \"TimeLimit\", \"Liquidated\"]",
+        "VOID_REASONS = [\"None\", \"Flow\", \"ForeignMarket\", \"GrantRevoked\"]",
+        "PREVIEW_CODES = [\"ok\", \"unknown rulebook\", \"active run exists\", \"grant missing\", \"not flat\", \"unpriceable\", \"non-positive equity\"]",
+        "CLI: node contracts/script/export-abi.mjs (after forge build)"
+      ],
+      "requires": [
+        "interface Rulebook",
+        "rulebookId(rb: Rulebook): Hex",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "CLI: node contracts/script/forge.mjs <forge args> (installs forge-std v1.16.2 on demand, adds --root contracts)",
+        "tokenURI(uint256 tokenId) returns (string) — data:application/json;base64, of {\"name\":\"Basanos Certificate #<id>\",\"description\":\"Every certificate is chain-checked at mint; every verdict is replayable.\",\"external_url\":\"<baseUrl><id>\",\"attributes\":[rulebook, startBlock, endBlock, startEquity, endEquity]}"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/registry.test.ts",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "feat(core): registry ABI export and rulebook registration args",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:9",
+      "subsystem": "contracts",
+      "title": "Deploy, deployment-check, live-preview and bytecode-verify scripts",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:1",
+        "contracts:8",
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "spike:7"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "contracts/script/tsconfig.json",
+          "contracts/script/deploy.ts",
+          "contracts/script/check-deployment.ts",
+          "contracts/script/preview-live.ts",
+          "contracts/script/verify-bytecode.ts"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "CLI: npx tsx contracts/script/deploy.ts [--dry-run] (REFEREE_PK deploys and owns; registers tokyo-sprint and tokyo-sprint-demo; writes deployments/hideki.json)",
+        "deployments/hideki.json shape: { chainId, registry, deployTx, deployBlock, owner, referee, marginBank, somniaAgents, baseUrl, solc, evmVersion, viaIr, deployGasUsed, deployCostWei, rulebooks: [{ name, id, tx, status, gasUsed }] }",
+        "CLI: npx tsx contracts/script/check-deployment.ts -> PASS deployment",
+        "CLI: npx tsx contracts/script/preview-live.ts -> writes docs/evidence/r5-preview.json, prints PASS r5-preview",
+        "CLI: npx tsx contracts/script/verify-bytecode.ts [--explorer] -> writes docs/evidence/verify.json, prints PASS verify"
+      ],
+      "requires": [
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "registerArgs(rb: Rulebook): RegisterArgs",
+        "PREVIEW_CODES = [\"ok\", \"unknown rulebook\", \"active run exists\", \"grant missing\", \"not flat\", \"unpriceable\", \"non-positive equity\"]",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "MARGIN_BANK",
+        "SOMNIA_AGENTS",
+        "explorerTx(hash: Hex): string",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "repoPath(rel: string): string",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "marketsFor(pk?: Hex): SomniaMarkets",
+        "CLI: node contracts/script/forge.mjs <forge args> (installs forge-std v1.16.2 on demand, adds --root contracts)"
+      ],
+      "gate": {
+        "run": "npx tsc -p contracts/script/tsconfig.json",
+        "expect": "PASS — exits 0 with no output."
+      },
+      "commit": "feat(contracts): deploy, deployment check, live preview and bytecode verify scripts",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:10",
+      "subsystem": "contracts",
+      "title": "LIVE — deploy the registry on Hideki and register Tokyo Sprint",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:1",
+        "contracts:9",
+        "spike:12",
+        "spike:13"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "deployments/hideki.json"
+        ],
+        "modify": [
+          "rulebooks/tokyo-sprint.json",
+          "rulebooks/tokyo-sprint-demo.json",
+          "contracts/foundry.toml"
+        ],
+        "test": []
+      },
+      "provides": [
+        "deployments/hideki.json (registry address, deploy block, rulebook ids)",
+        "REGISTRY_ADDRESS in .env (set by the human)"
+      ],
+      "requires": [
+        "CLI: npx tsx contracts/script/deploy.ts [--dry-run] (REFEREE_PK deploys and owns; registers tokyo-sprint and tokyo-sprint-demo; writes deployments/hideki.json)",
+        "CLI: npx tsx contracts/script/check-deployment.ts -> PASS deployment",
+        "CLI: node contracts/script/forge.mjs <forge args> (installs forge-std v1.16.2 on demand, adds --root contracts)"
+      ],
+      "gate": {
+        "run": "npx tsx contracts/script/check-deployment.ts",
+        "expect": "PASS — `PASS deployment`."
+      },
+      "commit": "chore(deploy): BasanosRegistry on Hideki with Tokyo Sprint rulebooks",
+      "human_gate": true,
+      "gate_profile": "deploy",
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:11",
+      "subsystem": "contracts",
+      "title": "LIVE read-only — R5 previewStart against the real MarginBank",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:9",
+        "contracts:10"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "docs/evidence/r5-preview.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/r5-preview.json (code 0 for account A, registry reads == SDK getAccountEquity at the same block)"
+      ],
+      "requires": [
+        "CLI: npx tsx contracts/script/preview-live.ts -> writes docs/evidence/r5-preview.json, prints PASS r5-preview",
+        "deployments/hideki.json (registry address, deploy block, rulebook ids)"
+      ],
+      "gate": {
+        "run": "npx tsx contracts/script/preview-live.ts",
+        "expect": "PASS — `PASS r5-preview`."
+      },
+      "commit": "docs(evidence): R5 previewStart matches the SDK against the real MarginBank",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "contracts:12",
+      "subsystem": "contracts",
+      "title": "Verify the deployed bytecode (and try the explorer)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+      "depends_on": [
+        "contracts:9",
+        "contracts:10"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "docs/evidence/verify.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/verify.json (runtime bytecode match with immutables masked; explorer attempt output)"
+      ],
+      "requires": [
+        "CLI: npx tsx contracts/script/verify-bytecode.ts [--explorer] -> writes docs/evidence/verify.json, prints PASS verify",
+        "deployments/hideki.json (registry address, deploy block, rulebook ids)"
+      ],
+      "gate": {
+        "run": "npx tsx contracts/script/verify-bytecode.ts --explorer",
+        "expect": "PASS — `PASS verify`."
+      },
+      "commit": "docs(evidence): BasanosRegistry runtime bytecode matches the artifact",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    }
+  ]
+}

@@ -231,8 +231,16 @@ PASS still needs real movement; if the market is still, `--exposure-breach` adds
 FAIL on demand while the PASS waits. The wait is bounded: if no account has a verdict 10 minutes after
 the positions open, the runner reports "market still — take aborted", sends `--exposure-breach` for the
 bot (FAIL) and leaves the human run to resolve or hit `TimeLimit` at 900 s; the next take starts after a
-faucet top-up. The skeleton proves the math: the spike records a live 10-minute BTC mark tape, and an
-evaluator test replays it at 12× and asserts the demo rulebook resolves.
+faucet top-up. The skeleton proves the math: the spike records a live 10-minute BTC mark tape and the
+real entry fill against the mark (`docs/evidence/g1a-close.json` → `entry.costBps`), and an evaluator
+test replays the tape at 12× **with that measured entry cost (and the same cost again for the lock's
+close) charged against equity** and asserts the demo rulebook resolves; the +0.5% demo target is trusted
+only after that test passes. If the measured round-trip cost eats more than half of the 50 bps target,
+the referee plan raises the demo target before registration is repeated (a new demo rulebook id).
+
+**Who operates the demo accounts.** Both demo challenge accounts are burners operated by the builder:
+account A is driven by a human from the terminal, account B is the scripted bot. The README and the
+landing page say so in plain words; no surface implies independent traders.
 
 **Clock.** The evaluator's `nowSec` is the snapshot block's timestamp (from the multicall's
 `getCurrentBlockTimestamp`), never the referee's wall clock, so `recordFail(TimeLimit)` and
@@ -477,6 +485,11 @@ Required scope (user directive 2026-11-10). Static page built from the frontend 
   → "Replay any verdict" (links to that run's replay) → testnet notice ("Somnia Tokyo testnet, paper
   USDso, no real funds, no payouts, not a financial service") → the touchstone name story.
 - **CTAs:** primary → `/app/#/challenge`; second → `/app/#/run/<FEATURED_RUN_ID>`, a real run.
+- **Which run it shows.** The landing is built against the **first real verdict run** (the Nov 12 referee
+  rehearsal), not the final money-shot run: its snapshot, screenshot and copy are made from that real
+  run. When the money shot lands, only `FEATURED_RUN_ID` changes and the snapshot is regenerated.
+- **Disclosure.** The page states that the demo's two accounts are operated by the builder (one
+  human-driven, one scripted).
 - **Truth by construction:** a build script reads the featured run from the registry and writes
   `apps/landing/src/featured-verdict.json`; the page renders only from it. A check script fails the build
   if the page contains a `0x…` hash, a run id or a figure that is not in that snapshot. No testimonials,
@@ -596,7 +609,8 @@ Plans (one per subsystem; task ids `<subsystem>:<N>`):
 4. `…-basanos-web.md` — tokens, challenge wallet, terminal, verdict + replay, certificate. **Push 2.**
 5. `…-basanos-landing.md` — additive; new ids `landing:N`; Files only under `apps/landing/` plus one task
    that edits the submission draft's third-party list; depends on web's token and verdict-page tasks and
-   on the money-shot run. **Push 2.**
+   on the **first real verdict run (the Nov 12 rehearsal)**, not the money-shot run; the money shot only
+   swaps `FEATURED_RUN_ID`. **Push 2.**
 6. `…-basanos-ship.md` — money-shot demo run (human gate), featured-run snapshot, README (schema),
    X post drafts, feedback files, Vercel deploy (human gate), evidence index; deploy depends on the
    landing's final gate. **Push 2.**

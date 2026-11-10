@@ -10,7 +10,7 @@
 - Tasks 11 and 12 are human-gated (`human_gate: true`): they sign real transactions with burner keys that the Step 3 preflight funded. **No task in this plan ever claims a voucher**; the preflight claimed one per challenge account.
 - **Task 11 is stop-and-escalate:** if the referee's close does not land (evidence `ok: false`), stop the build and escalate to the user. The product depends on it.
 - **SDK pin timebox:** if task 11 has not landed a real order on 0.33.0 within ~2 h of starting the skeleton, stop and route a plan fix to the architect: switch `@somnia-chain/markets-sdk` to `0.32.1` in `packages/core/package.json` and `packages/spike/package.json`.
-- Commands run from the repo root. The repo path contains spaces; every command here quotes or avoids absolute paths.
+- Commands run from the repo root. **The repo path contains a space** (`C:UsersamigDocumentsVIBE CODE…`); a prior campaign lost hours to a Node tool that shells out unquoted. Task 1's gate (install + test) must pass from this path. Do not move the build to a no-space clone to make a gate pass; if install or test fails because of the space, stop and report it as an environment blocker.
 
 ---
 
@@ -172,6 +172,7 @@ export function repoPath(rel: string): string {
 `packages/core/test/smoke.test.ts`:
 ```ts
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BASANOS } from "../src/index";
 import { repoPath } from "../src/node";
@@ -184,6 +185,9 @@ describe("core scaffold", () => {
     expect(existsSync(repoPath("package.json"))).toBe(true);
     expect(existsSync(repoPath("tsconfig.base.json"))).toBe(true);
   });
+  it("keeps spaces in paths (the repo path itself contains one)", () => {
+    expect(repoPath("dir with space/file.txt").endsWith(join("dir with space", "file.txt"))).toBe(true);
+  });
 });
 ```
 
@@ -191,7 +195,7 @@ describe("core scaffold", () => {
 Run: `npm install`
 Expected: exits 0 and writes `package-lock.json`.
 Run: `npm test -w @basanos/core`
-Expected: PASS — `2 passed`.
+Expected: PASS — `3 passed` (run from this repo path, which contains a space).
 
 - [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
 Message: `chore: scaffold npm workspaces and @basanos/core`
@@ -1467,6 +1471,7 @@ describe("checkEvidence", () => {
       ],
       finalPositionSize: "0",
       leverage: { voucherLeverageCapX: 20 },
+      entry: { costBps: 1.25 },
       costs: { totalWei: "1" },
     };
     expect(checkEvidence("g1a-close", base)).toEqual([]);
@@ -1560,6 +1565,8 @@ export function checkEvidence(name: EvidenceName, data: Record<string, unknown> 
       need(data.finalPositionSize === "0", "the account is not flat at the end");
       const lev = (data.leverage ?? {}) as Record<string, unknown>;
       need(typeof lev.voucherLeverageCapX === "number", "leverage.voucherLeverageCapX missing");
+      const entry = (data.entry ?? null) as Record<string, unknown> | null;
+      need(entry !== null && typeof entry.costBps === "number", "entry fill vs mark missing");
       need(typeof data.costs === "object" && data.costs !== null, "costs missing");
       break;
     }
@@ -2015,7 +2022,7 @@ Message: `docs(evidence): read-only spike — history depth, indexer reads, watc
 **Effort:** high
 **Model tier:** top
 **Provides:** `interface TxRecord { label: string; hash: Hex; status: "success" | "reverted"; gasUsed: bigint; costWei: bigint; explorer: string }`, `txRecord(label: string, receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord`, `sumCosts(txs: readonly TxRecord[]): bigint`, `isFlat(s: AccountSnapshot): boolean`, `ORACLE_STATUS: readonly ["None", "Pending", "Success", "Failed", "TimedOut"]`, `decodeOraclePrices(result: Hex, symbols: readonly string[]): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[]`, `CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run]`, `CLI: npx tsx packages/spike/src/oracle-probe.ts [--dry-run]`
-**Requires:** `BTC_POOL`, `MARGIN_BANK`, `OPERATOR_REGISTRY`, `SOMNIA_AGENTS`, `PLACE_ORDER_FOR_SELECTOR`, `CANCEL_ORDER_FOR_SELECTOR`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_LIMIT = 0`, `ORDER_TYPE_IOC = 2`, `ORACLE_AGENT_ID = 9911223344556677889n`, `ORACLE_DEPOSIT = 30_900_000_000_000_000n`, `STT_WRITE_HEADROOM = 600_000_000_000_000_000n`, `farFutureNs(nowMs?: number): bigint`, `explorerTx(hash: Hex): string`, `perpPoolAbi`, `somniaAgentsAbi`, `priceOracleAbi`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }`, `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`, `CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]`, `alignUp(x: bigint, step: bigint): bigint`, `planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null`, `planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `writeEvidence(name: EvidenceName, data: Record<string, unknown>): string`, `publicClient(): PublicClient`, `walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account`, `marketsFor(pk?: Hex): SomniaMarkets`
+**Requires:** `BTC_POOL`, `MARGIN_BANK`, `OPERATOR_REGISTRY`, `SOMNIA_AGENTS`, `PLACE_ORDER_FOR_SELECTOR`, `CANCEL_ORDER_FOR_SELECTOR`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_LIMIT = 0`, `ORDER_TYPE_IOC = 2`, `ORACLE_AGENT_ID = 9911223344556677889n`, `ORACLE_DEPOSIT = 30_900_000_000_000_000n`, `STT_WRITE_HEADROOM = 600_000_000_000_000_000n`, `farFutureNs(nowMs?: number): bigint`, `explorerTx(hash: Hex): string`, `perpPoolAbi`, `somniaAgentsAbi`, `priceOracleAbi`, `marginBankAbi`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }`, `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`, `CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]`, `alignUp(x: bigint, step: bigint): bigint`, `planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null`, `planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `writeEvidence(name: EvidenceName, data: Record<string, unknown>): string`, `publicClient(): PublicClient`, `walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account`, `marketsFor(pk?: Hex): SomniaMarkets`
 
 Key safety: the scripts read `ACCOUNT_A_PK` and `REFEREE_PK` only through `requirePrivateKey`, never print them, and write only addresses, hashes and numbers into evidence. This task only writes code and runs unit tests; it sends nothing. Tasks 11 and 12 run the scripts live under a human gate. Neither script claims a voucher: `skeleton-close` refuses to run unless account A already holds a claimed voucher.
 
@@ -2144,6 +2151,7 @@ import {
   CANCEL_ORDER_FOR_SELECTOR,
   CLOSE_SLIPPAGE_STEPS_BPS,
   MARGIN_BANK,
+  marginBankAbi,
   OPERATOR_REGISTRY,
   ORDER_GAS,
   ORDER_TYPE_IOC,
@@ -2244,9 +2252,22 @@ if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_O
 if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_ORDER_FOR_SELECTOR))) stop("the grant did not take effect");
 
 // 3. Owner opens the minimum long (IOC) and rests one far bid (GTC) for the referee to cancel.
-const open = planOpen(true, openQty, start.markPrice, book, 20);
+const preOpen = await readSnapshot(client, [owner], BTC_POOL);
+const open = planOpen(true, openQty, preOpen.markPrice, book, 20);
 const opened = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: open.price, quantity: open.quantity, orderType: ORDER_TYPE_IOC });
 txs.push(txRecord("open", opened.receipt));
+// Real entry fill vs mark (the demo's +0.5% target is only trusted once this cost is known; spec §5).
+const openedPos = await client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getPosition", args: [owner, BTC_POOL] });
+const entry = {
+  side: "long",
+  quantity: open.quantity,
+  limitPrice: open.price,
+  markBefore: preOpen.markPrice,
+  markBlock: preOpen.blockNumber,
+  avgEntryPrice: openedPos.avgEntryPrice,
+  costBps: Number(((openedPos.avgEntryPrice - preOpen.markPrice) * 1_000_000n) / preOpen.markPrice) / 100,
+};
+console.log(`entry: avg ${entry.avgEntryPrice} vs mark ${entry.markBefore} = ${entry.costBps} bps`);
 const restPrice = (start.markPrice * 9_000n) / 10_000n - ((start.markPrice * 9_000n) / 10_000n) % book.tickSize;
 const rested = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: restPrice, quantity: openQty, orderType: ORDER_TYPE_LIMIT });
 txs.push(txRecord("rest", rested.receipt));
@@ -2295,6 +2316,7 @@ writeEvidence("g1a-close", {
     creditFloor: leverage.creditFloor,
   },
   book,
+  entry,
   startSnapshot: start,
   endSnapshot: end,
   closeAttempts: attempts,
@@ -2414,7 +2436,7 @@ Message: `feat(spike): referee close skeleton and Price Oracle probe with dry-ru
 **Depends on:** Task 7, Task 9, Task 10
 **Effort:** medium
 **Model tier:** top
-**Provides:** `docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage.voucherLeverageCapX, costs)`
+**Provides:** `docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage.voucherLeverageCapX, entry { markBefore, avgEntryPrice, costBps }, costs)`
 **Requires:** `CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run]`, `CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS`
 
 **Human-gated.** This signs real transactions with the account A and referee burners (`ACCOUNT_A_PK`, `REFEREE_PK` in `.env`). It needs: account A funded with ≥ 0.6 STT and holding its claimed voucher (Step 3 preflight), the referee funded with ≥ 0.6 STT, account A flat. It never claims a voucher. Expected spend: about 5–7 transactions.
@@ -2425,7 +2447,7 @@ Expected: `preflight ok: owner 0x…, referee 0x…, voucher floor …, voucher 
 
 - [ ] **Step 2: Run live**
 Run: `npx tsx packages/spike/src/skeleton-close.ts`
-Expected: `skeleton-close: FLAT after 1 close attempt(s); <N> txs`, then one explorer link per transaction (grant, open, rest, cancel, close).
+Expected: an `entry: avg … vs mark … = <x> bps` line, then `skeleton-close: FLAT after 1 close attempt(s); <N> txs`, then one explorer link per transaction (grant, open, rest, cancel, close).
 **If the output says NOT FLAT, or no close succeeded: STOP the build and escalate to the user** with the evidence file and the explorer links. If the failure is a reproducible SDK, docs or contract defect, it also becomes a `feedback/` item later. If no real order has landed on SDK 0.33.0 within ~2 h of starting this task, stop and route a plan fix to the architect (switch to 0.32.1).
 
 - [ ] **Step 3: Check the evidence (the gate)**
@@ -2476,7 +2498,7 @@ Message: `docs(evidence): G1(d) Price Oracle request on Tokyo testnet`
 
 **Depends on:** Task 1, Task 7, Task 9, Task 11, Task 12
 **Effort:** low
-**Provides:** `summarize(name: EvidenceName, data: Record<string, unknown> | null): string`, `fillSpec(spec: string, results: Record<EvidenceName, string>): string`, `CLI: npx tsx packages/spike/src/spec-evidence.ts [--write] -> rewrites spec §3a result cells and the §2 horizon line; exits 1 if any "written by \`spike:13\`" cell remains`
+**Provides:** `summarize(name: EvidenceName, data: Record<string, unknown> | null): string`, `fillSpec(spec: string, results: Record<EvidenceName, string>): string`, `CLI: npx tsx packages/spike/src/spec-evidence.ts [--write] -> rewrites spec §3a result cells and the §2 horizon line; exits 1 if any unfilled spike:13 cell remains`
 **Requires:** `type EvidenceName = "g1a-close" | "g1b-watch" | "g1c-history" | "g1d-oracle" | "r1-indexer" | "tape"`, `readEvidence(name: EvidenceName): Record<string, unknown> | null`, `repoPath(rel: string): string`
 
 - [ ] **Step 1: Write the failing test**
@@ -2494,9 +2516,9 @@ const SPEC = [
 
 describe("summarize", () => {
   it("summarises the close and the history depth", () => {
-    expect(summarize("g1a-close", { ok: true, closeAttempts: 1, txs: [{}, {}, {}], leverage: { voucherLeverageCapX: 20 } })).toBe(
-      "PASS — flat after 1 close attempt(s), 3 txs; voucher cap 20x",
-    );
+    expect(
+      summarize("g1a-close", { ok: true, closeAttempts: 1, txs: [{}, {}, {}], leverage: { voucherLeverageCapX: 20 }, entry: { costBps: 1.25 } }),
+    ).toBe("PASS — flat after 1 close attempt(s), 3 txs; voucher cap 20x; entry 1.25 bps vs mark");
     expect(summarize("g1c-history", { maxServedBack: 10_000_000 })).toBe("equity view served 10,000,000 blocks back (≈ 11.6 days)");
     expect(summarize("g1d-oracle", null)).toBe("not run");
   });
@@ -2553,7 +2575,8 @@ export function summarize(name: EvidenceName, data: Record<string, unknown> | nu
     case "g1a-close": {
       const lev = (data.leverage ?? {}) as Record<string, unknown>;
       const head = data.ok === true ? "PASS" : "FAIL (escalated)";
-      return `${head} — flat after ${String(data.closeAttempts)} close attempt(s), ${arr(data.txs).length} txs; voucher cap ${String(lev.voucherLeverageCapX)}x`;
+      const entry = (data.entry ?? {}) as Record<string, unknown>;
+      return `${head} — flat after ${String(data.closeAttempts)} close attempt(s), ${arr(data.txs).length} txs; voucher cap ${String(lev.voucherLeverageCapX)}x; entry ${String(entry.costBps)} bps vs mark`;
     }
     case "g1b-watch":
       return `${String(data.pushes)} price pushes and ${String(data.accountPushes ?? 0)} account pushes in ${String(data.seconds ?? "?")}s; equity decoded: ${String(data.equityDecoded)}; block timestamp unit: ${String(data.timestampUnit)}`;
