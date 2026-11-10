@@ -21,9 +21,11 @@ _Guide seat: claude-sonnet-5-5 · tier standard · effort high (model id stated 
 - Git note (from the prior campaign, still applies): the default credential helper can stall on fetch/push; `git -c credential.helper= -c "credential.helper=!gh auth git-credential" <cmd>` works (used for both pushes today).
 
 ## Tollgate
-- Report: **none yet** — Step 0a's Stage 0 creates `docs/tollgate/<date>-tollgate.md` (0a is RUN, so the guide does not run the campaign tollgate itself).
+- Report: `docs/tollgate/2026-11-10-tollgate.md` (commit `e8d1b5a`, created by Step 0a Stage 0). Guide read it in full 2026-11-10 15:29 WAT; it is the only report (extend, never fork).
 - Guide pre-checks 2026-11-10 14:33 WAT (informational, not a report): row 1 git 2.54 + identity PASS · row 2 gh logged in as Dotman-Bei PASS · row 3 kit at origin/main PASS · row 4 repo created PASS · row 5 claude-in-chrome responded in THIS session (session-scoped; 0a re-probes) · row 9 Node v22.23.4 PASS.
-- Verdicts: 0a CLEAR to hand over (rows 2–5 pass) · all later steps: not yet assessed. **No kickoff goes out for a BLOCKED step.**
+- **Verdicts (as committed):** 0a CLEAR · 0 CLEAR · 1 CLEAR · **2 CLEAR, provisional** (stack rows not written yet; C5 burner gas + USDso must be done by the Step 3 preflight before the Nov 11 order tripwire) · **2.5 CLEAR WITH CAVEATS** (row 6 computer-use FAIL and row 12 ElevenLabs FAIL in the 0a session → browser-only scenes + Kokoro/edge-tts fallbacks; rows 5/7/8/13 passed in the 0a session only, re-probed at 2.5 boot) · **3 CLEAR, provisional** (row 5 hard re-probed at boot; row 6 FAIL only affects extension installs, MetaMask already present). No hard row FAILS → **no step is BLOCKED.** No kickoff goes out for a BLOCKED step.
+- Campaign rows: C1 Hideki RPC 50383 PASS (both hostnames) · C2 indexer PASS · C3 perps contracts deployed PASS · C4 `@somnia-chain/markets-sdk` on npm PASS (0.33.0) · **C5 burner STT + USDso NOT PROBED (human gate, Step 3 preflight).**
+- Routing (row 18): per-spawn effort; top=`claude-opus-5-5`, standard=`claude-sonnet-5-5`, fast=`claude-haiku-5-5` probe-verified; no env overrides; executor variants not installed (orchestrator installs at Step 2 boot). Row 7's probe opened the signed-in Gmail inbox (matrix-prescribed; no mail read) and left a tab stuck behind a "Leave site?" prompt — **user to check that tab** (may hold a draft).
 
 ## Goal / skills (assumed — the prompt left the placeholders)
 - **Goal (assumed):** win one of the three **MVP-track** slots ($500 each) with a perps bot/agent/trader tool that places real testnet orders; harvest the **Feedback track** as a by-product of the same build. User to correct if the aim differs.
@@ -40,12 +42,12 @@ _Guide seat: claude-sonnet-5-5 · tier standard · effort high (model id stated 
 | 2.5 demo-studio | **OPTIONAL — decide at green** (planned in 0a so Stage 0 probes its rows) | "demo" is part of Evidence of building and the X posts need a clip/GIF; run only if ≥10h remain after green |
 | 3 gate-concierge | **both passes**: preflight right after Step 1 (burner wallet, Somnia Tokyo gas, Perps Arena join, USDso, any API keys); closing (repo-public flip, README X-posts links, DoraHacks submission) | many human gates: wallet, funds, X posts, public repo, submit |
 | Calendar fit | fits **only as a vertical slice** | see Calendar section |
-| Track shortlist | (1) **MVP** — lean bots & agents, (2) **MVP** — trader tool as the alternative framing, (3) **Feedback** in parallel | only 2 real tracks; 3 MVP winners come from one pool, categories are not separate prizes; consumer perps dropped (viral loop + multi-user polish is the least feasible in 5 days) |
-| Risk appetite | **`safe-feasible`** (user decides) | 121h; unfamiliar stack whose API the organizers are literally paying people to bug-hunt; "Evidence of building" = real on-chain orders, so execution reliability beats ambition. Guard: the idea must NOT be a bot-kit clone — differentiate by a sharp use-case + a Somnia primitive (stated plus), judged against `prior-art.md` |
+| Track shortlist (REVISED 2026-11-10 15:35 after the pack) | (1) **MVP**, category left OPEN for the rubric (bots/agents · trader tools · consumer perps), (2) **Feedback** as a by-product only, never an idea-selection target | only 2 real tracks; 3 MVP winners from one pool, categories are not separate prizes. **Guide's earlier lean (bots & agents; consumer perps dropped) is withdrawn:** the pack shows bots/agents/guards are the saturated clusters and 5 of the 10 Event Contracts winners were consumer/game framings (3 automated on-chain). Feedback has high duplicate risk (≥25 feedback repos; bot-kit issues #26–#45 already filed) |
+| Risk appetite (REVISED 2026-11-10 15:35) | **`novel-wow`** (user decides; the guide's pre-pack lean was `safe-feasible`) | The pack changed the picture: ~200 public "dreamdex perps" repos, risk guards (≥12) and PerpPilot-style agents (≥6) saturated, the kit already ships starter/maker/funding/guard, and MVP potential is judged on a "viral or repeat-use loop" → differentiation wins. `novel-wow` cannot go past intrinsic buildability (idea-forge's wall drops anything needing funds/approvals we don't control, e.g. the 32 STT on-chain Reactivity floor), so it does not mean reckless. Residual risk is execution on this SDK's gotchas (decimals, 10M gas, IOC reverts) — equal for every idea, mitigated by the Nov 11 first-real-order tripwire. Flip back to `safe-feasible` if the user prefers |
 | Sponsor depth (0a) | **deep:** dreamDEX (perps dev + trader docs, API/SDK/contracts, bot kit repo incl. open issues, dreamBot Builder + Link-a-Bot, Perps Arena rules, USDso) and Somnia (Tokyo testnet chain id/RPC/explorer/faucet, Markets SDK, Reactivity, Somnia Agents). **shallow:** DoraHacks submission mechanics, Discord/Telegram (gated → gap, do not join) | the two sponsors are the whole event |
 
 ## Calendar (WAT) — internal, not the event's
-- **Nov 10 (today):** 0a 15:00–16:00 → 0 idea-forge ~16:00–17:00 → 1 architect ~17:00–20:30; **Step 3 preflight in parallel from ~21:00**.
+- **Nov 10 (today):** 0a DONE by 15:29 (~120h left to the 15:30 Nov 15 deadline) → 0 idea-forge ~15:45–16:45 → 1 architect ~16:45–20:00; **Step 3 preflight in parallel from ~20:30**.
 - **Nov 11:** build starts. **Tripwire: our code places a real order on Somnia Tokyo testnet with a tx hash by end of Nov 11.** If not, stop and escalate (and log the blocker as a Feedback item).
 - **Nov 12–13:** build the rest; money shot first, polish last. **Nov 14:** QA, demo clip, README, the 2–3 X posts published (user), README X-posts section filled.
 - **Nov 15:** buffer. **Hard stop: submitted by 09:00 WAT** (6.5h before the 15:30 deadline).
@@ -57,10 +59,20 @@ _Guide seat: claude-sonnet-5-5 · tier standard · effort high (model id stated 
 ## Feedback-track harvest (carry into the architect kickoff)
 - CONSTRAINT to add: "Log every reproducible dreamDEX/Somnia API, SDK, docs or contract defect met during the build as `feedback/<slug>.md` using the Details-page template (Severity, Area, Steps, Expected, Actual, Evidence with tx hash/request-response, Environment: SDK version, Somnia Tokyo testnet, wallet address). Never put a security issue in the repo."
 
+## Pack facts that shape the build (guide read of `docs/resources/2026-11-10-dreamdex-perps-bounty/`)
+- **Deadline:** DoraHacks API `timeline_end` = 2026-11-15 14:30 UTC (15:30 WAT), `is_extended: true`; body text "November 1, 23:59 UTC" is the stale original. Both recorded in `event.md`.
+- **No numeric judging weights are published** — idea-forge must not invent any.
+- **Chain/stack:** "Somnia Tokyo testnet" = Hideki, chain **50383**. Perps only via `@somnia-chain/markets-sdk` (docs pin 0.32.1; bot kit ^0.31.0; npm latest 0.33.0 — architect pins one after diffing release notes) or raw PerpPool calls. The dreamDEX HTTP API/CCXT/CLI are **spot-only on Shannon (50312)**. Two RPC hostnames (dreamDEX `api.hideki2…`, Somnia `api.hideki…`) both answer 50383.
+- **Walls:** a linked bot key cannot arm exchange TP/SL, change leverage or pull margin (an account's own key can; stop = 0.15 STT each). Paper-USDso voucher: 1,000, **one claim per address**, account must be flat, allowlisted markets only, leverage locked, not withdrawable. Faucet: 1 STT/h per address (only if <1 STT); SDK wants ~0.6 STT headroom; orders cost 0.0003–0.003 STT. **On-chain Reactivity needs a 32 STT owner balance → treat as unbuildable**; off-chain Reactivity is free. Somnia Agents on Tokyo = JSON API Request + Price Oracle only (LLM agents Global-only, 50312).
+- **Field:** ~200 public "dreamdex perps" repos; saturated = risk guards, PerpPilot-style agents, copy-trading, funding carry. Thin/unverified white space: leaderboards with equity netting, multi-wallet/sub-account portfolio tooling, builder-code frontends, liquidation keepers/backstops, Somnia Agents gating orders. Event Contracts winners: 5/10 consumer or game, 3/10 on-chain automation, 0 plain off-chain bots.
+- **Feedback track:** high duplicate risk; bot-kit issues #26–#45 already reported. Only build-time friction specific to our MVP is likely first.
+- **Submission form (platform API):** requires **Telegram username and Discord username**; `mandatory_video_link: false`; multi-track allowed.
+- **Pack stamp oddity (cosmetic):** INDEX says extraction ran "~15:10–16:15 WAT" but the wall clock at guide verification was 15:29 WAT.
+
 ## Step status
 | Step | Status | Artifact | Verified | Seat settings |
 |---|---|---|---|---|
-| 0a | pending | — | — | — |
+| 0a | **done** | `docs/resources/2026-11-10-dreamdex-perps-bounty/` (INDEX, event, tracks, sponsors/dreamdex, sponsors/somnia, prior-art) + `docs/tollgate/2026-11-10-tollgate.md`, commit `e8d1b5a` on origin/main | guide read all 8 files in full; deadline, prizes, missing weights, Feedback template, MVP requirements and X-posts rule cross-checked against the guide's own live read of the DoraHacks page; both sponsors have deep files (addresses, entry-point signatures, SDK snippets, 14 gotchas, bot-kit open issues); gaps labelled, none filled; tollgate verdicts consistent with the matrix rows. Taken on trust from the pack: DoraHacks API fields (form questions, track ids), GitHub repo counts, winners list | `claude-opus-5-5` · high (stated in the tollgate/INDEX; user-attested) |
 | 0 | pending | — | — | — |
 | 1 | pending | — | — | — |
 | 2 | pending | — | — | — |
@@ -75,5 +87,9 @@ _Guide seat: claude-sonnet-5-5 · tier standard · effort high (model id stated 
 - **B5 — repo visibility.** A GitHub link is required; public flip is consent-gated at submission time. Review `docs/design/frontend.md` (no licence file) and scan for secrets before flipping.
 - **B6 — path with spaces.** The workspace path contains a space; the prior campaign lost hours to a Node tool that shells out unquoted. If the stack is Node/pnpm, build in a no-space clone (e.g. `C:\dev\<project>`, same origin) — decide at Step 2 boot.
 
+- **B7 — submission-form handles.** The DoraHacks form requires the user's **Telegram username and Discord username**. User to have both ready for Step 3's closing pass.
+- **B8 — one-shot voucher claim.** The 1,000 paper-USDso voucher is one claim per address and needs a flat account; the "every week" claim on the bounty page conflicts with the SDK ("one claim per address") and there is no Perps Arena rules page. Decide at the Step 3 preflight which address claims, and never move bounty-account USDso into a Perps Arena account (forbidden).
+- **B9 — stuck Gmail tab.** A "Leave site?" prompt is holding a Gmail tab open in the user's Chrome (left by the 0a probe). User to look; the guide never closes a tab it did not create.
+
 ## Next action
-- **User:** set a fresh session to `opus` · `high`, then paste the Step 0a kickoff (deadline and whitelist already confirmed — no organizer message needed).
+- **User:** set a fresh session to `opus` · `max`, then paste the Step 0 (idea-forge) kickoff the guide prepared (risk appetite `novel-wow` is a recommendation — flip it to `safe-feasible` if preferred). Guide then verifies the committed brief + the architect block, makes the calendar-fit call, and hands over the Step 1 kickoff.
