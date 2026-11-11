@@ -293,7 +293,74 @@ contract BasanosRegistry {
         return "";
     }
 
-    // [[pass]]
+    // ------------------------------------------------------------------ PASS (chain-checked) + certificate
+
+    function recordPass(uint256 runId) external payable onlyReferee {
+        Run storage run = _runs[runId];
+        if (run.status != Status.Active) revert NotActive();
+        RulebookParams storage rb = _rulebooks[run.rulebookId];
+        if (block.timestamp < uint256(run.startTime) + rb.minDurationSec) revert TooEarly();
+        if (block.timestamp > uint256(run.startTime) + rb.timeLimitSec) revert TooLate();
+        (Read memory r, uint256 pools) = _readFull(run.account, rb.pool);
+        if (pools != 0 || r.lockedCollateral != 0) revert NotFlat();
+        if (!_granted(run.account, rb.pool)) revert GrantMissing();
+        if (!r.equityOk) revert Unpriceable();
+        int256 startTotal = run.start.equity + int256(run.start.lockedCollateral);
+        int256 endTotal = r.equity + int256(r.lockedCollateral);
+        if (endTotal * 10_000 < startTotal * int256(10_000 + uint256(rb.profitTargetBps))) revert TargetNotMet();
+        run.end = r;
+        run.status = Status.Passed;
+        address account = run.account;
+        _finish(runId, account);
+        _mint(account, runId);
+        emit RunPassed(runId, account, r.blockNumber, endTotal);
+        _requestOracle(runId);
+    }
+
+    function ownerOf(uint256 tokenId) external view returns (address holder) {
+        holder = _owners[tokenId];
+        if (holder == address(0)) revert NonexistentToken();
+    }
+
+    function locked(uint256 tokenId) external view returns (bool) {
+        if (_owners[tokenId] == address(0)) revert NonexistentToken();
+        return true;
+    }
+
+    function getApproved(uint256) external pure returns (address) {
+        return address(0);
+    }
+
+    function isApprovedForAll(address, address) external pure returns (bool) {
+        return false;
+    }
+
+    function approve(address, uint256) external pure {
+        revert Soulbound();
+    }
+
+    function setApprovalForAll(address, bool) external pure {
+        revert Soulbound();
+    }
+
+    function transferFrom(address, address, uint256) external pure {
+        revert Soulbound();
+    }
+
+    function safeTransferFrom(address, address, uint256) external pure {
+        revert Soulbound();
+    }
+
+    function safeTransferFrom(address, address, uint256, bytes calldata) external pure {
+        revert Soulbound();
+    }
+
+    function _mint(address to, uint256 tokenId) internal {
+        _owners[tokenId] = to;
+        balanceOf[to] += 1;
+        emit Transfer(address(0), to, tokenId);
+        emit Locked(tokenId);
+    }
 
     // [[fail-void]]
 
