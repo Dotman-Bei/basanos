@@ -531,7 +531,7 @@ measured one): perp tx ≈ 0.02–0.05 STT (docs say 0.0003–0.003); registry d
 - **Why:** Somnia charges 3,125 gas per byte of deployed bytecode (Ethereum charges 200) and 160 gas per calldata byte, and its `eth_estimateGas` returns 1.5 times the executed gas (docs: "Somnia Gas Differences To Ethereum").
 - **So:** the ≈ 4,800 gas per byte in the estimate is 3,125 × 1.5. A read-only check measured a 4,688 gas per byte marginal.
 - **Expected charge** (if unused gas is refunded as on Ethereum): about two-thirds of the limit, ≈ 51M gas ≈ 0.31 STT, plus the two `registerRulebook` transactions.
-- **Actual spend:** TBD, recorded when the concierge reports the deploy.
+- **Actual spend** (contracts:10, 2026-11-11, `deployments/hideki.json`): deploy tx `0x0046bcd4…3190` (block 47,503,978) used **51,338,305 gas = 0.30803 STT**, two-thirds of the 77.0M estimate as expected. The two `registerRulebook` txs used 718,540 gas each (≈ 0.0043 STT each). **Total ≈ 0.3167 STT.**
 - **Balance:** the referee needs ≥ 0.47 STT before contracts:10, so top it up to ≈ 1 STT first.
 
 The rest of the budget: per run, referee ≈ 0.15 STT (cancels, closes, verdict, + a 0.0309 STT oracle deposit per PASS or FAIL, mostly rebated: ≈ 0.002 STT net) and per account ≈ 0.2
