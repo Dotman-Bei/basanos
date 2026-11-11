@@ -1,0 +1,24 @@
+/* App layout on the dealt tokens (docs/design/frontend.md; system.md: spacing --s-1..--s-10, labels 13px/500). */
+.app-main { padding: calc(var(--nav, 72px) + var(--s-6, 24px)) 0 var(--s-8, 64px); background: var(--p-bg); color: var(--p-ink); min-height: 100vh; }
+.app-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--s-5, 24px); }
+.app-col-4 { grid-column: span 4; }
+.app-col-8 { grid-column: span 8; }
+.app-col-12 { grid-column: span 12; }
+@media (max-width: 899px) { .app-col-4, .app-col-8 { grid-column: span 12; } }
+.panel { background: var(--p-surface); border: 1px solid color-mix(in srgb, var(--p-ink) 13%, transparent); border-radius: var(--r-lg, 8px); padding: var(--s-5, 24px); }
+.panel + .panel { margin-top: var(--s-5, 24px); }
+.label { font-size: 13px; font-weight: 500; color: var(--p-muted); }
+.mono { font-family: var(--font-mono); font-size: 14px; overflow-wrap: anywhere; }
+.figure { font-family: var(--font-display); font-weight: var(--display-weight); font-size: 28px; letter-spacing: var(--display-tracking); }
+.state { display: inline-block; font-size: 13px; font-weight: 500; padding: 2px 10px; border: 1px solid var(--p-ink); border-radius: var(--r-sm, 4px); }
+.state--passed { background: var(--p-accent); color: var(--p-accent-ink); border-color: var(--p-accent); }
+.state--failed { background: var(--p-ink); color: var(--p-bg); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--s-2, 8px) var(--s-4, 16px); margin: 0; }
+.kv dt { font-size: 13px; font-weight: 500; color: var(--p-muted); }
+.kv dd { margin: 0; }
+.field input, .field select { height: 48px; width: 100%; font: inherit; font-size: 16px; padding: 0 var(--s-3, 12px); border: 1px solid color-mix(in srgb, var(--p-ink) 25%, transparent); border-radius: var(--r-sm, 4px); background: var(--p-bg); color: var(--p-ink); }
+.field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: var(--s-1, 4px); }
+.log { list-style: none; margin: 0; padding: 0; }
+.log li { padding: var(--s-2, 8px) 0; border-bottom: 1px solid color-mix(in srgb, var(--p-ink) 13%, transparent); }
+.error { color: var(--p-ink); border-left: 2px solid var(--p-ink); padding-left: var(--s-3, 12px); }
+.rails svg { width: 100%; height: auto; display: block; }
