@@ -220,7 +220,78 @@ contract BasanosRegistry {
         return _activeRunIds;
     }
 
-    // [[oracle]]
+    // ------------------------------------------------------------------ Price Oracle (Somnia Agents)
+
+    function setOracleDeposit(uint256 wei_) external onlyOwner {
+        oracleDeposit = wei_;
+    }
+
+    function withdraw(address payable to) external onlyOwner {
+        (bool ok,) = to.call{value: address(this).balance}("");
+        if (!ok) revert TransferFailed();
+    }
+
+    /// SomniaAgents rebates the unused part of each deposit here.
+    receive() external payable {}
+
+    /// Asks the Price Oracle for the rulebook's symbol with msg.value. Never reverts the verdict that calls it.
+    function _requestOracle(uint256 runId) internal {
+        if (msg.value == 0) return;
+        if (msg.value < oracleDeposit || somniaAgents == address(0)) {
+            emit OracleRequestFailed(runId);
+            return;
+        }
+        string[] memory symbols = new string[](1);
+        symbols[0] = _rulebooks[_runs[runId].rulebookId].oracleSymbol;
+        bytes memory payload = abi.encodeCall(IPriceOracleAgent.getPrices, (symbols, ORACLE_DECIMALS));
+        try ISomniaAgents(somniaAgents).createRequest{value: msg.value}(
+            ORACLE_AGENT_ID, address(this), this.handleOracle.selector, payload
+        ) returns (uint256 requestId) {
+            _runs[runId].oracleRequestId = requestId;
+            _oracleRun[requestId] = runId;
+            emit OracleRequested(runId, requestId);
+        } catch {
+            emit OracleRequestFailed(runId);
+        }
+    }
+
+    function handleOracle(
+        uint256 requestId,
+        Response[] calldata responses,
+        ResponseStatus status,
+        Request calldata details
+    ) external {
+        if (msg.sender != somniaAgents) revert NotAgents();
+        uint256 runId = _oracleRun[requestId];
+        if (runId == 0) revert UnknownRequest();
+        delete _oracleRun[requestId];
+        Run storage run = _runs[runId];
+        run.oracleDone = true;
+        if (status != ResponseStatus.Success) return;
+        bytes memory result = _consensus(responses, details.threshold);
+        if (result.length == 0) return;
+        (uint256[] memory prices, uint8[] memory sources, uint64[] memory updated) =
+            abi.decode(result, (uint256[], uint8[], uint64[]));
+        if (prices.length == 0) return;
+        run.oraclePrice = prices[0];
+        run.oracleSources = sources[0];
+        run.oracleUpdatedAt = updated[0];
+        emit OracleRecorded(runId, prices[0], sources[0], updated[0]);
+    }
+
+    /// The result that at least `threshold` successful responses share (the Somnia docs' pattern).
+    function _consensus(Response[] calldata responses, uint256 threshold) internal pure returns (bytes memory) {
+        for (uint256 i = 0; i < responses.length; i++) {
+            if (responses[i].status != ResponseStatus.Success) continue;
+            uint256 matches;
+            bytes32 h = keccak256(responses[i].result);
+            for (uint256 j = 0; j < responses.length; j++) {
+                if (responses[j].status == ResponseStatus.Success && keccak256(responses[j].result) == h) matches++;
+            }
+            if (matches >= threshold) return responses[i].result;
+        }
+        return "";
+    }
 
     // [[pass]]
 
