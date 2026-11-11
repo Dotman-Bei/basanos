@@ -1,0 +1,22 @@
+{
+  "name": "@basanos/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@somnia-chain/markets-sdk": "0.33.0",
+    "viem": "2.57.12"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.2",
+    "ws": "8.22.0"
+  }
+}

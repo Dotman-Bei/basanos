@@ -6,3 +6,10 @@
 *.key
 keystore*
 node_modules/
+dist/
+contracts/out/
+contracts/cache/
+contracts/lib/
+.vercel/
+.taste-skill/
+shots/
