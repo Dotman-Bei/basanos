@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control).",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it.",
   "subsystems": [
     "spike",
     "contracts",
@@ -681,7 +681,8 @@
       "depends_on": [
         "spike:7",
         "spike:9",
-        "spike:10"
+        "spike:10",
+        "spike:14"
       ],
       "effort": "medium",
       "model_tier": "top",
@@ -696,7 +697,7 @@
         "docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage.voucherLeverageCapX, entry { markBefore, avgEntryPrice, costBps }, costs)"
       ],
       "requires": [
-        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run]",
+        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send]",
         "CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS"
       ],
       "gate": {
@@ -783,6 +784,86 @@
         "expect": "PASS — `PASS spec §3a filled`."
       },
       "commit": "docs(spec): record day-1 spike evidence (G1 a-e, R1, replay horizon)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:14",
+      "subsystem": "spike",
+      "title": "Owner-side writes through viem — account A's grant, open and rest signed locally on the standard RPC (SDK send opt-in)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6",
+        "spike:7",
+        "spike:10"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "packages/spike/src/live-lib.ts",
+          "packages/spike/src/skeleton-close.ts"
+        ],
+        "test": [
+          "packages/spike/test/live-lib.test.ts"
+        ]
+      },
+      "provides": [
+        "type SendPath = \"viem\" | \"sdk\"",
+        "parseSendPath(argv: readonly string[]): SendPath",
+        "interface UnsignedCall { to: Address; data: Hex; value: bigint }",
+        "ownerPoolAbi (owner-side placeOrder, selector 0x4e978373)",
+        "ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall",
+        "grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall",
+        "ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }",
+        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send]"
+      ],
+      "requires": [
+        "BTC_POOL",
+        "MARGIN_BANK",
+        "OPERATOR_REGISTRY",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_LIMIT = 0",
+        "ORDER_TYPE_IOC = 2",
+        "STT_WRITE_HEADROOM = 600_000_000_000_000_000n",
+        "farFutureNs(nowMs?: number): bigint",
+        "explorerTx(hash: Hex): string",
+        "perpPoolAbi",
+        "marginBankAbi",
+        "operatorRegistryAbi",
+        "priceOracleAbi",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]",
+        "alignUp(x: bigint, step: bigint): bigint",
+        "planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null",
+        "planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan",
+        "writeEvidence(name: EvidenceName, data: Record<string, unknown>): string",
+        "publicClient(): PublicClient",
+        "walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account",
+        "marketsFor(pk?: Hex): SomniaMarkets",
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "sumCosts(txs: readonly TxRecord[]): bigint",
+        "isFlat(s: AccountSnapshot): boolean",
+        "ORACLE_STATUS: readonly [\"None\", \"Pending\", \"Success\", \"Failed\", \"TimedOut\"]",
+        "decodeOraclePrices(result: Hex, symbols: readonly string[]): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[]"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/spike",
+        "expect": "PASS — `19 passed`."
+      },
+      "commit": "feat(spike): account A's grant and orders signed by viem on the standard RPC; SDK send opt-in",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"
