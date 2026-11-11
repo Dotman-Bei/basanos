@@ -2519,11 +2519,11 @@ Message: `feat(referee): demo-cost check, rulebook registration and rehearsal ch
 - Modify: `rulebooks/tokyo-sprint-demo.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 7, Task 8, Task 9, contracts:Task 10, contracts:Task 11, spike:Task 11
+**Depends on:** Task 7, Task 8, Task 9, Task 11, contracts:Task 10, contracts:Task 11, spike:Task 11
 **Effort:** medium
 **Model tier:** top
 **Provides:** `docs/evidence/rehearsal.json (first real verdict runs: firstVerdictRunId, runs with statusName, ruleName, closeTxs)`, `docs/evidence/runs.json (per-run evidence bundles + evidenceHash + verdictTx)`, `docs/evidence/demo-takes.json (demo takes with run ids and tx hashes)`
-**Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]`, `CLI: npx tsx packages/bot/src/demo-check.ts -> PASS demo-check, or FAIL with a recommended demo target`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)`, `CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`
+**Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]`, `CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (sizes from A's and B's live equity; checks the pool minimum)`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)`, `CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`
 
 **Human-gated.** This signs real transactions with `REFEREE_PK` (closes and verdicts, plus 0.0309 STT per PASS or FAIL verdict for the Price Oracle, mostly rebated; set `ORACLE_ENABLED=true` in `.env` first), `ACCOUNT_A_PK` and `ACCOUNT_B_PK` (grant, `startRun`, orders). Needed first:
 - all three burners topped up to about 1 STT from the Tokyo faucet;
@@ -2533,7 +2533,7 @@ Message: `feat(referee): demo-cost check, rulebook registration and rehearsal ch
 No voucher is ever claimed. `rulebooks/tokyo-sprint-demo.json` and `deployments/hideki.json` change only if step 1 fails.
 
 - [ ] **Step 1: Check the demo target against real costs**
-Run: `npx tsx packages/bot/src/demo-check.ts`
+Run: `npx tsx packages/bot/src/demo-check.ts` (it sizes from A's and B's live equity; `--equity <USDso>` is only for checking before the accounts are funded)
 Expected: `PASS demo-check`. If it prints `FAIL demo-check: raise profitTargetBps … to <N>`:
 1. Set `"profitTargetBps": <N>` in `rulebooks/tokyo-sprint-demo.json`, raising `"dailyLossBps"` to the same value and `"trailingDrawdownBps"` to `<N> + 25` so the two sides stay symmetric.
 2. Run `npx tsx packages/referee/src/register-rulebook.ts tokyo-sprint-demo` (it prints `registered tokyo-sprint-demo 0x…`).
@@ -2557,3 +2557,201 @@ Expected: PASS — `PASS rehearsal (first verdict run <id>)`.
 
 - [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
 Message: `docs(evidence): referee rehearsal — first real Basanos verdicts on Hideki`
+
+---
+
+### Task 11: Demo sizing from real equity — `demo-check` reads A's and B's live equity (or `--equity`) and checks the pool minimum
+
+**Files:**
+- Create: `packages/bot/src/sizing.ts`
+- Modify: `packages/bot/src/demo-check.ts`
+- Test: `packages/bot/test/sizing.test.ts`
+
+**Depends on:** Task 9, spike:Task 2, spike:Task 4, Task 2, spike:Task 3, spike:Task 1, Task 6, Task 8, spike:Task 6
+**Effort:** low
+**Provides:** `parseUsdso(text: string): bigint`, `demoEquity(flagValue: string | null, live: readonly bigint[]): bigint | null`, `minEquityFor(book: BookParams, leverageX: number, mark: bigint, baseDecimals: number): bigint`, `demoSize(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): { qty: bigint; problem: string | null }`, `CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (sizes from A's and B's live equity; checks the pool minimum)`
+**Requires:** `BTC_POOL`, `CHAIN (hidekiTestnet, id 50383)`, `HIDEKI_ADDRESSES`, `INDEXER_URL`, `MARGIN_BANK`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `costBpsVsMark(isBid: boolean, reference: bigint, average: bigint): number`, `parseTape(raw: unknown): TapePoint[]`, `recommendDemoTargetBps(roundTripEqBps: number): number`, `roundTripEquityBps(oneWayCostBps: number, leverageX: number): number`, `simulateTape(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions): { long: SimSide; short: SimSide; quantity: bigint }`, `loadDotEnv(path?: string): boolean`, `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`, `repoPath(rel: string): string`, `requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `makePublicClient(url: string): PublicClient`, `readBook(client: PublicClient): Promise<BookParams>`, `quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`, `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`
+
+Why (guide, 2026-11-11): B14 may be resolved with 100–200 USDso per account instead of the 1,000-USDso voucher. Sizing today:
+- **The demo runner and the bot already size from live equity:** `demo.ts` and `bot.ts` call `quantityForLeverage(totalEquity, 12, …)`. At 100–200 USDso that gives 0.0162–0.0324 BTC, 125–250× the pool minimum of 0.00013 BTC.
+- **spike:11's skeleton** opens exactly the pool minimum, so it works at any equity.
+- **The one hard-coded spot is Task 9's `demo-check.ts`:** it sizes its quotes and the tape simulation from a fixed 1,000 USDso.
+
+This task makes `demo-check` size from the smaller live equity of A and B, or from `--equity <USDso>`. It stops with a clear message when neither account holds equity. It refuses a size below the pool minimum and says how much equity is needed: about 0.80 USDso at 12× and a 74k mark.
+
+Checked read-only on Hideki on 2026-11-11, in scratch:
+- `--equity 150` sizes 2,441,000 (0.02441 BTC) at 12×.
+- Without the flag, against the real A and B addresses, it prints `FAIL demo-check: accounts A and B hold no equity yet; fund them, or pass --equity <USDso>`.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/bot/test/sizing.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { demoEquity, demoSize, minEquityFor, parseUsdso } from "../src/sizing";
+
+const E18 = 10n ** 18n;
+// BTC-PERP on 2026-11-11: tick 0.1, minimum 0.00013 BTC (13,000 at 8 decimals), lot 0.00001 BTC.
+const book = { tickSize: 10n ** 17n, minQuantity: 13_000n, lotSize: 1_000n };
+const mark = 74_000n * E18;
+
+describe("demo sizing from real equity", () => {
+  it("reads --equity first, else the smaller funded live equity, else nothing", () => {
+    expect(parseUsdso("150")).toBe(150n * E18);
+    expect(parseUsdso("150.25")).toBe(150n * E18 + 25n * 10n ** 16n);
+    expect(() => parseUsdso("1e3")).toThrow(/USDso/);
+    expect(demoEquity("120", [500n * E18])).toBe(120n * E18);
+    expect(demoEquity(null, [200n * E18, 150n * E18])).toBe(150n * E18);
+    expect(demoEquity(null, [0n, 150n * E18])).toBe(150n * E18);
+    expect(demoEquity(null, [0n, 0n])).toBeNull();
+  });
+  it("sizes 100–200 USDso at 12x far above the 0.00013 BTC minimum", () => {
+    const at100 = demoSize(100n * E18, 12, mark, 8, book);
+    expect(at100.problem).toBeNull();
+    expect(at100.qty).toBe(1_621_000n);
+    expect(demoSize(200n * E18, 12, mark, 8, book).qty).toBe(3_243_000n);
+  });
+  it("refuses a size under the pool minimum and says how much equity is needed", () => {
+    expect(minEquityFor(book, 12, mark, 8)).toBe(801_666_666_666_666_667n);
+    const tiny = demoSize(E18 / 2n, 12, mark, 8, book);
+    expect(tiny.qty < book.minQuantity).toBe(true);
+    expect(tiny.problem).toMatch(/below the pool minimum 13000/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/bot -- test/sizing.test.ts`
+Expected: FAIL — `Cannot find module '../src/sizing'`.
+
+- [ ] **Step 3: Write the sizing helpers**
+
+`packages/bot/src/sizing.ts`:
+```ts
+// Demo sizing from real equity (guide, 2026-11-11). The demo accounts may hold 100–200 USDso instead of the
+// 1,000-USDso voucher, so nothing assumes 1,000, and every size is checked against the pool's minimum order.
+import { quantityForLeverage, type BookParams } from "@basanos/core";
+
+const E18 = 10n ** 18n;
+
+/** "150" or "150.25" USDso -> wei (18 decimals). */
+export function parseUsdso(text: string): bigint {
+  const m = /^(\d+)(?:\.(\d{1,18}))?$/.exec(text.trim());
+  if (!m) throw new Error(`not a USDso amount: ${text}`);
+  return BigInt(m[1] ?? "0") * E18 + BigInt((m[2] ?? "").padEnd(18, "0"));
+}
+
+/** --equity wins; otherwise the smaller live equity of the demo accounts that hold any; null when neither does. */
+export function demoEquity(flagValue: string | null, live: readonly bigint[]): bigint | null {
+  if (flagValue !== null) return parseUsdso(flagValue);
+  const funded = live.filter((e) => e > 0n);
+  return funded.length === 0 ? null : funded.reduce((a, b) => (a < b ? a : b));
+}
+
+/** The least equity (wei) whose leveraged size reaches the pool minimum. */
+export function minEquityFor(book: BookParams, leverageX: number, mark: bigint, baseDecimals: number): bigint {
+  const unit = 10n ** BigInt(baseDecimals);
+  const minNotional = (book.minQuantity * mark + unit - 1n) / unit;
+  return (minNotional + BigInt(leverageX) - 1n) / BigInt(leverageX);
+}
+
+/** The demo order size for an equity, or why it cannot trade. */
+export function demoSize(
+  equity: bigint,
+  leverageX: number,
+  mark: bigint,
+  baseDecimals: number,
+  book: BookParams,
+): { qty: bigint; problem: string | null } {
+  const qty = quantityForLeverage(equity, leverageX, mark, baseDecimals, book);
+  if (qty >= book.minQuantity) return { qty, problem: null };
+  return {
+    qty,
+    problem: `the demo size ${qty} is below the pool minimum ${book.minQuantity}; at ${leverageX}x the account needs at least ${minEquityFor(book, leverageX, mark, baseDecimals)} wei of equity`,
+  };
+}
+```
+
+- [ ] **Step 4: Size the demo check from real equity**
+
+Replace `packages/bot/src/demo-check.ts` with:
+```ts
+// Decides whether the demo target is trustworthy given real trading costs (spec §5). Read-only.
+// Sizes from the demo accounts' real equity (or --equity <USDso>), never from a fixed 1,000 USDso, and checks the
+// size against the pool's minimum order (0.00013 BTC on BTC-PERP).
+import { existsSync, readFileSync } from "node:fs";
+import { SomniaMarkets } from "@somnia-chain/markets-sdk";
+import { BTC_POOL, CHAIN, HIDEKI_ADDRESSES, INDEXER_URL, MARGIN_BANK, readSnapshot } from "@basanos/core";
+import { costBpsVsMark, parseTape, recommendDemoTargetBps, roundTripEquityBps, simulateTape } from "@basanos/core/demo-math";
+import { loadDotEnv, loadRulebook, repoPath, requireAddress, rpcHttp } from "@basanos/core/node";
+import { makePublicClient } from "@basanos/referee";
+import { readBook } from "./actions";
+import { demoEquity, demoSize } from "./sizing";
+
+loadDotEnv();
+const rb = loadRulebook("tokyo-sprint-demo");
+const LEVERAGE = 12;
+const flagAt = process.argv.indexOf("--equity");
+const equityFlag = flagAt >= 0 ? (process.argv[flagAt + 1] ?? "") : null;
+const client = makePublicClient(rpcHttp());
+const markets = new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES });
+const g1aPath = repoPath("docs/evidence/g1a-close.json");
+const entryCost = existsSync(g1aPath) ? Number((JSON.parse(readFileSync(g1aPath, "utf8")) as { entry?: { costBps?: number } }).entry?.costBps ?? 0) : 0;
+const book = await readBook(client);
+const accounts = equityFlag === null ? [requireAddress("ACCOUNT_A_ADDRESS"), requireAddress("ACCOUNT_B_ADDRESS")] : [];
+const snap = await readSnapshot(client, accounts, BTC_POOL);
+let equity: bigint | null;
+try {
+  equity = demoEquity(equityFlag, snap.accounts.map((a) => a.totalEquity));
+} catch (e) {
+  console.log(`FAIL demo-check: ${(e as Error).message}`);
+  process.exit(1);
+}
+if (equity === null) {
+  console.log("FAIL demo-check: accounts A and B hold no equity yet; fund them, or pass --equity <USDso> (for example --equity 150)");
+  process.exit(1);
+}
+const size = demoSize(equity, LEVERAGE, snap.markPrice, rb.market.baseDecimals, book);
+if (size.problem) {
+  console.log(`FAIL demo-check: ${size.problem}`);
+  process.exit(1);
+}
+const qty = size.qty;
+const live: number[] = [];
+for (const isBid of [true, false]) {
+  const q = await markets.client.quotePerpClose({ pool: BTC_POOL, marginBank: MARGIN_BANK, isBid, quantity: qty });
+  if (q.priceable && q.averagePrice !== null && q.fillableSize === q.quantity) live.push(costBpsVsMark(isBid, q.referencePrice, q.averagePrice));
+  else live.push(Number.POSITIVE_INFINITY);
+}
+const oneWay = Math.max(entryCost, ...live);
+if (!Number.isFinite(oneWay)) {
+  console.log(`FAIL demo-check: the book is too thin to fill the demo size ${qty} on both sides (live buy ${live[0]}, live sell ${live[1]}); retry when the book refills, or lower the demo leverage`);
+  process.exit(1);
+}
+const roundTripEq = roundTripEquityBps(oneWay, LEVERAGE);
+const halfTarget = rb.profitTargetBps / 2;
+const tape = parseTape(JSON.parse(readFileSync(repoPath("packages/core/test/fixtures/btc-tape.json"), "utf8")));
+const sim = simulateTape(rb, tape, { leverageX: LEVERAGE, startEquity: equity, lotSize: book.lotSize, entryCostBps: oneWay, exitCostBps: oneWay });
+const costOk = roundTripEq <= halfTarget;
+const tapeOk = sim.long.outcome === "target" || sim.short.outcome === "target";
+console.log(`demo size ${qty} (${LEVERAGE}x on ${equity} wei of equity, ${equityFlag === null ? "the smaller live equity of A and B" : "from --equity"}); one-way cost ${oneWay} bps (g1a entry ${entryCost}, live buy ${live[0]}, live sell ${live[1]})`);
+console.log(`round trip ${roundTripEq} equity bps vs half target ${halfTarget}: ${costOk ? "ok" : "too costly"}`);
+console.log(`tape with costs: long ${sim.long.outcome}, short ${sim.short.outcome}`);
+if (costOk && tapeOk) {
+  console.log("PASS demo-check");
+  process.exit(0);
+}
+console.log(`FAIL demo-check: raise profitTargetBps in rulebooks/tokyo-sprint-demo.json to ${recommendDemoTargetBps(roundTripEq)} and register it`);
+process.exit(1);
+```
+
+- [ ] **Step 5: Type-check (Task 10 runs the check live)**
+Run: `npm run typecheck -w @basanos/bot`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 6: Run the test (the gate)**
+Run: `npm test -w @basanos/bot -- test/sizing.test.ts`
+Expected: PASS — `3 passed`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `fix(bot): demo-check sizes from the accounts' live equity and checks the pool minimum`
