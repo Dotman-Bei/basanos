@@ -1,10 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ORACLE_OFF_LINE, VerdictView, type VerdictData } from "../src/components/VerdictView";
+import { ORACLE_NO_READING_LINE, VerdictView, type VerdictData } from "../src/components/VerdictView";
 
 const E18 = 10n ** 18n;
 const read = (equity: bigint, block: bigint) => ({ blockNumber: block, equityOk: true, equity, lockedCollateral: 0n, positionSize: 0n, markOk: true, markPrice: 74_500n * E18 });
-const data: VerdictData = {
+const base: VerdictData = {
   runId: 4n,
   account: "0x00000000000000000000000000000000000000a1",
   status: 3,
@@ -22,14 +22,18 @@ const data: VerdictData = {
   oracleDone: false,
 };
 
-describe("Price Oracle cross-check copy (cut 2026-11-11)", () => {
-  it("says the cross-check is off and names neither Somnia Agents nor a Somnia Price Oracle reading", () => {
-    const { container } = render(<VerdictView data={data} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />);
-    expect(ORACLE_OFF_LINE).toBe(
-      "Off for this build: the registry can request a Price Oracle reading at each verdict, but our test request on Tokyo testnet finalized Failed because the validators' answers differed and the default Majority consensus needs identical answers. Verdicts do not request one.",
+describe("Price Oracle cross-check line (truth by construction)", () => {
+  it("shows a recorded reading beside the mark", () => {
+    render(
+      <VerdictView data={{ ...base, oraclePrice: 7_373_585n * 10n ** 16n, oracleSources: 6, oracleDone: true }} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />,
     );
-    expect(screen.getByText(ORACLE_OFF_LINE)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Price Oracle cross-check" })).toBeTruthy();
-    expect(container.textContent ?? "").not.toMatch(/Somnia Price Oracle|Somnia Agents/);
+    expect(screen.getByText("73,735.85 (6 sources) vs mark 74,500.00")).toBeTruthy();
+  });
+  it("says no reading was recorded when there is none, and claims nothing else", () => {
+    const { container } = render(<VerdictView data={base} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />);
+    expect(ORACLE_NO_READING_LINE).toBe("No Price Oracle reading was recorded for this verdict.");
+    expect(screen.getByText(ORACLE_NO_READING_LINE)).toBeTruthy();
+    expect(container.textContent ?? "").not.toMatch(/sources\) vs mark|Off for this build/);
   });
 });

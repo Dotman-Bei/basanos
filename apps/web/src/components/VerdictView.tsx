@@ -6,9 +6,8 @@ import { routeHref } from "../routes";
 
 export const TRUST_LINE = "Every certificate is chain-checked at mint; every verdict is replayable.";
 
-/** The Price Oracle cross-check is cut for this build (ORACLE_ENABLED=false): spike:12's request finalized Failed. */
-export const ORACLE_OFF_LINE =
-  "Off for this build: the registry can request a Price Oracle reading at each verdict, but our test request on Tokyo testnet finalized Failed because the validators' answers differed and the default Majority consensus needs identical answers. Verdicts do not request one.";
+/** Shown when a verdict has no recorded Price Oracle reading (the registry asks at each verdict, best-effort, inside try). */
+export const ORACLE_NO_READING_LINE = "No Price Oracle reading was recorded for this verdict.";
 
 export interface VerdictData {
   runId: bigint;
@@ -131,7 +130,7 @@ export function VerdictView(props: { data: VerdictData; replay: Record<"start" |
             <p className="mono">
               {d.oracleDone && d.oracleSources > 0
                 ? `${formatUsdso(d.oraclePrice)} (${d.oracleSources} sources) vs mark ${formatUsdso(d.end.markPrice)}`
-                : ORACLE_OFF_LINE}
+                : ORACLE_NO_READING_LINE}
             </p>
           </section>
         </div>
