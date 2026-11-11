@@ -71,11 +71,19 @@ export function checkEvidence(name: EvidenceName, data: Record<string, unknown> 
       need(isArr(data.depths) && data.depths.length > 0, "no depths measured");
       need(typeof data.maxServedBack === "number", "maxServedBack missing");
       break;
-    case "g1d-oracle":
+    case "g1d-oracle": {
       need(typeof data.requestId === "string", "requestId missing");
-      need(typeof data.finalStatus === "string", "finalStatus missing");
+      need(
+        data.finalStatus === "Success" || data.finalStatus === "Failed" || data.finalStatus === "TimedOut",
+        `finalStatus must be Success, Failed or TimedOut, got ${String(data.finalStatus)} (the outcome was never read)`,
+      );
       need(isArr(data.symbols), "symbols missing");
+      if (data.finalStatus === "Success") {
+        const symbols = isArr(data.symbols) ? (data.symbols as Record<string, unknown>[]) : [];
+        need(symbols.some((s) => Number(s.numSources) > 0), "Success needs at least one symbol with numSources > 0");
+      }
       break;
+    }
     case "r1-indexer":
       need(isArr(data.reads) && data.reads.length === 3, "expected exactly 3 indexer reads");
       break;

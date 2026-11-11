@@ -1,5 +1,15 @@
-import { decodeFunctionResult, encodeFunctionData, parseAbi, zeroAddress, type Address, type Hex } from "viem";
-import { explorerTx, operatorRegistryAbi, priceOracleAbi, type AccountSnapshot } from "@basanos/core";
+import {
+  decodeFunctionResult,
+  encodeFunctionData,
+  getAbiItem,
+  getAddress,
+  parseAbi,
+  toEventSelector,
+  zeroAddress,
+  type Address,
+  type Hex,
+} from "viem";
+import { explorerTx, operatorRegistryAbi, priceOracleAbi, somniaAgentsAbi, type AccountSnapshot } from "@basanos/core";
 
 export interface TxRecord {
   label: string;
@@ -115,4 +125,67 @@ export function ownerTx(
   gas: bigint,
 ): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number } {
   return { to: call.to, data: call.data, value: call.value, gas, nonce };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Price Oracle outcome from SomniaAgents logs. getRequest cannot report it: the platform deletes a request once it
+// finalizes, and getRequest then reverts RequestNotFound (0x4ec726c7). Request 7773100 (2026-11-11) finalized one
+// block after creation, so a getRequest poll only ever saw the revert.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** topic0 of RequestFinalized(uint256 indexed requestId, uint8 status). */
+export const REQUEST_FINALIZED_TOPIC: Hex = toEventSelector(getAbiItem({ abi: somniaAgentsAbi, name: "RequestFinalized" }));
+
+/** topic0 of SomniaAgents' per-validator response event. It is not in the published ABI. Its topics are
+ *  [topic0, requestId, validator] and its data is four words, the last being the validator's execution cost in wei
+ *  (seen on requests 7773100 and 7773101). It carries no result bytes: prices reach only the callback. */
+export const AGENT_RESPONSE_TOPIC: Hex = "0x1b44ed537f0ae64cca44e5a71b06bc838a30bbc5454ffdc2aee3844926264dfd";
+
+export interface AgentLog {
+  topics: readonly Hex[];
+  data: Hex;
+  transactionHash: Hex | null;
+  blockNumber: bigint | null;
+}
+
+export interface ValidatorResponse {
+  validator: Address;
+  executionCostWei: bigint;
+  words: bigint[];
+  tx: Hex | null;
+  block: bigint | null;
+}
+
+export interface OracleOutcome {
+  /** An ORACLE_STATUS name, or "NotFinalized" while no RequestFinalized log for the request has been seen. */
+  finalStatus: string;
+  finalStatusCode: number | null;
+  finalizeTx: Hex | null;
+  finalizeBlock: bigint | null;
+  validatorResponses: ValidatorResponse[];
+}
+
+export function oracleOutcomeFromLogs(logs: readonly AgentLog[], requestId: bigint): OracleOutcome {
+  const out: OracleOutcome = { finalStatus: "NotFinalized", finalStatusCode: null, finalizeTx: null, finalizeBlock: null, validatorResponses: [] };
+  for (const log of logs) {
+    const [t0, t1, t2] = log.topics;
+    if (!t0 || !t1 || BigInt(t1) !== requestId) continue;
+    if (t0.toLowerCase() === REQUEST_FINALIZED_TOPIC.toLowerCase()) {
+      const code = Number(BigInt(log.data));
+      out.finalStatusCode = code;
+      out.finalStatus = ORACLE_STATUS[code] ?? `status ${code}`;
+      out.finalizeTx = log.transactionHash;
+      out.finalizeBlock = log.blockNumber;
+    } else if (t0.toLowerCase() === AGENT_RESPONSE_TOPIC && t2) {
+      const words = (log.data.slice(2).match(/.{64}/g) ?? []).map((w) => BigInt(`0x${w}`));
+      out.validatorResponses.push({
+        validator: getAddress(`0x${t2.slice(26)}`),
+        executionCostWei: words[words.length - 1] ?? 0n,
+        words,
+        tx: log.transactionHash,
+        block: log.blockNumber,
+      });
+    }
+  }
+  return out;
 }

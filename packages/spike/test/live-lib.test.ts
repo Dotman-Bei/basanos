@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { decodeFunctionData, encodeFunctionData, encodeFunctionResult, zeroAddress } from "viem";
+import {
+  decodeFunctionData,
+  encodeAbiParameters,
+  encodeEventTopics,
+  encodeFunctionData,
+  encodeFunctionResult,
+  getAddress,
+  pad,
+  toHex,
+  zeroAddress,
+  type Hex,
+} from "viem";
 import { perpPoolWriteAbi } from "@somnia-chain/markets-sdk";
 import {
   BTC_POOL,
@@ -10,10 +21,14 @@ import {
   PLACE_ORDER_FOR_SELECTOR,
   operatorRegistryAbi,
   priceOracleAbi,
+  somniaAgentsAbi,
 } from "@basanos/core";
 import {
+  AGENT_RESPONSE_TOPIC,
   ORACLE_STATUS,
   decodeOraclePrices,
+  oracleOutcomeFromLogs,
+  type AgentLog,
   grantCall,
   isFlat,
   ownerOrderCall,
@@ -96,5 +111,41 @@ describe("owner-side writes on the viem path", () => {
     expect(parseSendPath(["node", "skeleton-close.ts"])).toBe("viem");
     expect(parseSendPath(["node", "skeleton-close.ts", "--dry-run"])).toBe("viem");
     expect(parseSendPath(["node", "skeleton-close.ts", "--sdk-send"])).toBe("sdk");
+  });
+});
+
+describe("oracle outcome from SomniaAgents logs", () => {
+  const id = 7_773_100n;
+  const finalized = (requestId: bigint, status: number): AgentLog => ({
+    topics: encodeEventTopics({ abi: somniaAgentsAbi, eventName: "RequestFinalized", args: { requestId } }) as Hex[],
+    data: encodeAbiParameters([{ type: "uint8" }], [status]),
+    transactionHash: "0x851a",
+    blockNumber: 47_437_498n,
+  });
+  const response = (requestId: bigint, validator: Hex, cost: bigint): AgentLog => ({
+    topics: [AGENT_RESPONSE_TOPIC, pad(toHex(requestId), { size: 32 }), pad(validator, { size: 32 })],
+    data: encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }, { type: "uint256" }, { type: "uint256" }], [1n, 0n, 0n, cost]),
+    transactionHash: "0x4789",
+    blockNumber: 47_437_498n,
+  });
+  const validator: Hex = "0x92d237dea7eb9d37e1b303da586f4b83956df6ad";
+  it("reads one request's final status and each validator's cost, ignoring other requests", () => {
+    const out = oracleOutcomeFromLogs(
+      [response(id, validator, 166_000_000_000_000n), response(id + 1n, validator, 1n), finalized(id + 1n, 2), finalized(id, 3)],
+      id,
+    );
+    expect(out.finalStatus).toBe("Failed");
+    expect(out.finalStatusCode).toBe(3);
+    expect(out.finalizeTx).toBe("0x851a");
+    expect(out.finalizeBlock).toBe(47_437_498n);
+    expect(out.validatorResponses).toHaveLength(1);
+    expect(out.validatorResponses[0]?.validator).toBe(getAddress(validator));
+    expect(out.validatorResponses[0]?.executionCostWei).toBe(166_000_000_000_000n);
+  });
+  it("reports NotFinalized until the request's RequestFinalized log appears", () => {
+    const out = oracleOutcomeFromLogs([response(id, validator, 5n), finalized(id + 1n, 2)], id);
+    expect(out.finalStatus).toBe("NotFinalized");
+    expect(out.finalizeTx).toBeNull();
+    expect(out.validatorResponses).toHaveLength(1);
   });
 });

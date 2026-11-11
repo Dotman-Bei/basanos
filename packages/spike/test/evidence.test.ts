@@ -34,9 +34,17 @@ describe("checkEvidence", () => {
     expect(checkEvidence("g1a-close", { ...base, ok: false })).toContain("g1a-close: ok is not true (STOP and escalate)");
     expect(checkEvidence("g1a-close", { ...base, finalPositionSize: "13000" })).not.toEqual([]);
   });
-  it("accepts an oracle file whatever the final status, as long as it was recorded", () => {
+  it("accepts a read oracle outcome and rejects Pending or a Success without prices", () => {
     expect(checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "TimedOut", symbols: [] })).toEqual([]);
+    expect(checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "Failed", symbols: [] })).toEqual([]);
+    expect(
+      checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "Success", symbols: [{ symbol: "BTC/USDC:PERP", numSources: 3 }] }),
+    ).toEqual([]);
     expect(checkEvidence("g1d-oracle", { requestId: "7" })).not.toEqual([]);
+    expect(checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "Pending", symbols: [] })).not.toEqual([]);
+    expect(
+      checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "Success", symbols: [{ symbol: "BTC/USDC:PERP", numSources: 0 }] }),
+    ).not.toEqual([]);
   });
   it("needs three indexer reads, a watch with pushes and a tape with more than 100 points", () => {
     expect(checkEvidence("r1-indexer", { reads: [{}, {}, {}] })).toEqual([]);
