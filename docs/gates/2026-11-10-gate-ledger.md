@@ -67,7 +67,7 @@ P1–P3 feed the Nov 11 tripwire (spike:11 needs ACCOUNT_A's voucher and the ref
 | spike:11 | LIVE: the referee closes a voucher account (G1 a, e; the Nov 11 tripwire), `gate_profile: wallet` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK`, `ACCOUNT_A_PK`, A's voucher (P3), STT on both | pending (not this seat) |
 | spike:12 | LIVE: one Price Oracle request on Tokyo testnet (about 0.031 STT), `wallet` | A | orchestrator-pause, **run by the concierge on the user's explicit go (2026-11-11)** | concierge (user consent for spike:12 only) | `REFEREE_PK` + STT | **run**: gate prints `PASS g1d-oracle`. On-chain outcome **Failed** (RequestFinalized status 3), no prices. The evidence file records `Pending` (read-back bug), so it is left uncommitted for the orchestrator (see Evidence) |
 | spike:16 P1 | LIVE: oracle probe P1, one symbol `BTC/USDC:PERP`, 4-argument `createRequest` (Majority), about 0.031 STT (outside the manifest; runbook in spike:16) | A | **run by the concierge on the user's explicit go (2026-11-11, P1 only; P2 needs a separate go)** | concierge | `REFEREE_PK` + STT | **run**: `PASS g1d-probe-p1`. Request 7782661 **Success** (status 2), 2 of 3 validators answered, answers IDENTICAL, BTC/USDC:PERP 73,735.85 (6 sources). Evidence left uncommitted for the orchestrator (see Evidence) |
-| contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | pending (not this seat) |
+| contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | **user go 2026-11-11 ~14:45 WAT (contracts:10 only), STOPPED at the cost check, nothing sent**: build current, dry-run OK (deployer = owner = referee, two rulebook lines, 0.9944666 STT), but `eth_estimateGas` for the deployment = 77,007,457 gas × 6 gwei = **0.462 STT**, above the user's 0.3 STT cap (see Evidence) |
 | referee:10 | LIVE: referee rehearsal (Nov 12), the first real verdicts, `wallet` | A in principle | orchestrator-pause | user + guide | all three burners funded; `REGISTRY_ADDRESS` | pending (not this seat) |
 | ship:3 | LIVE: money shot (one PASS, one FAIL) + `FEATURED_RUN_ID`, `wallet` | A in principle | orchestrator-pause | user + guide | as referee:10 | pending (not this seat) |
 | ship:6 | LIVE: deploy to Vercel + `setBaseUrl`, `deploy` | B (Vercel account) | orchestrator-pause | user + guide | `VERCEL_TOKEN` (C4), `REFEREE_PK` + STT | pending (not this seat) |
@@ -331,3 +331,29 @@ refunded.
 
 **Meaning (per spike:16's plan text):** P1 succeeding means the registry's exact path (`getPrices([oracleSymbol], 18)`
 through the 4-argument `createRequest`) works unchanged; P2 is only for the case where P1 finalized Failed.
+
+### contracts:10: registry deploy. STOPPED at the cost check 2026-11-11 ~14:50 WAT (user's explicit go, contracts:10 only)
+
+Nothing was sent. The referee is unchanged: nonce 4, 0.9944666265982 STT. `.env` is unchanged (no `REGISTRY_ADDRESS`,
+no `ORACLE_ENABLED`), and no `deployments/hideki.json` was written.
+
+- **Step 1 (oracle-symbol fallback):** does not apply. The committed `g1d-oracle.json` has no symbol rows, and P1
+  read BTC/USDC:PERP with 6 sources. Both rulebooks stay on `BTC/USDC:PERP`, unchanged.
+- **`node contracts/script/forge.mjs build`** (Git Bash, forge at `~/.foundry/bin/forge`): exit 0, lint warnings
+  only (`unsafe-typecast`); re-run prints `No files changed, compilation skipped`. Artifact
+  `contracts/out/BasanosRegistry.sol/BasanosRegistry.json` current (cancun, via-IR, 0.8.28).
+- **`npx tsx contracts/script/deploy.ts --dry-run`** (exit 0):
+  ```
+  deployer = owner = referee: 0xE358D82209ea9360F411A041C0200adc385877eb; balance 994466626598200000 wei
+  rulebook tokyo-sprint: id 0x2b322b0cb6730d16799a40cfbd51ecf9c6be76ae9474beccdf0c949050c23223 pool 0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0 target 150bps min 120s limit 1800s oracle BTC/USDC:PERP
+  rulebook tokyo-sprint-demo: id 0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757 pool 0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0 target 50bps min 60s limit 900s oracle BTC/USDC:PERP
+  dry-run: no transaction sent
+  ```
+  Checks passed: deployer = owner = referee, two rulebook lines, balance ≥ 0.5 STT.
+- **Cost check:** `deploy.ts` does not estimate, so the concierge ran a read-only `eth_estimateGas` from the referee's
+  public address (no key). The calldata was the same bytecode plus constructor args `(MARGIN_BANK, SOMNIA_AGENTS,
+  referee, "https://basanos.vercel.app/app/#/cert/")`. Result: bytecode 15,949 bytes, **deploy estimate 77,007,457 gas**,
+  `eth_gasPrice` 6 gwei, so **0.462044742 STT** for the deploy alone, before the two `registerRulebook` txs.
+  This is **above the user's 0.3 STT cap: STOP, live deploy not run.** For comparison, the spike tasks measured
+  ~0.0015 STT per oracle tx. Somnia prices code deposit far above Ethereum: about 4,800 gas per byte here.
+- **Not run:** `deploy.ts` (live), `check-deployment.ts`, the paris fallback.
