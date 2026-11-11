@@ -104,3 +104,18 @@ apply (`symbols: []` — the failed request recorded no per-symbol numSources), 
 OK: deployer = owner = referee 0xE358…77eb, balance ≈ 0.996 STT, two rulebook lines, `dry-run: no transaction sent`.
 
 Status: 43 / 59 done. Ready tasks are human gates only: spike:11 (blocked on B14 / USDso), contracts:10 (held for P1).
+
+## Resume 2026-11-11 (P1 evidence, contracts:10, contracts:12)
+
+| Task | Routed | Commit | Verification |
+|---|---|---|---|
+| P1 evidence (spike:16 runbook) | concierge ran it; orchestrator committed | a952757 | finalStatus Success, answersIdentical true, requestId 7782661, BTC/USDC:PERP numSources 6 |
+| contracts:10 | concierge deployed on guide GO; orchestrator verified | e53e4e9 | `PASS deployment`; receipts re-read: deploy tx success from referee, contract 0xf5d8…9370; both registerRulebook txs success to the registry; runtime 15,197 B (creation 15,949 B, matching the guide's figure), contains setBaseUrl; rulebooks/foundry.toml unchanged |
+| contracts:12 | executor-high / sonnet (main tree) | 32c03da | `PASS verify` re-run (17 immutable slots masked, match true). Explorer attempt failed server-side: "Not available: the explorer cannot answer this request right now" — advisory, not osaka; feedback candidate for ship |
+
+**Plan-bug (contracts:11 — HELD):** its gate needs preview code 0, i.e. account A holds the referee grant and is flat,
+which spike:11 produces; the manifest lacks a `contracts:11 -> spike:11` edge. Confirmed with one read-only run:
+`FAIL r5-preview (code 3 grant missing; registry 0 vs sdk 0)`. The failing evidence file was deleted, not committed.
+contracts:11 stays held until spike:11 lands (blocked on B14 / USDso).
+
+Status: 45 / 59 done. Ready: spike:11 (human gate, B14), contracts:11 (held, needs spike:11).
