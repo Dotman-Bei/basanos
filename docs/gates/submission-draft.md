@@ -99,7 +99,18 @@ The landing plan copies only the frontend kit files the page actually uses (from
 `C:\Users\bamig\Documents\VIBE CODE\Hackathons\.claude\skills\design-taste-frontend`, tasteskill 2.5.0, which ships
 no licence file) and lists each one here. Review the list before the public flip (runsheet B5/B11).
 
-TBD-post-build:landing-third-party-asset-list
+| Repo path | Kit source (tasteskill 2.5.0) | Used by |
+|---|---|---|
+| `packages/design/vendor/system.css` | `assets/system.css` | app + landing |
+| `packages/design/vendor/motion/motion.css` | `assets/motion/motion.css` | app + landing |
+| `packages/design/vendor/motion/motion.js` | `assets/motion/motion.js` | app + landing |
+| `apps/landing/vendor/system.js` | `assets/system.js` | landing |
+| `apps/landing/vendor/layout/layout.css` | `assets/layout/layout.css` | landing (collage hero) |
+| `apps/landing/vendor/layout/layout.js` | `assets/layout/layout.js` | landing |
+| `apps/landing/vendor/layout/demo.css` | `assets/layout/demo.css` | landing (window UI) |
+| `docs/design/frontend.md` | `SKILL.md` (the skill's own instructions, copied verbatim) | the design rules every UI task cites |
+
+The landing's hero markup follows the kit's `assets/layout/hero-collage.html` structure. sha256 of each copy: `packages/design/vendor/manifest.json` and `apps/landing/vendor/manifest.json`. The kit ships no licence file: review before the public flip.
 
 ## Pre-submit checklist (closing pass)
 
