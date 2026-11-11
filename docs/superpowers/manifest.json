@@ -1,15 +1,17 @@
 {
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
-  "push": 1,
-  "note": "Push 1 of 2. Push 2 appends the referee, web, landing and ship plans; it never changes a push-1 task's id, files or gate.",
+  "push": 2,
+  "note": "Push 2 in progress (append-only): referee appended; web, ship and landing follow. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control).",
   "subsystems": [
     "spike",
-    "contracts"
+    "contracts",
+    "referee"
   ],
   "plans": [
     "docs/superpowers/plans/2026-11-10-basanos-spike.md",
-    "docs/superpowers/plans/2026-11-10-basanos-contracts.md"
+    "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
+    "docs/superpowers/plans/2026-11-10-basanos-referee.md"
   ],
   "env": [
     {
@@ -878,6 +880,7 @@
         "contracts:2"
       ],
       "effort": "high",
+      "model_tier": "top",
       "files": {
         "create": [
           "contracts/src/BasanosRegistry.sol",
@@ -1031,6 +1034,7 @@
         "contracts:5"
       ],
       "effort": "medium",
+      "model_tier": "top",
       "files": {
         "create": [],
         "modify": [
@@ -1319,6 +1323,631 @@
       },
       "commit": "docs(evidence): BasanosRegistry runtime bytecode matches the artifact",
       "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:1",
+      "subsystem": "referee",
+      "title": "Core evaluator and MarginBank log classifier",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "spike:1",
+        "spike:3",
+        "spike:4"
+      ],
+      "effort": "high",
+      "files": {
+        "create": [
+          "packages/core/src/evaluate.ts",
+          "packages/core/src/classify.ts"
+        ],
+        "modify": [
+          "packages/core/package.json"
+        ],
+        "test": [
+          "packages/core/test/evaluate.test.ts",
+          "packages/core/test/classify.test.ts"
+        ]
+      },
+      "provides": [
+        "@basanos/core subpath exports \"./*\" -> \"./src/*.ts\" (import \"@basanos/core/evaluate\", \"@basanos/core/classify\", \"@basanos/core/demo-math\")",
+        "type FailRule = \"DailyLoss\" | \"TrailingDrawdown\" | \"MaxExposure\" | \"TimeLimit\" | \"Liquidated\"",
+        "type Verdict = { kind: \"ok\" } | { kind: \"pause\"; reason: \"unpriceable\" } | { kind: \"void\"; reason: \"ForeignMarket\" } | { kind: \"fail\"; rule: FailRule } | { kind: \"target\" }",
+        "interface RunState { startTime: bigint; startEquity: bigint; hwm: bigint; dayStart: bigint; day: bigint }",
+        "interface MarketView { timestamp: bigint; markOk: boolean; markPrice: bigint }",
+        "interface Evaluation { state: RunState; verdict: Verdict; exposureX: number | null }",
+        "initRunState(startTime: bigint, startEquity: bigint): RunState",
+        "notional(size: bigint, mark: bigint, baseDecimals: number): bigint",
+        "evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, market: MarketView): Evaluation",
+        "type LogClass = \"trading\" | \"liquidation\" | \"flow\"",
+        "TRADING_EVENT_SIGNATURES",
+        "LIQUIDATION_EVENT_SIGNATURES",
+        "classifyMarginBankLog(topic0: Hex | undefined): LogClass"
+      ],
+      "requires": [
+        "@basanos/core package with exports \".\" -> src/index.ts and \"./node\" -> src/node.ts",
+        "interface Rulebook",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/evaluate.test.ts test/classify.test.ts",
+        "expect": "PASS — `12 passed`."
+      },
+      "commit": "feat(core): rulebook evaluator and MarginBank log classifier",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:2",
+      "subsystem": "referee",
+      "title": "Tape simulator and the G4 movement proof",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:1",
+        "spike:3",
+        "spike:4",
+        "spike:6",
+        "spike:9"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "packages/core/src/demo-math.ts"
+        ],
+        "modify": [],
+        "test": [
+          "packages/core/test/demo-math.test.ts",
+          "packages/core/test/tape-proof.test.ts"
+        ]
+      },
+      "provides": [
+        "interface TapePoint { block: bigint; ts: bigint; mark: bigint }",
+        "parseTape(raw: unknown): TapePoint[]",
+        "interface SimOptions { leverageX: number; startEquity: bigint; lotSize: bigint; entryCostBps: number; exitCostBps: number }",
+        "interface SimSide { side: \"long\" | \"short\"; outcome: \"target\" | \"fail\" | \"unresolved\"; rule: FailRule | null; atTs: bigint | null }",
+        "simulateTape(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions): { long: SimSide; short: SimSide; quantity: bigint }",
+        "costBpsVsMark(isBid: boolean, reference: bigint, average: bigint): number",
+        "roundTripEquityBps(oneWayCostBps: number, leverageX: number): number",
+        "recommendDemoTargetBps(roundTripEqBps: number): number"
+      ],
+      "requires": [
+        "@basanos/core subpath exports \"./*\" -> \"./src/*.ts\" (import \"@basanos/core/evaluate\", \"@basanos/core/classify\", \"@basanos/core/demo-math\")",
+        "evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, market: MarketView): Evaluation",
+        "initRunState(startTime: bigint, startEquity: bigint): RunState",
+        "type FailRule = \"DailyLoss\" | \"TrailingDrawdown\" | \"MaxExposure\" | \"TimeLimit\" | \"Liquidated\"",
+        "interface Rulebook",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "packages/core/test/fixtures/btc-tape.json (live BTC mark tape: { pool, points: [{ block, ts, mark }] })"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/demo-math.test.ts test/tape-proof.test.ts",
+        "expect": "PASS — `7 passed`."
+      },
+      "commit": "feat(core): tape simulator and G4 movement proof on the live BTC tape",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:3",
+      "subsystem": "referee",
+      "title": "Referee package — tx records, run discovery, evidence store",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "contracts:8"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "packages/referee/package.json",
+          "packages/referee/tsconfig.json",
+          "packages/referee/vitest.config.ts",
+          "packages/referee/src/index.ts",
+          "packages/referee/src/tx.ts",
+          "packages/referee/src/runs.ts",
+          "packages/referee/src/evidence.ts"
+        ],
+        "modify": [],
+        "test": [
+          "packages/referee/test/runs.test.ts",
+          "packages/referee/test/evidence.test.ts"
+        ]
+      },
+      "provides": [
+        "@basanos/referee package (exports \".\" -> src/index.ts)",
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "interface TrackedRun { runId: bigint; account: Address; rulebookId: Hex; rulebook: Rulebook; startTime: bigint; startEquity: bigint; startBlock: bigint }",
+        "rulebookIndex(rbs: readonly Rulebook[]): Map<string, Rulebook>",
+        "readActiveRuns(client: PublicClient, registry: Address, index: Map<string, Rulebook>): Promise<TrackedRun[]>",
+        "RUNS_EVIDENCE = \"docs/evidence/runs.json\"",
+        "jsonSafe(value: unknown): unknown",
+        "evidenceHash(bundle: unknown): Hex",
+        "readRunsEvidence(path?: string): Record<string, { bundle: unknown; evidenceHash: Hex; verdictTx?: unknown }>",
+        "writeRunEvidence(runId: bigint, bundle: Record<string, unknown>, path?: string): Hex",
+        "attachVerdictTx(runId: bigint, tx: TxRecord, path?: string): void"
+      ],
+      "requires": [
+        "@basanos/core package with exports \".\" -> src/index.ts and \"./node\" -> src/node.ts",
+        "repoPath(rel: string): string",
+        "explorerTx(hash: Hex): string",
+        "interface Rulebook",
+        "rulebookId(rb: Rulebook): Hex",
+        "canonicalJson(value: unknown): string",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "basanosRegistryAbi (as const, generated from the forge artifact)"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/referee",
+        "expect": "PASS — `4 passed`."
+      },
+      "commit": "feat(referee): tx records, registry run discovery and evidence store",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:4",
+      "subsystem": "referee",
+      "title": "The decision engine (snapshots and account logs to actions)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:1",
+        "referee:3",
+        "spike:3",
+        "spike:4"
+      ],
+      "effort": "high",
+      "files": {
+        "create": [
+          "packages/referee/src/engine.ts"
+        ],
+        "modify": [
+          "packages/referee/src/index.ts"
+        ],
+        "test": [
+          "packages/referee/test/engine.test.ts"
+        ]
+      },
+      "provides": [
+        "interface BreachRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }",
+        "type Action = { kind: \"fail\"; runId: bigint; account: Address; rule: FailRule; breach: BreachRead } | { kind: \"lock\"; runId: bigint; account: Address } | { kind: \"void\"; runId: bigint; account: Address; reason: \"Flow\" | \"ForeignMarket\"; txHash: Hex | null }",
+        "type RunPhase = \"watching\" | \"acting\" | \"done\"",
+        "interface EngineRun { run: TrackedRun; state: RunState; phase: RunPhase; exposureX: number | null; lastTotal: bigint | null }",
+        "breachRead(snap: Snapshot, acct: AccountSnapshot): BreachRead",
+        "class Engine { paused; track(run): boolean; get(runId): EngineRun | undefined; watchedAccounts(): Address[]; retain(activeRunIds: readonly bigint[]): bigint[]; pause(); resume(); finish(runId); release(runId); onSnapshot(snap): Action[]; onAccountLog(account, topic0, txHash, snap): Action[] }"
+      ],
+      "requires": [
+        "classifyMarginBankLog(topic0: Hex | undefined): LogClass",
+        "evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, market: MarketView): Evaluation",
+        "initRunState(startTime: bigint, startEquity: bigint): RunState",
+        "type FailRule = \"DailyLoss\" | \"TrailingDrawdown\" | \"MaxExposure\" | \"TimeLimit\" | \"Liquidated\"",
+        "interface RunState { startTime: bigint; startEquity: bigint; hwm: bigint; dayStart: bigint; day: bigint }",
+        "interface TrackedRun { runId: bigint; account: Address; rulebookId: Hex; rulebook: Rulebook; startTime: bigint; startEquity: bigint; startBlock: bigint }",
+        "interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }",
+        "interface Snapshot { blockNumber: bigint; timestamp: bigint; pool: Address; markOk: boolean; markPrice: bigint; accounts: AccountSnapshot[] }",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/referee -- test/engine.test.ts",
+        "expect": "PASS — `6 passed`."
+      },
+      "commit": "feat(referee): decision engine for snapshots and account logs",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:5",
+      "subsystem": "referee",
+      "title": "Close protocol (R4) and the PASS-lock prediction",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:3",
+        "referee:4",
+        "spike:6"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/referee/src/close.ts",
+          "packages/referee/src/lock.ts"
+        ],
+        "modify": [
+          "packages/referee/src/index.ts"
+        ],
+        "test": [
+          "packages/referee/test/close.test.ts",
+          "packages/referee/test/lock.test.ts"
+        ]
+      },
+      "provides": [
+        "interface CloseIO { openOrderIds(account: Address): Promise<readonly bigint[]>; cancel(account: Address, orderId: bigint): Promise<TxRecord>; position(account: Address): Promise<{ size: bigint; mark: bigint }>; book(): Promise<BookParams>; placeClose(account: Address, plan: OrderPlan): Promise<TxRecord> }",
+        "interface CloseResult { flat: boolean; finalSize: bigint; attempts: number; txs: TxRecord[]; notes: string[] }",
+        "flatten(io: CloseIO, account: Address): Promise<CloseResult>",
+        "type CloseQuoteLike = { priceable: false } | { priceable: true; isBid: boolean; quantity: bigint; referencePrice: bigint; averagePrice: bigint | null; fillableSize: bigint }",
+        "predictClosedEquity(totalEquity: bigint, quote: CloseQuoteLike, baseDecimals: number): bigint | null",
+        "clearsTarget(predicted: bigint | null, startEquity: bigint, targetBps: number): boolean"
+      ],
+      "requires": [
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "interface OrderPlan { isBid: boolean; quantity: bigint; price: bigint }",
+        "CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]",
+        "planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/referee -- test/close.test.ts test/lock.test.ts",
+        "expect": "PASS — `7 passed`."
+      },
+      "commit": "feat(referee): bounded close protocol and PASS-lock prediction",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:6",
+      "subsystem": "referee",
+      "title": "Registry writer and chain I/O",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:1",
+        "referee:3",
+        "referee:4",
+        "referee:5",
+        "spike:2",
+        "spike:4",
+        "spike:6",
+        "contracts:8"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/referee/src/writer.ts",
+          "packages/referee/src/chain.ts"
+        ],
+        "modify": [
+          "packages/referee/src/index.ts"
+        ],
+        "test": [
+          "packages/referee/test/writer.test.ts"
+        ]
+      },
+      "provides": [
+        "ZERO_HASH: Hex",
+        "ruleIndex(rule: FailRule): number",
+        "voidIndex(reason: \"Flow\" | \"ForeignMarket\"): number",
+        "failArgs(runId: bigint, rule: FailRule, breach: BreachRead, evidenceHash: Hex, closeTxs: readonly Hex[])",
+        "voidArgs(runId: bigint, reason: \"Flow\" | \"ForeignMarket\", txHash: Hex | null, evidenceHash: Hex)",
+        "interface RegistryWriter { recordFail(runId: bigint, rule: FailRule, breach: BreachRead, evidenceHash: Hex, closeTxs: readonly Hex[]): Promise<TxRecord>; recordPass(runId: bigint): Promise<TxRecord>; recordVoid(runId: bigint, reason: \"Flow\" | \"ForeignMarket\", txHash: Hex | null, evidenceHash: Hex): Promise<TxRecord> }",
+        "makePublicClient(url: string): PublicClient",
+        "makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)",
+        "type RefereeWallet = ReturnType<typeof makeRefereeWallet>",
+        "makeRegistryWriter(wallet: RefereeWallet, client: PublicClient, registry: Address, oracleValue: bigint): RegistryWriter",
+        "chainCloseIO(client: PublicClient, wallet: RefereeWallet, pool: Address): CloseIO"
+      ],
+      "requires": [
+        "type FailRule = \"DailyLoss\" | \"TrailingDrawdown\" | \"MaxExposure\" | \"TimeLimit\" | \"Liquidated\"",
+        "interface BreachRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }",
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "interface CloseIO { openOrderIds(account: Address): Promise<readonly bigint[]>; cancel(account: Address, orderId: bigint): Promise<TxRecord>; position(account: Address): Promise<{ size: bigint; mark: bigint }>; book(): Promise<BookParams>; placeClose(account: Address, plan: OrderPlan): Promise<TxRecord> }",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "RULE_NAMES = [\"None\", \"DailyLoss\", \"TrailingDrawdown\", \"MaxExposure\", \"TimeLimit\", \"Liquidated\"]",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_IOC = 2",
+        "farFutureNs(nowMs?: number): bigint",
+        "perpPoolAbi",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/referee -- test/writer.test.ts",
+        "expect": "PASS — `2 passed`."
+      },
+      "commit": "feat(referee): registry writer and on-chain close I/O",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:7",
+      "subsystem": "referee",
+      "title": "Referee daemon and CLI (watches, pause-on-gap, actions)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:3",
+        "referee:4",
+        "referee:5",
+        "referee:6",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:5",
+        "contracts:8"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/referee/src/daemon.ts",
+          "packages/referee/src/cli.ts"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "interface DaemonDeps { client: PublicClient; wss: string; registry: Address; rulebooks: readonly Rulebook[]; closeIO: CloseIO; writer: RegistryWriter; markets: SomniaMarkets; log: (line: string) => void; pollMs?: number }",
+        "runDaemon(d: DaemonDeps): Promise<void>",
+        "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status"
+      ],
+      "requires": [
+        "class Engine { paused; track(run): boolean; get(runId): EngineRun | undefined; watchedAccounts(): Address[]; retain(activeRunIds: readonly bigint[]): bigint[]; pause(); resume(); finish(runId); release(runId); onSnapshot(snap): Action[]; onAccountLog(account, topic0, txHash, snap): Action[] }",
+        "type Action = { kind: \"fail\"; runId: bigint; account: Address; rule: FailRule; breach: BreachRead } | { kind: \"lock\"; runId: bigint; account: Address } | { kind: \"void\"; runId: bigint; account: Address; reason: \"Flow\" | \"ForeignMarket\"; txHash: Hex | null }",
+        "flatten(io: CloseIO, account: Address): Promise<CloseResult>",
+        "predictClosedEquity(totalEquity: bigint, quote: CloseQuoteLike, baseDecimals: number): bigint | null",
+        "clearsTarget(predicted: bigint | null, startEquity: bigint, targetBps: number): boolean",
+        "readActiveRuns(client: PublicClient, registry: Address, index: Map<string, Rulebook>): Promise<TrackedRun[]>",
+        "rulebookIndex(rbs: readonly Rulebook[]): Map<string, Rulebook>",
+        "writeRunEvidence(runId: bigint, bundle: Record<string, unknown>, path?: string): Hex",
+        "attachVerdictTx(runId: bigint, tx: TxRecord, path?: string): void",
+        "interface RegistryWriter { recordFail(runId: bigint, rule: FailRule, breach: BreachRead, evidenceHash: Hex, closeTxs: readonly Hex[]): Promise<TxRecord>; recordPass(runId: bigint): Promise<TxRecord>; recordVoid(runId: bigint, reason: \"Flow\" | \"ForeignMarket\", txHash: Hex | null, evidenceHash: Hex): Promise<TxRecord> }",
+        "makePublicClient(url: string): PublicClient",
+        "makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)",
+        "makeRegistryWriter(wallet: RefereeWallet, client: PublicClient, registry: Address, oracleValue: bigint): RegistryWriter",
+        "chainCloseIO(client: PublicClient, wallet: RefereeWallet, pool: Address): CloseIO",
+        "BTC_POOL",
+        "MARGIN_BANK",
+        "PRICE_FEED_SCHEDULER",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "INDEXER_URL",
+        "HIDEKI_ADDRESSES",
+        "ORACLE_DEPOSIT = 30_900_000_000_000_000n",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "rulebookId(rb: Rulebook): Hex",
+        "snapshotCall(accounts: readonly Address[], pool: Address): { to: Address; data: Hex }",
+        "decodeSnapshot(result: Hex, accounts: readonly Address[], pool: Address): Snapshot",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "startWatch(url: string, filter: WatchFilter, handlers: WatchHandlers, opts?: WatchOptions): WatchHandle",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "rpcWss(env?: NodeJS.ProcessEnv): string",
+        "flag(name: \"ORACLE_ENABLED\", env?: NodeJS.ProcessEnv): boolean",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string }"
+      ],
+      "gate": {
+        "run": "npm run typecheck -w @basanos/referee",
+        "expect": "PASS — exits 0 with no `error TS` lines."
+      },
+      "commit": "feat(referee): watch daemon with pause-on-gap and the referee CLI",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:8",
+      "subsystem": "referee",
+      "title": "Bot package — scripted challenger and demo runner",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:3",
+        "referee:6",
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6",
+        "contracts:8"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/bot/package.json",
+          "packages/bot/tsconfig.json",
+          "packages/bot/vitest.config.ts",
+          "packages/bot/src/actions.ts",
+          "packages/bot/src/bot.ts",
+          "packages/bot/src/demo.ts"
+        ],
+        "modify": [],
+        "test": [
+          "packages/bot/test/actions.test.ts"
+        ]
+      },
+      "provides": [
+        "@basanos/bot package",
+        "interface Preflight { account: Address; stt: bigint; sttOk: boolean; voucherClaimed: boolean; flat: boolean; equity: bigint }",
+        "makeAccountWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)",
+        "makeMarkets(pk: Hex): SomniaMarkets",
+        "preflight(client: PublicClient, markets: SomniaMarkets, account: Address): Promise<Preflight>",
+        "readBook(client: PublicClient): Promise<BookParams>",
+        "ensureGrant(client: PublicClient, markets: SomniaMarkets, owner: Address, referee: Address): Promise<TxRecord | null>",
+        "runIdFromLogs(logs: readonly { address: Address; data: Hex; topics: readonly Hex[] }[], registry: Address): bigint | null",
+        "startRunAs(wallet: AccountWallet, client: PublicClient, registry: Address, rulebookId: Hex): Promise<{ runId: bigint; tx: TxRecord }>",
+        "breachQuantity(currentSize: bigint, equity: bigint, targetX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "openIoc(markets: SomniaMarkets, client: PublicClient, isBid: boolean, quantity: bigint): Promise<TxRecord>",
+        "DEMO_TAKES = \"docs/evidence/demo-takes.json\"",
+        "appendDemoTake(take: Record<string, unknown>, path?: string): number",
+        "CLI: npx tsx packages/bot/src/bot.ts start [--rulebook <name>] [--side short|long] [--leverage 12] | breach [--leverage 16]",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]"
+      ],
+      "requires": [
+        "@basanos/referee package (exports \".\" -> src/index.ts)",
+        "makePublicClient(url: string): PublicClient",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "jsonSafe(value: unknown): unknown",
+        "BTC_POOL",
+        "MARGIN_BANK",
+        "OPERATOR_REGISTRY",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "ORDER_TYPE_IOC = 2",
+        "STT_WRITE_HEADROOM = 600_000_000_000_000_000n",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "INDEXER_URL",
+        "HIDEKI_ADDRESSES",
+        "explorerTx(hash: Hex): string",
+        "perpPoolAbi",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "RULE_NAMES = [\"None\", \"DailyLoss\", \"TrailingDrawdown\", \"MaxExposure\", \"TimeLimit\", \"Liquidated\"]",
+        "rulebookId(rb: Rulebook): Hex",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "alignUp(x: bigint, step: bigint): bigint",
+        "planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "repoPath(rel: string): string",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string }"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/bot",
+        "expect": "PASS — `4 passed`."
+      },
+      "commit": "feat(bot): scripted challenger and demo runner on the shared rulebook",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:9",
+      "subsystem": "referee",
+      "title": "Demo-cost check, rulebook registration and rehearsal check scripts",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:2",
+        "referee:3",
+        "referee:6",
+        "referee:8",
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6",
+        "contracts:8"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "packages/bot/src/demo-check.ts",
+          "packages/referee/src/register-rulebook.ts",
+          "packages/referee/src/check-rehearsal.ts"
+        ],
+        "modify": [],
+        "test": [
+          "packages/referee/test/rehearsal.test.ts"
+        ]
+      },
+      "provides": [
+        "CLI: npx tsx packages/bot/src/demo-check.ts -> PASS demo-check, or FAIL with a recommended demo target",
+        "CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)",
+        "summarizeRehearsal(runs: readonly { runId: bigint; status: number; rule: number; closeTxs: number }[]): { ok: boolean; firstVerdictRunId: bigint | null; problems: string[] }",
+        "CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal"
+      ],
+      "requires": [
+        "parseTape(raw: unknown): TapePoint[]",
+        "simulateTape(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions): { long: SimSide; short: SimSide; quantity: bigint }",
+        "costBpsVsMark(isBid: boolean, reference: bigint, average: bigint): number",
+        "roundTripEquityBps(oneWayCostBps: number, leverageX: number): number",
+        "recommendDemoTargetBps(roundTripEqBps: number): number",
+        "jsonSafe(value: unknown): unknown",
+        "makePublicClient(url: string): PublicClient",
+        "makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)",
+        "readBook(client: PublicClient): Promise<BookParams>",
+        "BTC_POOL",
+        "MARGIN_BANK",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "INDEXER_URL",
+        "HIDEKI_ADDRESSES",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "registerArgs(rb: Rulebook): RegisterArgs",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "RULE_NAMES = [\"None\", \"DailyLoss\", \"TrailingDrawdown\", \"MaxExposure\", \"TimeLimit\", \"Liquidated\"]",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "repoPath(rel: string): string",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string }"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/referee -- test/rehearsal.test.ts",
+        "expect": "PASS — `2 passed`."
+      },
+      "commit": "feat(referee): demo-cost check, rulebook registration and rehearsal check",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:10",
+      "subsystem": "referee",
+      "title": "LIVE — the referee rehearsal (Nov 12): the first real verdict runs",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:7",
+        "referee:8",
+        "referee:9",
+        "contracts:10",
+        "contracts:11",
+        "spike:11"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "docs/evidence/runs.json",
+          "docs/evidence/demo-takes.json",
+          "docs/evidence/rehearsal.json"
+        ],
+        "modify": [
+          "rulebooks/tokyo-sprint-demo.json",
+          "deployments/hideki.json"
+        ],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/rehearsal.json (first real verdict runs: firstVerdictRunId, runs with statusName, ruleName, closeTxs)",
+        "docs/evidence/runs.json (per-run evidence bundles + evidenceHash + verdictTx)",
+        "docs/evidence/demo-takes.json (demo takes with run ids and tx hashes)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]",
+        "CLI: npx tsx packages/bot/src/demo-check.ts -> PASS demo-check, or FAIL with a recommended demo target",
+        "CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)",
+        "CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal",
+        "deployments/hideki.json (registry address, deploy block, rulebook ids)"
+      ],
+      "gate": {
+        "run": "npx tsx packages/referee/src/check-rehearsal.ts",
+        "expect": "PASS — `PASS rehearsal (first verdict run <id>)`."
+      },
+      "commit": "docs(evidence): referee rehearsal — first real Basanos verdicts on Hideki",
+      "human_gate": true,
+      "gate_profile": "wallet",
       "allow_empty": false,
       "status": "pending"
     }
