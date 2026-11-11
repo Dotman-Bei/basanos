@@ -23,7 +23,8 @@ Human-gated tasks: the money shot (wallet), the Vercel deploy and the certificat
   - the demo disclosure: "Both demo accounts are burners operated by the builder: one human-driven, one scripted.";
   - the testnet notice: Somnia Tokyo testnet, paper USDso, no real funds, no payouts, not a financial service.
 - **No task claims a voucher.** Security issues never go into `feedback/`; they go privately to security@dreamdex.io.
-- `site/` is build output (git-ignored); Vercel deploys it as prebuilt static files.
+- `site/basanos/` is build output (git-ignored); Vercel deploys it as prebuilt static files, and the folder name becomes the Vercel project name.
+- The README's `TBD-post-build:*` lines are resolved by the Step 3 gate-concierge closing pass (kit doctrine), not by a task here.
 
 ---
 
@@ -43,12 +44,14 @@ Human-gated tasks: the money shot (wallet), the Vercel deploy and the certificat
 - Create: `packages/ship/src/assemble-site.ts`
 - Create: `packages/ship/src/check-deploy.ts`
 - Create: `packages/ship/src/evidence-index.ts`
+- Create: `packages/ship/src/deploy-vercel.ts`
+- Create: `packages/ship/src/set-base-url.ts`
 - Test: `packages/ship/test/ship.test.ts`
 
 **Depends on:** referee:Task 3, referee:Task 6, spike:Task 1, spike:Task 2, spike:Task 3, contracts:Task 8
 **Effort:** medium
-**Provides:** `TRUST_LINE`, `DEMO_DISCLOSURE`, `TESTNET_NOTICE`, `FORBIDDEN_CLAIMS: readonly string[]`, `interface ReadOut { block: string; equity: string; equityRaw: string; size: string; mark: string }`, `interface FeaturedRun { schema: "basanos.featured/1"; chainId: 50383; registry: Address; runId: string; status: string; rule: string | null; rulebook: { label: string; id: Hex; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number }; account: Address; start: ReadOut; breach: ReadOut | null; end: ReadOut; closeTxs: { hash: Hex; url: string }[]; verdictTx: { hash: Hex; url: string } | null; oracle: { price: string; sources: number } | null; links: { verdict: string; certificate: string | null }; trustLine: string; demoDisclosure: string; testnetNotice: string }`, `buildFeatured(input: FeaturedInput): FeaturedRun`, `FEATURED_PATH = "docs/evidence/featured-run.json"`, `buildPosts(f: FeaturedRun, siteUrl: string | null): string[]`, `moneyShotOk(take: { runs: { status: string }[] }): boolean`, `checkFeedbackText(name: string, text: string): string[]`, `renderEvidenceIndex(items: readonly { title: string; path: string; links: readonly string[] }[]): string`, `CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json`, `CLI: npx tsx packages/ship/src/x-posts.ts -> writes docs/gates/x-posts-draft.md`, `CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot`, `CLI: npx tsx packages/ship/src/check-feedback.ts -> PASS feedback`, `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy`, `CLI: npx tsx packages/ship/src/evidence-index.ts -> writes docs/evidence/INDEX.md`
-**Requires:** `@basanos/referee package (exports "." -> src/index.ts)`, `jsonSafe(value: unknown): unknown`, `readRunsEvidence(path?: string): Record<string, { bundle: unknown; evidenceHash: Hex; verdictTx?: unknown }>`, `makePublicClient(url: string): PublicClient`, `repoPath(rel: string): string`, `loadDotEnv(path?: string): boolean`, `requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`, `rulebookId(rb: Rulebook): Hex`, `explorerTx(hash: Hex): string`, `explorerAddress(address: Address): string`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `RUN_STATUS = ["None", "Active", "Passed", "Failed", "Voided"]`, `RULE_NAMES = ["None", "DailyLoss", "TrailingDrawdown", "MaxExposure", "TimeLimit", "Liquidated"]`
+**Provides:** `TRUST_LINE`, `DEMO_DISCLOSURE`, `TESTNET_NOTICE`, `FORBIDDEN_CLAIMS: readonly string[]`, `interface ReadOut { block: string; equity: string; equityRaw: string; size: string; mark: string }`, `interface FeaturedRun { schema: "basanos.featured/1"; chainId: 50383; registry: Address; runId: string; status: string; rule: string | null; rulebook: { label: string; id: Hex; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number }; account: Address; start: ReadOut; breach: ReadOut | null; end: ReadOut; closeTxs: { hash: Hex; url: string }[]; verdictTx: { hash: Hex; url: string } | null; oracle: { price: string; sources: number } | null; links: { verdict: string; certificate: string | null }; trustLine: string; demoDisclosure: string; testnetNotice: string }`, `buildFeatured(input: FeaturedInput): FeaturedRun`, `FEATURED_PATH = "docs/evidence/featured-run.json"`, `buildPosts(f: FeaturedRun, siteUrl: string | null): string[]`, `moneyShotOk(take: { runs: { status: string }[] }): boolean`, `checkFeedbackText(name: string, text: string): string[]`, `renderEvidenceIndex(items: readonly { title: string; path: string; links: readonly string[] }[]): string`, `CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json`, `CLI: npx tsx packages/ship/src/x-posts.ts -> writes docs/gates/x-posts-draft.md`, `CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot`, `CLI: npx tsx packages/ship/src/check-feedback.ts -> PASS feedback`, `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy`, `CLI: npx tsx packages/ship/src/evidence-index.ts -> writes docs/evidence/INDEX.md`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production, writes deployments/site.json`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, records baseUrlTx`
+**Requires:** `@basanos/referee package (exports "." -> src/index.ts)`, `jsonSafe(value: unknown): unknown`, `readRunsEvidence(path?: string): Record<string, { bundle: unknown; evidenceHash: Hex; verdictTx?: unknown }>`, `makePublicClient(url: string): PublicClient`, `makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `repoPath(rel: string): string`, `loadDotEnv(path?: string): boolean`, `requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`, `rulebookId(rb: Rulebook): Hex`, `explorerTx(hash: Hex): string`, `explorerAddress(address: Address): string`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `RUN_STATUS = ["None", "Active", "Passed", "Failed", "Voided"]`, `RULE_NAMES = ["None", "DailyLoss", "TrailingDrawdown", "MaxExposure", "TimeLimit", "Liquidated"]`
 
 - [ ] **Step 1: Ignore the site build output**
 Append this line to the end of `.gitignore` (keep every existing line):
@@ -378,10 +381,11 @@ export function buildPosts(f: FeaturedRun, siteUrl: string | null): string[] {
   const base = siteUrl ?? "TBD-post-build:vercel-url";
   const verdictUrl = `${base}${f.links.verdict}`;
   const result = f.status === "Passed" ? "PASSED, and the certificate minted" : `${f.status.toUpperCase()}${f.rule ? ` on ${f.rule}` : ""}`;
+  const oracle = f.oracle ? ` and records Somnia's Price Oracle median (${f.oracle.price}) beside the verdict` : "";
   return [
     `Basanos: prop-firm challenges on @DreamDEXSomnia perps. Run ${f.runId} on ${f.rulebook.label}: ${result}. Start equity ${f.start.equity} USDso, end ${f.end.equity}. Replay it: ${verdictUrl}`,
     `How a Basanos verdict works on @DreamDEXSomnia: a published rulebook, a referee key that can close but never withdraw, and an on-chain registry. ${TRUST_LINE}`,
-    `Built on Somnia Tokyo testnet for @DreamDEXSomnia: the referee watches with somnia_watch, closes breaches with real perps orders and asks Somnia's Price Oracle at each verdict. Paper USDso; both demo accounts operated by the builder.`,
+    `Built on Somnia Tokyo testnet for @DreamDEXSomnia: the referee watches with somnia_watch and closes breaches with real perps orders${oracle}. Paper USDso; both demo accounts operated by the builder.`,
   ];
 }
 
@@ -483,11 +487,11 @@ for (const [name, p] of [["landing", landing], ["web", web]] as const) {
     process.exit(1);
   }
 }
-const site = repoPath("site");
+const site = repoPath("site/basanos");
 rmSync(site, { recursive: true, force: true });
 cpSync(landing, site, { recursive: true });
 cpSync(web, `${site}/app`, { recursive: true });
-console.log("assembled site/ (landing at /, app at /app/)");
+console.log("assembled site/basanos (landing at /, app at /app/)");
 process.exit(0);
 ```
 
@@ -551,6 +555,62 @@ if (isMain) {
 }
 ```
 
+`packages/ship/src/deploy-vercel.ts`:
+```ts
+// Deploys the assembled site/basanos to Vercel production with VERCEL_TOKEN from the git-ignored .env, and
+// writes deployments/site.json. Runs from inside site/basanos so no argument holds a path with a space.
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { loadDotEnv, repoPath } from "@basanos/core/node";
+
+loadDotEnv();
+const token = process.env.VERCEL_TOKEN;
+if (!token) {
+  console.error("VERCEL_TOKEN is not set (it comes from the concierge signup gate)");
+  process.exit(1);
+}
+const dir = repoPath("site/basanos");
+if (!existsSync(`${dir}/index.html`)) {
+  console.error("site/basanos is not assembled (run assemble-site.ts first)");
+  process.exit(1);
+}
+const r = spawnSync("npx", ["vercel@65.3.1", "deploy", ".", "--prod", "--yes", "--token", token], { cwd: dir, encoding: "utf8", shell: true });
+const urls = `${r.stdout ?? ""}`.match(/https:\/\/[a-z0-9.-]+\.vercel\.app/g) ?? [];
+const url = urls.at(-1);
+if (r.status !== 0 || !url) {
+  console.error(`vercel deploy failed (exit ${r.status}): ${`${r.stderr ?? ""}`.slice(-600)}`);
+  process.exit(1);
+}
+mkdirSync(dirname(repoPath("deployments/site.json")), { recursive: true });
+writeFileSync(repoPath("deployments/site.json"), `${JSON.stringify({ url, deployedAt: new Date().toISOString(), baseUrlTx: null }, null, 2)}\n`);
+console.log(`deployed ${url}`);
+process.exit(0);
+```
+
+`packages/ship/src/set-base-url.ts`:
+```ts
+// Owner-only (REFEREE_PK): points the certificates' external_url at the live site from deployments/site.json.
+import { readFileSync, writeFileSync } from "node:fs";
+import type { Address } from "viem";
+import { basanosRegistryAbi } from "@basanos/core";
+import { loadDotEnv, repoPath, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { makePublicClient, makeRefereeWallet } from "@basanos/referee";
+
+loadDotEnv();
+const site = JSON.parse(readFileSync(repoPath("deployments/site.json"), "utf8")) as { url: string; deployedAt: string; baseUrlTx: string | null };
+const dep = JSON.parse(readFileSync(repoPath("deployments/hideki.json"), "utf8")) as { registry: Address };
+const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
+const client = makePublicClient(rpcHttp());
+const url = `${site.url}/app/#/cert/`;
+const hash = await wallet.writeContract({ address: dep.registry, abi: basanosRegistryAbi, functionName: "setBaseUrl", args: [url] });
+const receipt = await client.waitForTransactionReceipt({ hash });
+site.baseUrlTx = hash;
+writeFileSync(repoPath("deployments/site.json"), `${JSON.stringify(site, null, 2)}\n`);
+console.log(`setBaseUrl ${receipt.status} ${hash} -> ${url}`);
+process.exit(receipt.status === "success" ? 0 : 1);
+```
+
 - [ ] **Step 6: Run the tests (the gate)**
 Run: `npm test -w @basanos/ship`
 Expected: PASS — `6 passed`.
@@ -592,12 +652,13 @@ Message: `docs(evidence): featured run = the rehearsal's first real verdict`
 - Modify: `docs/evidence/runs.json`
 - Modify: `docs/evidence/featured-run.json`
 - Modify: `apps/landing/src/featured-verdict.json`
+- Modify: `apps/landing/src/img/verdict.png`
 
-**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2
+**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2, landing:Task 4
 **Effort:** medium
 **Model tier:** top
 **Provides:** `money shot take in docs/evidence/demo-takes.json (one PASS, one FAIL)`, `FEATURED_RUN_ID (the money-shot PASS run; set in .env)`
-**Requires:** `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]`, `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json`, `CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot`, `CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json`
+**Requires:** `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]`, `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json`, `CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot`, `CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json`, `CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>`
 
 **Human-gated (wallet).** This signs with `REFEREE_PK`, `ACCOUNT_A_PK` (pasted into the terminal's challenge wallet for the recording) and `ACCOUNT_B_PK`. Top up all three to about 1 STT first. Run it on Nov 14, with demo-studio recording if Step 2.5 runs. No voucher is claimed. If the market is still, the runner's bounded wait aborts the take (spec §5): top up and take again.
 
@@ -618,6 +679,8 @@ Run: `npx tsx packages/ship/src/snapshot-run.ts`
 Expected: `featured run <id>: Passed -> docs/evidence/featured-run.json`.
 Run: `npx tsx apps/landing/scripts/featured-snapshot.ts`
 Expected: `wrote apps/landing/src/featured-verdict.json (run <id>)`.
+Run: `node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>` (the money-shot run id, the registry from `deployments/hideki.json`, `REFEREE_ADDRESS`)
+Expected: `saved …apps\landing\src\img\verdict.png`. The screenshot now shows the money-shot run, so the landing's text and picture describe the same run (spec §11).
 
 - [ ] **Step 4: Stop the referee and check the take (the gate)**
 Stop terminal 1 with Ctrl+C.
@@ -763,6 +826,7 @@ Message: `docs(feedback): reproducible dreamDEX/Somnia items met while building 
 **Files:**
 - Modify: `README.md`
 - Create: `LICENSE`
+- Create: `scripts/check-readme.ps1`
 
 **Depends on:** Task 1, referee:Task 7, referee:Task 8, referee:Task 9, web:Task 2, web:Task 7, contracts:Task 9, landing:Task 5
 **Effort:** medium
@@ -879,7 +943,7 @@ Next: the registry checks every breach on-chain before the close; an on-chain Re
 
 ## License
 
-MIT for the Basanos code (see `LICENSE`). The files under `packages/design/vendor/` and `apps/landing/vendor/` are third-party frontend-kit files (tasteskill 2.5.0), listed in `docs/gates/submission-draft.md`, and are not covered by this licence.
+MIT for the Basanos code (see `LICENSE`). The files under `packages/design/vendor/` and `apps/landing/vendor/`, and `docs/design/frontend.md` (a copy of the design skill's `SKILL.md`), are third-party frontend-kit files (tasteskill 2.5.0), listed in `docs/gates/submission-draft.md`, and are not covered by this licence.
 ````
 
 - [ ] **Step 2: Write `LICENSE`**
@@ -908,15 +972,32 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Files under packages/design/vendor/ and apps/landing/vendor/ are third-party
+Files under packages/design/vendor/ and apps/landing/vendor/, and
+docs/design/frontend.md (a copy of the design skill's SKILL.md), are third-party
 (tasteskill 2.5.0) and are not covered by this licence.
 ```
 
-- [ ] **Step 3: Check the README against the schema (the gate)**
-Run: `powershell -NoProfile -Command "$want = @('# Basanos','## Demo','## What it does','## Quickstart','## Built at dreamDEX Perps Builder Bounty','## How it works','## Tech stack','## Run locally','## Contract addresses','## Who it is for','## X posts','## Roadmap','## License'); $stamp = '<!-- readme-schema: R1-web-app v1 + event-overlay -->'; $lines = Get-Content README.md -Encoding UTF8; $inFence = $false; $got = foreach ($l in $lines) { if ($l -match '^```') { $inFence = -not $inFence } elseif (-not $inFence -and $l -cmatch '^#{1,2} ') { $l } }; $ok = ($got.Count -eq $want.Count); if ($ok) { for ($i = 0; $i -lt $want.Count; $i++) { if ($got[$i] -cne $want[$i]) { $ok = $false } } }; if ($ok -and ($lines[0] -ceq $stamp)) { 'PASS' } else { 'FAIL' }"`
+- [ ] **Step 3: Write the schema check (the kit's conformance check, resolved for this README)**
+
+`scripts/check-readme.ps1`:
+```powershell
+$want = @('# Basanos','## Demo','## What it does','## Quickstart','## Built at dreamDEX Perps Builder Bounty','## How it works','## Tech stack','## Run locally','## Contract addresses','## Who it is for','## X posts','## Roadmap','## License')
+$stamp = '<!-- readme-schema: R1-web-app v1 + event-overlay -->'
+$lines = Get-Content README.md -Encoding UTF8
+$inFence = $false
+$got = foreach ($l in $lines) {
+  if ($l -match '^```') { $inFence = -not $inFence }
+  elseif (-not $inFence -and $l -cmatch '^#{1,2} ') { $l } }
+$ok = ($got.Count -eq $want.Count)
+if ($ok) { for ($i = 0; $i -lt $want.Count; $i++) { if ($got[$i] -cne $want[$i]) { $ok = $false } } }
+if ($ok -and ($lines[0] -ceq $stamp)) { 'PASS' } else { 'FAIL' }
+```
+
+- [ ] **Step 4: Check the README against the schema (the gate)**
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-readme.ps1`
 Expected: PASS — `PASS`.
 
-- [ ] **Step 4: Commit (kernel-performed — no agent runs this)**
+- [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
 Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 
 ---
@@ -930,7 +1011,7 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`
-**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`
+**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production, writes deployments/site.json`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, records baseUrlTx`
 
 **Human-gated (deploy).**
 - **Needs:** a Vercel account and `VERCEL_TOKEN` in `.env`, both from the concierge signup gate. `setBaseUrl` signs with `REFEREE_PK`, the registry owner.
@@ -945,15 +1026,13 @@ Expected: `PASS truth` and `✓ built`.
 
 - [ ] **Step 2: Assemble and deploy**
 Run: `npx tsx packages/ship/src/assemble-site.ts`
-Expected: `assembled site/ (landing at /, app at /app/)`.
-Run: `npx vercel@65.3.1 deploy site --prod --yes --token %VERCEL_TOKEN%` (PowerShell: `--token $env:VERCEL_TOKEN`)
-Expected: the last line is the production URL `https://<project>.vercel.app`.
-Write `deployments/site.json` as `{ "url": "https://<project>.vercel.app", "deployedAt": "<ISO time>", "baseUrlTx": null }`.
+Expected: `assembled site/basanos (landing at /, app at /app/)`.
+Run: `npx tsx packages/ship/src/deploy-vercel.ts`
+Expected: `deployed https://<project>.vercel.app`; it writes `deployments/site.json` with `baseUrlTx: null`.
 
 - [ ] **Step 3: Point the certificates at the live site**
-Run: `node --input-type=module -e "import { readFileSync, writeFileSync } from 'node:fs'; import { basanosRegistryAbi, CHAIN } from '@basanos/core'; import { loadDotEnv, requirePrivateKey, rpcHttp } from '@basanos/core/node'; import { createWalletClient, createPublicClient, http } from 'viem'; import { privateKeyToAccount } from 'viem/accounts'; loadDotEnv(); const site = JSON.parse(readFileSync('deployments/site.json','utf8')); const dep = JSON.parse(readFileSync('deployments/hideki.json','utf8')); const w = createWalletClient({ account: privateKeyToAccount(requirePrivateKey('REFEREE_PK')), chain: CHAIN, transport: http(rpcHttp()) }); const c = createPublicClient({ chain: CHAIN, transport: http(rpcHttp()) }); const hash = await w.writeContract({ address: dep.registry, abi: basanosRegistryAbi, functionName: 'setBaseUrl', args: [site.url + '/app/#/cert/'] }); const r = await c.waitForTransactionReceipt({ hash }); site.baseUrlTx = hash; writeFileSync('deployments/site.json', JSON.stringify(site, null, 2) + '\n'); console.log('setBaseUrl', r.status, hash); process.exit(r.status === 'success' ? 0 : 1)"`
-Expected: `setBaseUrl success 0x…`.
-
+Run: `npx tsx packages/ship/src/set-base-url.ts`
+Expected: `setBaseUrl success 0x… -> https://<project>.vercel.app/app/#/cert/`.
 - [ ] **Step 4: Check the live site (the gate)**
 Run: `npx tsx packages/ship/src/check-deploy.ts`
 Expected: PASS — `PASS deploy (https://<project>.vercel.app)`.

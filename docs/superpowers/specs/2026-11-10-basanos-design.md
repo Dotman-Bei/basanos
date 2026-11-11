@@ -227,9 +227,9 @@ with its own id and labelled "Tokyo Sprint · Demo" on every surface that shows 
 @basanos/bot` starts both challenge accounts on it, opens opposite 12× positions (human long from the
 terminal or by the runner, bot short), and streams both runs. Whichever way BTC drifts by ≈ 0.04%, one
 account reaches the target (PASS after the 60 s minimum) and the other its daily-loss floor (FAIL). A
-PASS still needs real movement; if the market is still, `--exposure-breach` adds bot size past 15× for a
+PASS still needs real movement; if the market is still, `bot.ts breach` adds bot size past 15× for a
 FAIL on demand while the PASS waits. The wait is bounded: if no account has a verdict 10 minutes after
-the positions open, the runner reports "market still — take aborted", sends `--exposure-breach` for the
+the positions open, the runner reports "market still — take aborted", applies the exposure breach to the
 bot (FAIL) and leaves the human run to resolve or hit `TimeLimit` at 900 s; the next take starts after a
 faucet top-up. The skeleton proves the math: the spike records a live 10-minute BTC mark tape and the
 real entry fill against the mark (`docs/evidence/g1a-close.json` → `entry.costBps`), and an evaluator
@@ -439,14 +439,14 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
   `recordPass(runId)`, both with `value = ORACLE_DEPOSIT` when `ORACLE_ENABLED=true`; `recordVoid` for
   flows and foreign markets. **A VOID is recorded only: the referee does not cancel or close on a VOID**
   (no rule was breached; the run is simply not judged). It closes only on a FAIL and on a PASS lock. `evidenceHash = keccak256(canonicalJson(bundle))`; bundles are written to
-  `docs/evidence/runs/<runId>.json`.
+  `docs/evidence/runs.json`, keyed by run id (one fixed file, so verdict tasks can declare it).
 - **CLI:** `basanos-referee start`, `basanos-referee enroll <account> --rulebook <name>` (bring-your-own
   account that already granted the referee, e.g. via dreamDEX Link a Bot), `basanos-referee status`.
 
 ## 9. Bot and demo runner (`@basanos/bot`)
 
 - The bot signs with `ACCOUNT_B_PK` (its own account, no operator): grant the referee place + cancel on
-  the BTC pool, `startRun`, open a short IOC at the demo size, hold; `--exposure-breach` adds size past
+  the BTC pool, `startRun`, open a short IOC at the demo size, hold; `bot.ts breach` adds size past
   15×.
 - `npm run demo -w @basanos/bot`: preflight both accounts (STT ≥ 0.6, voucher present, flat, grants),
   start both runs on `tokyo-sprint-demo`, open opposite 12× positions, stream both runs until both have a
@@ -466,9 +466,9 @@ Routes (hash router): `#/challenge` (terminal), `#/run/:id` (verdict + replay), 
   export button; a fixed "testnet challenge wallet" label. Never in the build or the repo; the web build
   fails if any `VITE_*` variable name ends in `_PK`.
 - **Terminal:** STT and voucher status (faucet link), the start flow (claim voucher if eligible → grant
-  referee → `startRun`, each with its tx link), a BTC-PERP ticket (market IOC and limit), live equity
-  rails (start, target, daily floor, trailing high-water line, exposure), run status, event log with
-  explorer links.
+  referee → `startRun`, each with its tx link), a BTC-PERP ticket (market IOC), live equity rails
+  (start, target, daily floor, trailing high-water line), run status, event log with explorer links.
+  Cut (cut order, recorded 2026-11-11): the limit-order ticket and the exposure rail.
 - **Verdict page:** status, rule, rulebook (name, variant, JSON, id), the start / breach / end reads,
   close tx hashes, oracle reading vs the mark at the verdict, and **Replay**: re-run each stored call at
   its block and show "chain: X — registry: X" or the stored-value fallback (R2); the X share card is

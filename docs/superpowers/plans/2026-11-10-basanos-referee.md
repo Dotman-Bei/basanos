@@ -35,34 +35,18 @@
 
 `nowSec` is the snapshot block's timestamp, never the wall clock (spec §5), so the referee and the registry check time against the same clock.
 
-- [ ] **Step 1: Add the subpath export**
+- [ ] **Step 1: Add the subpath export (add one line, change nothing else)**
 
-Replace `packages/core/package.json` with:
+In `packages/core/package.json`, inside `"exports"`, replace
 ```json
-{
-  "name": "@basanos/core",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
+```
+with
+```json
     "./node": "./src/node.ts",
     "./*": "./src/*.ts"
-  },
-  "scripts": {
-    "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
-  },
-  "dependencies": {
-    "@somnia-chain/markets-sdk": "0.33.0",
-    "viem": "2.57.12"
-  },
-  "devDependencies": {
-    "@types/ws": "8.18.2",
-    "ws": "8.22.0"
-  }
-}
 ```
+Leave every other line as it is, including the `@somnia-chain/markets-sdk` version (the spike's timebox may have moved it to 0.32.1).
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -77,8 +61,9 @@ import { loadRulebook } from "../src/node";
 const E18 = 10n ** 18n;
 const POOL: Address = "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0";
 const OTHER: Address = "0x00000000000000000000000000000000000000aa";
-const T0 = 1_794_268_800n; // 2026-11-11 00:00:00 UTC
-const rb = loadRulebook("tokyo-sprint-demo");
+const T0 = 1_794_268_800n; // 2026-11-10 00:00:00 UTC
+// Thresholds pinned to the registered Tokyo Sprint · Demo values, so a raised demo target (referee Task 10 Step 1) never turns this test red.
+const rb = { ...loadRulebook("tokyo-sprint-demo"), profitTargetBps: 50, dailyLossBps: 50, trailingDrawdownBps: 75, maxExposureX: 15, minDurationSec: 60, timeLimitSec: 900 };
 
 function acct(total: bigint, size = 0n, over: Partial<AccountSnapshot> = {}): AccountSnapshot {
   return {
@@ -327,7 +312,8 @@ import { costBpsVsMark, parseTape, recommendDemoTargetBps, roundTripEquityBps, s
 import { loadRulebook } from "../src/node";
 
 const E18 = 10n ** 18n;
-const rb = loadRulebook("tokyo-sprint-demo");
+// Thresholds pinned to the registered Tokyo Sprint · Demo values, so a raised demo target (referee Task 10 Step 1) never turns this test red.
+const rb = { ...loadRulebook("tokyo-sprint-demo"), profitTargetBps: 50, dailyLossBps: 50, trailingDrawdownBps: 75, maxExposureX: 15, minDurationSec: 60, timeLimitSec: 900 };
 const T0 = 1_794_326_400n;
 const opts = { leverageX: 12, startEquity: 1_000n * E18, lotSize: 1_000n, entryCostBps: 0, exitCostBps: 0 };
 
@@ -385,7 +371,8 @@ describe("G4: the recorded live BTC tape resolves Tokyo Sprint · Demo at 12x (m
   it("resolves at least one of the two opposite accounts", () => {
     const tape = parseTape(JSON.parse(readFileSync(repoPath("packages/core/test/fixtures/btc-tape.json"), "utf8")));
     expect(tape.length).toBeGreaterThan(100);
-    const r = simulateTape(loadRulebook("tokyo-sprint-demo"), tape, {
+    // Thresholds pinned to the registered Tokyo Sprint · Demo values, so a raised demo target (referee Task 10 Step 1) never turns this test red.
+    const r = simulateTape({ ...loadRulebook("tokyo-sprint-demo"), profitTargetBps: 50, dailyLossBps: 50, trailingDrawdownBps: 75, maxExposureX: 15, minDurationSec: 60, timeLimitSec: 900 }, tape, {
       leverageX: 12,
       startEquity: 1_000n * 10n ** 18n,
       lotSize: 1_000n,
@@ -840,7 +827,8 @@ const E18 = 10n ** 18n;
 const POOL: Address = "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0";
 const A: Address = "0x00000000000000000000000000000000000000a1";
 const T0 = 1_794_326_400n;
-const demo = loadRulebook("tokyo-sprint-demo");
+// Thresholds pinned to the registered Tokyo Sprint · Demo values, so a raised demo target (referee Task 10 Step 1) never turns this test red.
+const demo = { ...loadRulebook("tokyo-sprint-demo"), profitTargetBps: 50, dailyLossBps: 50, trailingDrawdownBps: 75, maxExposureX: 15, minDurationSec: 60, timeLimitSec: 900 };
 const run: TrackedRun = { runId: 1n, account: A, rulebookId: rulebookId(demo), rulebook: demo, startTime: T0, startEquity: 1_000n * E18, startBlock: 100n };
 
 function snap(total: bigint, dt: bigint, size = 0n, over: Partial<AccountSnapshot> = {}): Snapshot {
@@ -1785,7 +1773,11 @@ export async function runDaemon(d: DaemonDeps): Promise<void> {
     for (const r of runs) if (engine.track(r)) d.log(`tracking run ${r.runId}: ${r.account} on ${r.rulebook.label}`);
     engine.retain(runs.map((r) => r.runId));
     const key = engine.watchedAccounts().map((a) => a.toLowerCase()).sort().join(",");
-    if (key !== watchedKey) resubscribe();
+    if (key !== watchedKey) {
+      resubscribe();
+      // fresh sockets report reconnects === 0, so a pause from an earlier gap would otherwise never lift
+      if (engine.paused) void resumeAtHead().catch((e: unknown) => d.log(`resume error: ${(e as Error).message}`));
+    }
   };
 
   await refresh();
@@ -2297,11 +2289,15 @@ for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
 process.exit(0);
 ```
 
-- [ ] **Step 6: Run the tests (the gate)**
+- [ ] **Step 6: Type-check the bot (bot.ts and demo.ts first run live in Task 10)**
+Run: `npm run typecheck -w @basanos/bot`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 7: Run the tests (the gate)**
 Run: `npm test -w @basanos/bot`
 Expected: PASS — `4 passed`.
 
-- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
 Message: `feat(bot): scripted challenger and demo runner on the shared rulebook`
 
 ---
@@ -2316,6 +2312,7 @@ Message: `feat(bot): scripted challenger and demo runner on the shared rulebook`
 
 **Depends on:** Task 2, Task 3, Task 6, Task 8, spike:Task 1, spike:Task 2, spike:Task 3, spike:Task 4, spike:Task 6, contracts:Task 8
 **Effort:** medium
+**Model tier:** top
 **Provides:** `CLI: npx tsx packages/bot/src/demo-check.ts -> PASS demo-check, or FAIL with a recommended demo target`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)`, `summarizeRehearsal(runs: readonly { runId: bigint; status: number; rule: number; closeTxs: number }[]): { ok: boolean; firstVerdictRunId: bigint | null; problems: string[] }`, `CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal`
 **Requires:** `parseTape(raw: unknown): TapePoint[]`, `simulateTape(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions): { long: SimSide; short: SimSide; quantity: bigint }`, `costBpsVsMark(isBid: boolean, reference: bigint, average: bigint): number`, `roundTripEquityBps(oneWayCostBps: number, leverageX: number): number`, `recommendDemoTargetBps(roundTripEqBps: number): number`, `jsonSafe(value: unknown): unknown`, `makePublicClient(url: string): PublicClient`, `makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)`, `readBook(client: PublicClient): Promise<BookParams>`, `BTC_POOL`, `MARGIN_BANK`, `CHAIN (hidekiTestnet, id 50383)`, `INDEXER_URL`, `HIDEKI_ADDRESSES`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `registerArgs(rb: Rulebook): RegisterArgs`, `RUN_STATUS = ["None", "Active", "Passed", "Failed", "Voided"]`, `RULE_NAMES = ["None", "DailyLoss", "TrailingDrawdown", "MaxExposure", "TimeLimit", "Liquidated"]`, `quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `repoPath(rel: string): string`, `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`, `RULEBOOK_FILES: { "tokyo-sprint": string; "tokyo-sprint-demo": string }`
 
@@ -2477,6 +2474,10 @@ for (const isBid of [true, false]) {
   else live.push(Number.POSITIVE_INFINITY);
 }
 const oneWay = Math.max(entryCost, ...live);
+if (!Number.isFinite(oneWay)) {
+  console.log(`FAIL demo-check: the book is too thin to fill the demo size ${qty} on both sides (live buy ${live[0]}, live sell ${live[1]}); retry when the book refills, or lower the demo leverage`);
+  process.exit(1);
+}
 const roundTripEq = roundTripEquityBps(oneWay, LEVERAGE);
 const halfTarget = rb.profitTargetBps / 2;
 const tape = parseTape(JSON.parse(readFileSync(repoPath("packages/core/test/fixtures/btc-tape.json"), "utf8")));
@@ -2494,11 +2495,17 @@ console.log(`FAIL demo-check: raise profitTargetBps in rulebooks/tokyo-sprint-de
 process.exit(1);
 ```
 
-- [ ] **Step 4: Run to confirm the test passes (the gate)**
+- [ ] **Step 4: Type-check both packages (the live rehearsal is the first run of these scripts)**
+Run: `npm run typecheck -w @basanos/referee`
+Expected: exits 0 with no `error TS` lines.
+Run: `npm run typecheck -w @basanos/bot`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 5: Run to confirm the test passes (the gate)**
 Run: `npm test -w @basanos/referee -- test/rehearsal.test.ts`
 Expected: PASS — `2 passed`.
 
-- [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
+- [ ] **Step 6: Commit (kernel-performed — no agent runs this)**
 Message: `feat(referee): demo-cost check, rulebook registration and rehearsal check`
 
 ---

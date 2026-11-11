@@ -1852,6 +1852,7 @@
         "contracts:8"
       ],
       "effort": "medium",
+      "model_tier": "top",
       "files": {
         "create": [
           "packages/bot/src/demo-check.ts",
@@ -2007,6 +2008,7 @@
         "spike:2"
       ],
       "effort": "medium",
+      "model_tier": "top",
       "files": {
         "create": [
           "apps/web/package.json",
@@ -2193,6 +2195,7 @@
         "contracts:8"
       ],
       "effort": "high",
+      "model_tier": "top",
       "files": {
         "create": [
           "apps/web/src/hooks/useChain.ts",
@@ -2291,7 +2294,7 @@
       },
       "provides": [
         "TRUST_LINE = \"Every certificate is chain-checked at mint; every verdict is replayable.\"",
-        "interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }",
+        "interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }",
         "VerdictView(props: { data: VerdictData; replay: Record<\"start\" | \"breach\" | \"end\", ReplayRow[] | null>; onReplay: () => void })",
         "decodeTokenUri(uri: string): { name: string; description: string; external_url: string; attributes: { trait_type: string; value: string | number }[] } | null",
         "CertificateView(props: { runId: bigint; holder: Address; uri: string })",
@@ -2401,7 +2404,9 @@
           "packages/ship/src/check-feedback.ts",
           "packages/ship/src/assemble-site.ts",
           "packages/ship/src/check-deploy.ts",
-          "packages/ship/src/evidence-index.ts"
+          "packages/ship/src/evidence-index.ts",
+          "packages/ship/src/deploy-vercel.ts",
+          "packages/ship/src/set-base-url.ts"
         ],
         "modify": [
           ".gitignore"
@@ -2427,15 +2432,19 @@
         "CLI: npx tsx packages/ship/src/x-posts.ts -> writes docs/gates/x-posts-draft.md",
         "CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot",
         "CLI: npx tsx packages/ship/src/check-feedback.ts -> PASS feedback",
-        "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/ (landing at /, app at /app/)",
+        "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)",
         "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy",
-        "CLI: npx tsx packages/ship/src/evidence-index.ts -> writes docs/evidence/INDEX.md"
+        "CLI: npx tsx packages/ship/src/evidence-index.ts -> writes docs/evidence/INDEX.md",
+        "CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production, writes deployments/site.json",
+        "CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, records baseUrlTx"
       ],
       "requires": [
         "@basanos/referee package (exports \".\" -> src/index.ts)",
         "jsonSafe(value: unknown): unknown",
         "readRunsEvidence(path?: string): Record<string, { bundle: unknown; evidenceHash: Hex; verdictTx?: unknown }>",
         "makePublicClient(url: string): PublicClient",
+        "makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
         "repoPath(rel: string): string",
         "loadDotEnv(path?: string): boolean",
         "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
@@ -2501,7 +2510,8 @@
         "referee:7",
         "referee:8",
         "referee:10",
-        "landing:2"
+        "landing:2",
+        "landing:4"
       ],
       "effort": "medium",
       "model_tier": "top",
@@ -2511,7 +2521,8 @@
           "docs/evidence/demo-takes.json",
           "docs/evidence/runs.json",
           "docs/evidence/featured-run.json",
-          "apps/landing/src/featured-verdict.json"
+          "apps/landing/src/featured-verdict.json",
+          "apps/landing/src/img/verdict.png"
         ],
         "test": []
       },
@@ -2524,7 +2535,8 @@
         "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
         "CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json",
         "CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot",
-        "CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json"
+        "CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json",
+        "CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>"
       ],
       "gate": {
         "run": "npx tsx packages/ship/src/check-money-shot.ts",
@@ -2595,7 +2607,8 @@
       "effort": "medium",
       "files": {
         "create": [
-          "LICENSE"
+          "LICENSE",
+          "scripts/check-readme.ps1"
         ],
         "modify": [
           "README.md"
@@ -2614,7 +2627,7 @@
         "landing checkers PASS (consistency, check, perf, shoot at 1440/1024/820/768/390)"
       ],
       "gate": {
-        "run": "powershell -NoProfile -Command \"$want = @('# Basanos','## Demo','## What it does','## Quickstart','## Built at dreamDEX Perps Builder Bounty','## How it works','## Tech stack','## Run locally','## Contract addresses','## Who it is for','## X posts','## Roadmap','## License'); $stamp = '<!-- readme-schema: R1-web-app v1 + event-overlay -->'; $lines = Get-Content README.md -Encoding UTF8; $inFence = $false; $got = foreach ($l in $lines) { if ($l -match '^```') { $inFence = -not $inFence } elseif (-not $inFence -and $l -cmatch '^#{1,2} ') { $l } }; $ok = ($got.Count -eq $want.Count); if ($ok) { for ($i = 0; $i -lt $want.Count; $i++) { if ($got[$i] -cne $want[$i]) { $ok = $false } } }; if ($ok -and ($lines[0] -ceq $stamp)) { 'PASS' } else { 'FAIL' }\"",
+        "run": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-readme.ps1",
         "expect": "PASS — `PASS`."
       },
       "commit": "docs: README (R1-web-app v1 + event overlay) and MIT licence",
@@ -2651,11 +2664,13 @@
         "public site: landing at /, app at /app/"
       ],
       "requires": [
-        "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/ (landing at /, app at /app/)",
+        "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)",
         "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy",
         "CLI: npm run build -w @basanos/web (check-env, then vite build)",
         "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
-        "deployments/hideki.json (registry address, deploy block, rulebook ids)"
+        "deployments/hideki.json (registry address, deploy block, rulebook ids)",
+        "CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production, writes deployments/site.json",
+        "CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, records baseUrlTx"
       ],
       "gate": {
         "run": "npx tsx packages/ship/src/check-deploy.ts",
@@ -2931,14 +2946,14 @@
         "test": []
       },
       "provides": [
-        "docs/gates/submission-draft.md third-party assets list (seven kit files with paths and sha256)"
+        "docs/gates/submission-draft.md third-party assets list (seven kit files with paths and sha256, plus docs/design/frontend.md)"
       ],
       "requires": [
         "apps/landing/vendor/manifest.json (four landing kit files with sha256)",
         "packages/design/vendor/manifest.json (kit path, tasteskill version, sha256 per vendored file)"
       ],
       "gate": {
-        "run": "node -e \"const t=require('fs').readFileSync('docs/gates/submission-draft.md','utf8'); const need=['packages/design/vendor/system.css','apps/landing/vendor/layout/demo.css','hero-collage.html']; const miss=need.filter(n=>!t.includes(n)); if(miss.length||t.includes('TBD-post-build:landing-third-party-asset-list')){console.log('FAIL', miss); process.exit(1)} console.log('PASS third-party list')\"",
+        "run": "node -e \"const t=require('fs').readFileSync('docs/gates/submission-draft.md','utf8'); const need=['packages/design/vendor/system.css','apps/landing/vendor/layout/demo.css','hero-collage.html','docs/design/frontend.md']; const miss=need.filter(n=>!t.includes(n)); if(miss.length||t.includes('TBD-post-build:landing-third-party-asset-list')){console.log('FAIL', miss); process.exit(1)} console.log('PASS third-party list')\"",
         "expect": "PASS — `PASS third-party list`."
       },
       "commit": "docs(gates): list the third-party frontend-kit files in the submission draft",

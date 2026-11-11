@@ -182,6 +182,7 @@ Message: `feat(design): vendor three frontend-kit files and the dealt Basanos to
 
 **Depends on:** Task 1, spike:Task 2
 **Effort:** medium
+**Model tier:** top
 **Provides:** `@basanos/web package (Vite base "/app/", hash routes)`, `type Route = { name: "home" } | { name: "challenge" } | { name: "run"; runId: bigint } | { name: "cert"; runId: bigint }`, `parseRoute(hash: string): Route`, `routeHref(r: Route): string`, `useRoute(): Route`, `REGISTRY: Address | null`, `REFEREE: Address | null`, `findSecretVars(env: Record<string, string | undefined>, envFileText: string): string[]`, `apps/web/src/app.css (app layout on the dealt tokens)`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`
 **Requires:** `@basanos/design package (exports "./tokens.css", "./system.css", "./motion.css", "./motion.js")`, `CHAIN (hidekiTestnet, id 50383)`
 
@@ -251,6 +252,7 @@ export default defineConfig({
   build: { outDir: "dist", emptyOutDir: true },
   test: {
     environment: "jsdom",
+    globals: true,
     include: ["test/**/*.test.{ts,tsx}"],
     testTimeout: 20_000,
   },
@@ -462,7 +464,7 @@ export function Header() {
             Verdicts
           </a>
         </nav>
-        <a className="btn btn--primary" href={routeHref({ name: "challenge" })}>
+        <a className="btn btn--secondary" href={routeHref({ name: "challenge" })}>
           Take a challenge
         </a>
       </div>
@@ -823,8 +825,10 @@ describe("rulebooks", () => {
 
 describe("computeRails", () => {
   it("places the target, daily floor and trailing floor for the demo rulebook", () => {
-    const demo = RULEBOOKS[1];
-    if (!demo) throw new Error("demo rulebook missing");
+    const loaded = RULEBOOKS[1];
+    if (!loaded) throw new Error("demo rulebook missing");
+    // thresholds pinned, so a raised demo target (referee Task 10 Step 1) never turns this test red
+    const demo = { ...loaded, profitTargetBps: 50, dailyLossBps: 50, trailingDrawdownBps: 75 };
     const state = { ...initRunState(0n, 1_000n * E18), hwm: 1_004n * E18 };
     expect(computeRails(demo, state)).toEqual({
       start: 1_000n * E18,
@@ -1032,12 +1036,14 @@ Message: `feat(web): formatting, equity rails and verdict replay libraries`
 
 **Depends on:** Task 2, Task 3, Task 4, spike:Task 2, spike:Task 3, spike:Task 4, spike:Task 6, referee:Task 1, contracts:Task 8
 **Effort:** high
+**Model tier:** top
 **Provides:** `useAccountSnapshot(address: Address | null): Snapshot | null`, `useActiveRun(account: Address | null): { runId: bigint; run: RegistryRun } | null`, `WalletPanel(props: { store: KeyStore; onChange: (key: Hex | null) => void })`, `StartFlow(props: { claimed: boolean; granted: boolean; running: boolean; busy: boolean; onClaim: () => void; onGrant: () => void; onStart: (rulebookId: Hex) => void })`, `Ticket(props: { equity: bigint; mark: bigint; busy: boolean; onOrder: (isBid: boolean, quantity: bigint) => void })`, `RailsChart(props: { rails: Rails; points: readonly bigint[] })`, `Terminal()`
 **Requires:** `interface KeyStore { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void }`, `loadKey(store: KeyStore): Hex | null`, `createKey(store: KeyStore, gen?: () => Hex): Hex`, `importKey(store: KeyStore, raw: string): Hex`, `forgetKey(store: KeyStore): void`, `addressOf(key: Hex): Address`, `voucherAbi`, `claimVoucherCall(): ContractCall`, `grantRefereeCall(referee: Address): ContractCall`, `startRunCall(registry: Address, account: Address, rulebookId: Hex): ContractCall`, `placeOrderCall(isBid: boolean, price: bigint, quantity: bigint, orderType: number): ContractCall`, `browserClient(): PublicClient`, `sendCall(key: Hex, call: ContractCall): Promise<{ hash: Hex; status: "success" | "reverted" }>`, `formatUsdso(raw: bigint, decimals?: number): string`, `shortHash(h: string): string`, `interface Rails { start: bigint; target: bigint; dailyFloor: bigint; trailingFloor: bigint }`, `computeRails(rb: Rulebook, state: RunState): Rails`, `RULEBOOKS: readonly Rulebook[]`, `rulebookById(id: Hex): Rulebook | null`, `REGISTRY: Address | null`, `REFEREE: Address | null`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `iocPrice(isBid: boolean, mark: bigint, tickSize: bigint, slippageBps: number): bigint`, `quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`, `BTC_POOL`, `VOUCHER_DISTRIBUTOR`, `PLACE_ORDER_FOR_SELECTOR`, `CANCEL_ORDER_FOR_SELECTOR`, `ORDER_TYPE_IOC = 2`, `explorerTx(hash: Hex): string`, `perpPoolAbi`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `rulebookId(rb: Rulebook): Hex`, `interface Snapshot { blockNumber: bigint; timestamp: bigint; pool: Address; markOk: boolean; markPrice: bigint; accounts: AccountSnapshot[] }`, `initRunState(startTime: bigint, startEquity: bigint): RunState`, `routeHref(r: Route): string`
 
 Applies `docs/design/frontend.md`, software kind, app view:
 - **Grid and type:** the 12-column grid (`.app-grid`); panels on `--p-surface` with a 1px line; labels 13px/500; figures in the display face.
-- **Buttons:** one filled `.btn--primary` per view, namely the next step of the start flow or "Place order".
+- **Buttons:** one filled `.btn--primary` per view, namely the next step of the start flow or "Buy / long". The header's "Take a challenge" is a `.btn--secondary`, so a page's own primary stays the only filled button.
+- **Cut from the spec §10 terminal list (cut order, stated here):** the limit-order ticket and the exposure rail.
 - **Wallet and claim:** the wallet panel always shows the fixed label "Testnet challenge wallet". The claim button fires only on a click.
 
 - [ ] **Step 1: Write the failing test**
@@ -1395,7 +1401,7 @@ export function RailsChart(props: { rails: Rails; points: readonly bigint[] }) {
 ```tsx
 import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
-import { BTC_POOL, ORDER_TYPE_IOC, PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR, VOUCHER_DISTRIBUTOR, explorerTx, iocPrice, perpPoolAbi } from "@basanos/core";
+import { BTC_POOL, CANCEL_ORDER_FOR_SELECTOR, ORDER_TYPE_IOC, PLACE_ORDER_FOR_SELECTOR, VOUCHER_DISTRIBUTOR, explorerTx, iocPrice, perpPoolAbi } from "@basanos/core";
 import { initRunState } from "@basanos/core/evaluate";
 import { claimVoucherCall, grantRefereeCall, placeOrderCall, startRunCall, voucherAbi } from "../chain/calls";
 import { browserClient, sendCall } from "../chain/client";
@@ -1411,13 +1417,18 @@ import { rulebookById } from "../lib/rulebooks";
 import { routeHref } from "../routes";
 import { addressOf, loadKey } from "../wallet/challengeWallet";
 
+const FAUCET = "https://explorer.testnet.somnia.network/tokyo/faucet";
+
 export function Terminal() {
+  const registry = REGISTRY;
+  const referee = REFEREE;
   const [key, setKey] = useState<Hex | null>(() => loadKey(window.sessionStorage));
   const address: Address | null = key ? addressOf(key) : null;
   const snap = useAccountSnapshot(address);
   const active = useActiveRun(address);
   const [claimed, setClaimed] = useState(false);
   const [granted, setGranted] = useState(false);
+  const [stt, setStt] = useState<bigint | null>(null);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<{ label: string; hash: Hex; status: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1425,19 +1436,21 @@ export function Terminal() {
   const acct = snap?.accounts[0];
 
   useEffect(() => {
-    if (!address || !REFEREE) return;
+    if (!address || !referee) return;
     const c = browserClient();
     void Promise.all([
       c.readContract({ address: VOUCHER_DISTRIBUTOR, abi: voucherAbi, functionName: "isClaimed", args: [address] }),
-      c.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [address, REFEREE, PLACE_ORDER_FOR_SELECTOR] }),
-      c.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [address, REFEREE, CANCEL_ORDER_FOR_SELECTOR] }),
+      c.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [address, referee, PLACE_ORDER_FOR_SELECTOR] }),
+      c.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [address, referee, CANCEL_ORDER_FOR_SELECTOR] }),
+      c.getBalance({ address }),
     ])
-      .then(([cl, p, x]) => {
+      .then(([cl, p, x, bal]) => {
         setClaimed(cl);
         setGranted(p && x);
+        setStt(bal);
       })
       .catch(() => undefined);
-  }, [address, log.length]);
+  }, [address, referee, log.length]);
 
   useEffect(() => {
     if (acct?.equityOk && active) setPoints((ps) => [...ps.slice(-299), acct.totalEquity]);
@@ -1465,19 +1478,19 @@ export function Terminal() {
   return (
     <div className="wrap">
       <h1 className="figure">Challenge terminal</h1>
-      {!REGISTRY || !REFEREE ? <p className="error">This build has no registry or referee address set.</p> : null}
+      {!registry || !referee ? <p className="error">This build has no registry or referee address set.</p> : null}
       <div className="app-grid">
         <div className="app-col-4">
           <WalletPanel store={window.sessionStorage} onChange={setKey} />
-          {key && REGISTRY && address ? (
+          {key && registry && referee && address ? (
             <StartFlow
               claimed={claimed}
               granted={granted}
               running={active !== null}
               busy={busy}
               onClaim={() => void run("claim paper USDso", () => sendCall(key, claimVoucherCall()))}
-              onGrant={() => REFEREE && void run("grant the referee", () => sendCall(key, grantRefereeCall(REFEREE)))}
-              onStart={(id) => void run("start the run", () => sendCall(key, startRunCall(REGISTRY, address, id)))}
+              onGrant={() => void run("grant the referee", () => sendCall(key, grantRefereeCall(referee)))}
+              onStart={(id) => void run("start the run", () => sendCall(key, startRunCall(registry, address, id)))}
             />
           ) : null}
           {key && active && snap && acct ? (
@@ -1499,6 +1512,15 @@ export function Terminal() {
             <dl className="kv">
               <dt>Equity</dt>
               <dd className="figure">{acct?.equityOk ? `${formatUsdso(acct.totalEquity)} USDso` : "—"}</dd>
+              <dt>STT for gas</dt>
+              <dd>
+                {stt === null ? "—" : `${formatUsdso(stt)} STT`}{" "}
+                <a className="link" href={FAUCET} target="_blank" rel="noreferrer">
+                  Tokyo faucet
+                </a>
+              </dd>
+              <dt>Paper USDso voucher</dt>
+              <dd>{address ? (claimed ? "claimed" : "not claimed (one claim per address)") : "—"}</dd>
               <dt>Run</dt>
               <dd>
                 {active ? (
@@ -1559,7 +1581,7 @@ Message: `feat(web): challenge terminal — wallet, start flow, ticket and equit
 
 **Depends on:** Task 2, Task 3, Task 4, Task 5, spike:Task 2, contracts:Task 8
 **Effort:** medium
-**Provides:** `TRUST_LINE = "Every certificate is chain-checked at mint; every verdict is replayable."`, `interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }`, `VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void })`, `decodeTokenUri(uri: string): { name: string; description: string; external_url: string; attributes: { trait_type: string; value: string | number }[] } | null`, `CertificateView(props: { runId: bigint; holder: Address; uri: string })`, `VerdictPage(props: { runId: bigint })`, `CertificatePage(props: { runId: bigint })`
+**Provides:** `TRUST_LINE = "Every certificate is chain-checked at mint; every verdict is replayable."`, `interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }`, `VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void })`, `decodeTokenUri(uri: string): { name: string; description: string; external_url: string; attributes: { trait_type: string; value: string | number }[] } | null`, `CertificateView(props: { runId: bigint; holder: Address; uri: string })`, `VerdictPage(props: { runId: bigint })`, `CertificatePage(props: { runId: bigint })`
 **Requires:** `interface StoredRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }`, `interface ReplayRow { field: "equity" | "lockedCollateral" | "positionSize" | "markPrice"; call: string; stored: bigint; chain: bigint | null; match: "exact" | "within-tolerance" | "differs" | "not-served" }`, `replayRead(client: PublicClient, account: Address, pool: Address, stored: StoredRead): Promise<ReplayRow[]>`, `formatUsdso(raw: bigint, decimals?: number): string`, `shortHash(h: string): string`, `rulebookById(id: Hex): Rulebook | null`, `browserClient(): PublicClient`, `REGISTRY: Address | null`, `RUN_STATUS = ["None", "Active", "Passed", "Failed", "Voided"]`, `RULE_NAMES = ["None", "DailyLoss", "TrailingDrawdown", "MaxExposure", "TimeLimit", "Liquidated"]`, `VOID_REASONS = ["None", "Flow", "ForeignMarket", "GrantRevoked"]`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `explorerTx(hash: Hex): string`, `routeHref(r: Route): string`
 
 The verdict page is public and shareable; the X posts link to it. It leads with the verdict and the certificate (G6), and it states the trust line verbatim. Rows the registry read itself are labelled "read by the registry in the transaction". The breach rows are labelled "attested by the referee". A row past the RPC's history shows the stored value as "stored on-chain; state no longer served by the public RPC" (R2).
@@ -1583,6 +1605,7 @@ const data: VerdictData = {
   voidReason: 0,
   rulebookLabel: "Tokyo Sprint · Demo",
   rulebookId: `0x${"11".repeat(32)}`,
+  rulebookJson: null,
   start: read(1_000n * E18, 100n),
   breach: read(994n * E18, 160n),
   end: read(993n * E18, 165n),
@@ -1658,6 +1681,7 @@ export interface VerdictData {
   voidReason: number;
   rulebookLabel: string;
   rulebookId: Hex;
+  rulebookJson: string | null;
   start: StoredRead;
   breach: StoredRead;
   end: StoredRead;
@@ -1744,6 +1768,12 @@ export function VerdictView(props: { data: VerdictData; replay: Record<"start" |
             <p className="mono">{d.account}</p>
             <h2 className="label">Rulebook id</h2>
             <p className="mono">{d.rulebookId}</p>
+            {d.rulebookJson ? (
+              <details>
+                <summary className="label">Rulebook JSON (its id is the keccak256 of this canonical JSON)</summary>
+                <pre className="mono">{d.rulebookJson}</pre>
+              </details>
+            ) : null}
           </section>
           {d.closeTxs.length > 0 ? (
             <section className="panel">
@@ -1855,6 +1885,10 @@ export function VerdictPage(props: { runId: bigint }) {
           voidReason: run.voidReason,
           rulebookLabel: rulebookById(run.rulebookId)?.label ?? "Unpublished rulebook",
           rulebookId: run.rulebookId,
+          rulebookJson: (() => {
+            const rb = rulebookById(run.rulebookId);
+            return rb ? JSON.stringify(rb, null, 2) : null;
+          })(),
           start: run.start,
           breach: run.breach,
           end: run.end,
@@ -2034,7 +2068,7 @@ export function Header() {
             Verdicts
           </a>
         </nav>
-        <a className="btn btn--primary" href={routeHref({ name: "challenge" })}>
+        <a className="btn btn--secondary" href={routeHref({ name: "challenge" })}>
           Take a challenge
         </a>
       </div>

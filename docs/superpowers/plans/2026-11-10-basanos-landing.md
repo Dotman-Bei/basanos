@@ -289,7 +289,7 @@ export function findUnbacked(html: string, f: FeaturedLike): string[] {
   const has = (s: string) => allowed.some((a) => a.includes(s.toLowerCase()));
   const problems: string[] = [];
   for (const m of html.matchAll(/0x[0-9a-fA-F]{4,}/g)) if (!has(m[0])) problems.push(`hash ${m[0]}`);
-  for (const m of html.matchAll(/\b\d{1,3}(?:,\d{3})*\.\d{2}\b/g)) if (!has(m[0])) problems.push(`figure ${m[0]}`);
+  for (const m of html.matchAll(/\b\d{1,3}(?:,\d{3})*\.\d{2}\b(?!%)/g)) if (!has(m[0])) problems.push(`figure ${m[0]}`);
   for (const m of html.matchAll(/\b\d{7,}\b/g)) if (!has(m[0])) problems.push(`block ${m[0]}`);
   for (const m of html.matchAll(/\bRun (\d+)\b/g)) if (m[1] !== f.runId) problems.push(`run ${m[1]}`);
   return [...new Set(problems)];
@@ -453,7 +453,7 @@ Expected: FAIL — `ENOENT … src/page.html`.
     <div class="wrap"><div class="hero-text grid hero__grid">
       <div class="hero__text span-5">
         <h1 id="hero-h">Prop-firm challenges for dreamDEX perps traders</h1>
-        <p class="hero__lead">Take a published rulebook on your perps account. A referee closes it on a breach, and the verdict lands on-chain, with a certificate on a pass.</p>
+        <p class="hero__lead">Take a published rulebook on your perps account. A referee closes it on a breach, and the verdict lands on-chain, with a certificate on a pass. {{trustLine}}</p>
         <div class="btn-row"><a class="btn btn--primary" href="/app/#/challenge">Take a challenge</a><a class="btn btn--secondary" href="{{verdictHref}}">Replay a real verdict</a></div>
         <p class="hero__proof">Run {{runId}} on {{label}}: {{headline}} at block {{endBlock}}, Somnia Tokyo testnet.</p>
       </div>
@@ -757,7 +757,7 @@ Message: `feat(landing): the kit's consistency, layout, perf and screenshot chec
 
 **Depends on:** Task 1, web:Task 1
 **Effort:** low
-**Provides:** `docs/gates/submission-draft.md third-party assets list (seven kit files with paths and sha256)`
+**Provides:** `docs/gates/submission-draft.md third-party assets list (seven kit files with paths and sha256, plus docs/design/frontend.md)`
 **Requires:** `apps/landing/vendor/manifest.json (four landing kit files with sha256)`, `packages/design/vendor/manifest.json (kit path, tasteskill version, sha256 per vendored file)`
 
 The directive says to list every copied kit file under third-party assets. This replaces the draft's `TBD-post-build:landing-third-party-asset-list` line.
@@ -774,12 +774,13 @@ In `docs/gates/submission-draft.md`, under `## Third-party assets`, replace the 
 | `apps/landing/vendor/layout/layout.css` | `assets/layout/layout.css` | landing (collage hero) |
 | `apps/landing/vendor/layout/layout.js` | `assets/layout/layout.js` | landing |
 | `apps/landing/vendor/layout/demo.css` | `assets/layout/demo.css` | landing (window UI) |
+| `docs/design/frontend.md` | `SKILL.md` (the skill's own instructions, copied verbatim) | the design rules every UI task cites |
 
 The landing's hero markup follows the kit's `assets/layout/hero-collage.html` structure. sha256 of each copy: `packages/design/vendor/manifest.json` and `apps/landing/vendor/manifest.json`. The kit ships no licence file: review before the public flip.
 ```
 
 - [ ] **Step 2: Check the list (the gate)**
-Run: `node -e "const t=require('fs').readFileSync('docs/gates/submission-draft.md','utf8'); const need=['packages/design/vendor/system.css','apps/landing/vendor/layout/demo.css','hero-collage.html']; const miss=need.filter(n=>!t.includes(n)); if(miss.length||t.includes('TBD-post-build:landing-third-party-asset-list')){console.log('FAIL', miss); process.exit(1)} console.log('PASS third-party list')"`
+Run: `node -e "const t=require('fs').readFileSync('docs/gates/submission-draft.md','utf8'); const need=['packages/design/vendor/system.css','apps/landing/vendor/layout/demo.css','hero-collage.html','docs/design/frontend.md']; const miss=need.filter(n=>!t.includes(n)); if(miss.length||t.includes('TBD-post-build:landing-third-party-asset-list')){console.log('FAIL', miss); process.exit(1)} console.log('PASS third-party list')"`
 Expected: PASS — `PASS third-party list`.
 
 - [ ] **Step 3: Commit (kernel-performed — no agent runs this)**
