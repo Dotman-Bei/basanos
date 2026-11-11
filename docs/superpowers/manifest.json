@@ -2,16 +2,18 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 in progress (append-only): referee appended; web, ship and landing follow. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control).",
+  "note": "Push 2 in progress (append-only): referee and web appended; ship and landing follow. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control).",
   "subsystems": [
     "spike",
     "contracts",
-    "referee"
+    "referee",
+    "web"
   ],
   "plans": [
     "docs/superpowers/plans/2026-11-10-basanos-spike.md",
     "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
-    "docs/superpowers/plans/2026-11-10-basanos-referee.md"
+    "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+    "docs/superpowers/plans/2026-11-10-basanos-web.md"
   ],
   "env": [
     {
@@ -1948,6 +1950,423 @@
       "commit": "docs(evidence): referee rehearsal — first real Basanos verdicts on Hideki",
       "human_gate": true,
       "gate_profile": "wallet",
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "web:1",
+      "subsystem": "web",
+      "title": "`@basanos/design` — vendored kit files and the dealt tokens",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "spike:1"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "packages/design/package.json",
+          "packages/design/tokens.css",
+          "packages/design/scripts/sync-kit.mjs",
+          "packages/design/scripts/check-kit.mjs",
+          "packages/design/vendor/system.css",
+          "packages/design/vendor/motion/motion.css",
+          "packages/design/vendor/motion/motion.js",
+          "packages/design/vendor/manifest.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "@basanos/design package (exports \"./tokens.css\", \"./system.css\", \"./motion.css\", \"./motion.js\")",
+        "packages/design/vendor/manifest.json (kit path, tasteskill version, sha256 per vendored file)",
+        "dealt tokens: --p-bg #dedad3, --p-surface #d3cec6, --p-ink #0a0a0a, --p-muted #55514c, --p-accent #256f82, IBM Plex Sans / IBM Plex Mono, data-radius=\"sharp\", data-buttons=\"solid\""
+      ],
+      "requires": [
+        "npm workspaces root (packages/*, apps/*)"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/design",
+        "expect": "PASS — `PASS design kit`."
+      },
+      "commit": "feat(design): vendor three frontend-kit files and the dealt Basanos tokens",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "web:2",
+      "subsystem": "web",
+      "title": "Web app scaffold — Vite, router, env guard, shell",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:1",
+        "spike:2"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "apps/web/package.json",
+          "apps/web/tsconfig.json",
+          "apps/web/vite.config.ts",
+          "apps/web/index.html",
+          "apps/web/scripts/check-env.mjs",
+          "apps/web/src/main.tsx",
+          "apps/web/src/App.tsx",
+          "apps/web/src/app.css",
+          "apps/web/src/routes.ts",
+          "apps/web/src/config.ts",
+          "apps/web/src/vite-env.d.ts"
+        ],
+        "modify": [],
+        "test": [
+          "apps/web/test/routes.test.ts",
+          "apps/web/test/check-env.test.ts"
+        ]
+      },
+      "provides": [
+        "@basanos/web package (Vite base \"/app/\", hash routes)",
+        "type Route = { name: \"home\" } | { name: \"challenge\" } | { name: \"run\"; runId: bigint } | { name: \"cert\"; runId: bigint }",
+        "parseRoute(hash: string): Route",
+        "routeHref(r: Route): string",
+        "useRoute(): Route",
+        "REGISTRY: Address | null",
+        "REFEREE: Address | null",
+        "findSecretVars(env: Record<string, string | undefined>, envFileText: string): string[]",
+        "apps/web/src/app.css (app layout on the dealt tokens)",
+        "CLI: npm run build -w @basanos/web (check-env, then vite build)"
+      ],
+      "requires": [
+        "@basanos/design package (exports \"./tokens.css\", \"./system.css\", \"./motion.css\", \"./motion.js\")",
+        "CHAIN (hidekiTestnet, id 50383)"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web",
+        "expect": "PASS — `4 passed`."
+      },
+      "commit": "feat(web): Vite + React scaffold, hash router and env guard",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "web:3",
+      "subsystem": "web",
+      "title": "Challenge wallet and browser call builders",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:2",
+        "spike:2",
+        "spike:6",
+        "contracts:8"
+      ],
+      "effort": "high",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "apps/web/src/wallet/challengeWallet.ts",
+          "apps/web/src/chain/calls.ts",
+          "apps/web/src/chain/client.ts"
+        ],
+        "modify": [],
+        "test": [
+          "apps/web/test/wallet.test.ts",
+          "apps/web/test/calls.test.ts"
+        ]
+      },
+      "provides": [
+        "WALLET_KEY = \"basanos.challengeWallet\"",
+        "interface KeyStore { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void }",
+        "loadKey(store: KeyStore): Hex | null",
+        "createKey(store: KeyStore, gen?: () => Hex): Hex",
+        "importKey(store: KeyStore, raw: string): Hex",
+        "forgetKey(store: KeyStore): void",
+        "addressOf(key: Hex): Address",
+        "interface ContractCall { address: Address; abi: Abi; functionName: string; args: readonly unknown[]; gas?: bigint }",
+        "voucherAbi",
+        "ownerPoolAbi",
+        "claimVoucherCall(): ContractCall",
+        "grantRefereeCall(referee: Address): ContractCall",
+        "startRunCall(registry: Address, account: Address, rulebookId: Hex): ContractCall",
+        "placeOrderCall(isBid: boolean, price: bigint, quantity: bigint, orderType: number): ContractCall",
+        "browserClient(): PublicClient",
+        "sendCall(key: Hex, call: ContractCall): Promise<{ hash: Hex; status: \"success\" | \"reverted\" }>"
+      ],
+      "requires": [
+        "@basanos/web package (Vite base \"/app/\", hash routes)",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "RPC_HTTP_DEFAULT",
+        "BTC_POOL",
+        "OPERATOR_REGISTRY",
+        "VOUCHER_DISTRIBUTOR",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "ORDER_GAS = 10_000_000n",
+        "farFutureNs(nowMs?: number): bigint",
+        "operatorRegistryAbi",
+        "basanosRegistryAbi (as const, generated from the forge artifact)"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web -- test/wallet.test.ts test/calls.test.ts",
+        "expect": "PASS — `7 passed`."
+      },
+      "commit": "feat(web): in-browser challenge wallet and call builders",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "web:4",
+      "subsystem": "web",
+      "title": "Formatting, rails and replay libraries",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:2",
+        "spike:3",
+        "spike:4",
+        "referee:1"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "apps/web/src/lib/format.ts",
+          "apps/web/src/lib/rails.ts",
+          "apps/web/src/lib/replay.ts",
+          "apps/web/src/lib/rulebooks.ts"
+        ],
+        "modify": [],
+        "test": [
+          "apps/web/test/format.test.ts",
+          "apps/web/test/rails.test.ts",
+          "apps/web/test/replay.test.ts"
+        ]
+      },
+      "provides": [
+        "formatUsdso(raw: bigint, decimals?: number): string",
+        "formatBps(bps: number): string",
+        "shortHash(h: string): string",
+        "interface Rails { start: bigint; target: bigint; dailyFloor: bigint; trailingFloor: bigint }",
+        "computeRails(rb: Rulebook, state: RunState): Rails",
+        "railPercent(value: bigint, start: bigint): number",
+        "interface StoredRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }",
+        "interface ReplayRow { field: \"equity\" | \"lockedCollateral\" | \"positionSize\" | \"markPrice\"; call: string; stored: bigint; chain: bigint | null; match: \"exact\" | \"within-tolerance\" | \"differs\" | \"not-served\" }",
+        "compareReads(stored: StoredRead, chain: StoredRead | null): ReplayRow[]",
+        "replayRead(client: PublicClient, account: Address, pool: Address, stored: StoredRead): Promise<ReplayRow[]>",
+        "RULEBOOKS: readonly Rulebook[]",
+        "rulebookById(id: Hex): Rulebook | null"
+      ],
+      "requires": [
+        "@basanos/web package (Vite base \"/app/\", hash routes)",
+        "interface Rulebook",
+        "rulebookId(rb: Rulebook): Hex",
+        "parseRulebook(raw: unknown): Rulebook",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "interface RunState { startTime: bigint; startEquity: bigint; hwm: bigint; dayStart: bigint; day: bigint }",
+        "initRunState(startTime: bigint, startEquity: bigint): RunState"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web -- test/format.test.ts test/rails.test.ts test/replay.test.ts",
+        "expect": "PASS — `7 passed`."
+      },
+      "commit": "feat(web): formatting, equity rails and verdict replay libraries",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "web:5",
+      "subsystem": "web",
+      "title": "The challenge terminal",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:2",
+        "web:3",
+        "web:4",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6",
+        "referee:1",
+        "contracts:8"
+      ],
+      "effort": "high",
+      "files": {
+        "create": [
+          "apps/web/src/hooks/useChain.ts",
+          "apps/web/src/components/WalletPanel.tsx",
+          "apps/web/src/components/StartFlow.tsx",
+          "apps/web/src/components/Ticket.tsx",
+          "apps/web/src/components/RailsChart.tsx",
+          "apps/web/src/pages/Terminal.tsx"
+        ],
+        "modify": [],
+        "test": [
+          "apps/web/test/terminal.test.tsx"
+        ]
+      },
+      "provides": [
+        "useAccountSnapshot(address: Address | null): Snapshot | null",
+        "useActiveRun(account: Address | null): { runId: bigint; run: RegistryRun } | null",
+        "WalletPanel(props: { store: KeyStore; onChange: (key: Hex | null) => void })",
+        "StartFlow(props: { claimed: boolean; granted: boolean; running: boolean; busy: boolean; onClaim: () => void; onGrant: () => void; onStart: (rulebookId: Hex) => void })",
+        "Ticket(props: { equity: bigint; mark: bigint; busy: boolean; onOrder: (isBid: boolean, quantity: bigint) => void })",
+        "RailsChart(props: { rails: Rails; points: readonly bigint[] })",
+        "Terminal()"
+      ],
+      "requires": [
+        "interface KeyStore { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void }",
+        "loadKey(store: KeyStore): Hex | null",
+        "createKey(store: KeyStore, gen?: () => Hex): Hex",
+        "importKey(store: KeyStore, raw: string): Hex",
+        "forgetKey(store: KeyStore): void",
+        "addressOf(key: Hex): Address",
+        "voucherAbi",
+        "claimVoucherCall(): ContractCall",
+        "grantRefereeCall(referee: Address): ContractCall",
+        "startRunCall(registry: Address, account: Address, rulebookId: Hex): ContractCall",
+        "placeOrderCall(isBid: boolean, price: bigint, quantity: bigint, orderType: number): ContractCall",
+        "browserClient(): PublicClient",
+        "sendCall(key: Hex, call: ContractCall): Promise<{ hash: Hex; status: \"success\" | \"reverted\" }>",
+        "formatUsdso(raw: bigint, decimals?: number): string",
+        "shortHash(h: string): string",
+        "interface Rails { start: bigint; target: bigint; dailyFloor: bigint; trailingFloor: bigint }",
+        "computeRails(rb: Rulebook, state: RunState): Rails",
+        "RULEBOOKS: readonly Rulebook[]",
+        "rulebookById(id: Hex): Rulebook | null",
+        "REGISTRY: Address | null",
+        "REFEREE: Address | null",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "iocPrice(isBid: boolean, mark: bigint, tickSize: bigint, slippageBps: number): bigint",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "BTC_POOL",
+        "VOUCHER_DISTRIBUTOR",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "ORDER_TYPE_IOC = 2",
+        "explorerTx(hash: Hex): string",
+        "perpPoolAbi",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "rulebookId(rb: Rulebook): Hex",
+        "interface Snapshot { blockNumber: bigint; timestamp: bigint; pool: Address; markOk: boolean; markPrice: bigint; accounts: AccountSnapshot[] }",
+        "initRunState(startTime: bigint, startEquity: bigint): RunState",
+        "routeHref(r: Route): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web -- test/terminal.test.tsx",
+        "expect": "PASS — `5 passed`."
+      },
+      "commit": "feat(web): challenge terminal — wallet, start flow, ticket and equity rails",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "web:6",
+      "subsystem": "web",
+      "title": "Verdict page with replay, and the certificate page",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:2",
+        "web:3",
+        "web:4",
+        "web:5",
+        "spike:2",
+        "contracts:8"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "apps/web/src/components/VerdictView.tsx",
+          "apps/web/src/components/CertificateView.tsx",
+          "apps/web/src/pages/Verdict.tsx",
+          "apps/web/src/pages/Certificate.tsx"
+        ],
+        "modify": [],
+        "test": [
+          "apps/web/test/verdict.test.tsx"
+        ]
+      },
+      "provides": [
+        "TRUST_LINE = \"Every certificate is chain-checked at mint; every verdict is replayable.\"",
+        "interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }",
+        "VerdictView(props: { data: VerdictData; replay: Record<\"start\" | \"breach\" | \"end\", ReplayRow[] | null>; onReplay: () => void })",
+        "decodeTokenUri(uri: string): { name: string; description: string; external_url: string; attributes: { trait_type: string; value: string | number }[] } | null",
+        "CertificateView(props: { runId: bigint; holder: Address; uri: string })",
+        "VerdictPage(props: { runId: bigint })",
+        "CertificatePage(props: { runId: bigint })"
+      ],
+      "requires": [
+        "interface StoredRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }",
+        "interface ReplayRow { field: \"equity\" | \"lockedCollateral\" | \"positionSize\" | \"markPrice\"; call: string; stored: bigint; chain: bigint | null; match: \"exact\" | \"within-tolerance\" | \"differs\" | \"not-served\" }",
+        "replayRead(client: PublicClient, account: Address, pool: Address, stored: StoredRead): Promise<ReplayRow[]>",
+        "formatUsdso(raw: bigint, decimals?: number): string",
+        "shortHash(h: string): string",
+        "rulebookById(id: Hex): Rulebook | null",
+        "browserClient(): PublicClient",
+        "REGISTRY: Address | null",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "RULE_NAMES = [\"None\", \"DailyLoss\", \"TrailingDrawdown\", \"MaxExposure\", \"TimeLimit\", \"Liquidated\"]",
+        "VOID_REASONS = [\"None\", \"Flow\", \"ForeignMarket\", \"GrantRevoked\"]",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "explorerTx(hash: Hex): string",
+        "routeHref(r: Route): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web -- test/verdict.test.tsx",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "feat(web): public verdict page with replay and the certificate page",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "web:7",
+      "subsystem": "web",
+      "title": "Recent-verdicts home, the full router, and the production build",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:2",
+        "web:3",
+        "web:5",
+        "web:6",
+        "contracts:8"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "apps/web/src/pages/Home.tsx"
+        ],
+        "modify": [
+          "apps/web/src/App.tsx"
+        ],
+        "test": [
+          "apps/web/test/app.test.tsx"
+        ]
+      },
+      "provides": [
+        "Home()",
+        "App() (routes #/ -> Home, #/challenge -> Terminal, #/run/:id -> VerdictPage, #/cert/:id -> CertificatePage)",
+        "apps/web/dist (static build served at /app/)"
+      ],
+      "requires": [
+        "Terminal()",
+        "VerdictPage(props: { runId: bigint })",
+        "CertificatePage(props: { runId: bigint })",
+        "TRUST_LINE = \"Every certificate is chain-checked at mint; every verdict is replayable.\"",
+        "useRoute(): Route",
+        "routeHref(r: Route): string",
+        "browserClient(): PublicClient",
+        "REGISTRY: Address | null",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "CLI: npm run build -w @basanos/web (check-env, then vite build)"
+      ],
+      "gate": {
+        "run": "npm run build -w @basanos/web",
+        "expect": "PASS — `check-env: no VITE_*_PK variables`, then Vite's `✓ built in …` with `dist/index.html` written."
+      },
+      "commit": "feat(web): recent-verdicts home, router and the static /app build",
+      "human_gate": false,
       "allow_empty": false,
       "status": "pending"
     }
