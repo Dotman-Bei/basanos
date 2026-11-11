@@ -1,0 +1,15 @@
+{
+  "name": "@basanos/landing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "snapshot": "tsx scripts/featured-snapshot.ts",
+    "build": "tsx scripts/build.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@basanos/core": "*",
+    "@basanos/design": "*"
+  }
+}

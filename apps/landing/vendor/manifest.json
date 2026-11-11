@@ -1,0 +1,28 @@
+{
+  "kit": "C:\\Users\\bamig\\Documents\\VIBE CODE\\Hackathons\\.claude\\skills\\design-taste-frontend",
+  "version": "tasteskill 2.5.0",
+  "licence": "none shipped with the kit; review before the public flip",
+  "hero": "collage (assets/layout/hero-collage.html structure)",
+  "files": [
+    {
+      "from": "assets/system.js",
+      "to": "vendor/system.js",
+      "sha256": "e9e2175a0f46abe96e71b6ac2bfeeb414133d394ad9fcbe748a2620fdd269fde"
+    },
+    {
+      "from": "assets/layout/layout.css",
+      "to": "vendor/layout/layout.css",
+      "sha256": "ba1bbe729623c4b160c31cd724c9a1d28ed0aacfbf24b728b488a08da559f5c9"
+    },
+    {
+      "from": "assets/layout/layout.js",
+      "to": "vendor/layout/layout.js",
+      "sha256": "e4daf0f72aaf4bb403420d431d702a2ac806766cb73655f52235aac7bb6f40bc"
+    },
+    {
+      "from": "assets/layout/demo.css",
+      "to": "vendor/layout/demo.css",
+      "sha256": "24be2110635b3236e554dd89ce08060ef911ebdd91c0205e4731252db9c4411f"
+    }
+  ]
+}
