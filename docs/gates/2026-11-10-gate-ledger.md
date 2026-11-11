@@ -66,6 +66,7 @@ P1–P3 feed the Nov 11 tripwire (spike:11 needs ACCOUNT_A's voucher and the ref
 |---|---|---|---|---|---|---|
 | spike:11 | LIVE: the referee closes a voucher account (G1 a, e; the Nov 11 tripwire), `gate_profile: wallet` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK`, `ACCOUNT_A_PK`, A's voucher (P3), STT on both | pending (not this seat) |
 | spike:12 | LIVE: one Price Oracle request on Tokyo testnet (about 0.031 STT), `wallet` | A | orchestrator-pause, **run by the concierge on the user's explicit go (2026-11-11)** | concierge (user consent for spike:12 only) | `REFEREE_PK` + STT | **run**: gate prints `PASS g1d-oracle`. On-chain outcome **Failed** (RequestFinalized status 3), no prices. The evidence file records `Pending` (read-back bug), so it is left uncommitted for the orchestrator (see Evidence) |
+| spike:16 P1 | LIVE: oracle probe P1, one symbol `BTC/USDC:PERP`, 4-argument `createRequest` (Majority), about 0.031 STT (outside the manifest; runbook in spike:16) | A | **run by the concierge on the user's explicit go (2026-11-11, P1 only; P2 needs a separate go)** | concierge | `REFEREE_PK` + STT | **run**: `PASS g1d-probe-p1`. Request 7782661 **Success** (status 2), 2 of 3 validators answered, answers IDENTICAL, BTC/USDC:PERP 73,735.85 (6 sources). Evidence left uncommitted for the orchestrator (see Evidence) |
 | contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | pending (not this seat) |
 | referee:10 | LIVE: referee rehearsal (Nov 12), the first real verdicts, `wallet` | A in principle | orchestrator-pause | user + guide | all three burners funded; `REGISTRY_ADDRESS` | pending (not this seat) |
 | ship:3 | LIVE: money shot (one PASS, one FAIL) + `FEATURED_RUN_ID`, `wallet` | A in principle | orchestrator-pause | user + guide | as referee:10 | pending (not this seat) |
@@ -282,3 +283,51 @@ initial value of 1 ("Pending"). The gate passes because `check-evidence` only ch
 **Cost:** REFEREE STT went from 0.998310394 to **0.996178128539**, a net spend of about 0.00213 STT. That is 0.00154
 STT of gas plus about 0.00059 STT kept by the three validators (the sum of their cost words). The remainder of the
 0.0309 deposit was refunded.
+
+### spike:16 probe P1: one symbol, Majority. RUN 2026-11-11 ~14:10 WAT (user's explicit go, P1 only)
+
+The user's consent covered P1 only; P2 needs a separate go, and the kickoff's "do not run" line still holds for every
+manifest gate. Run from the repo root, one at a time, per spike:16's runbook (`docs/superpowers/plans/2026-11-10-basanos-spike.md`).
+`check-evidence.ts` does not list `g1d-probe-p1`; the probe's own strict G1(d) check (the last line of the live run)
+is the check the runbook names.
+
+**1. `npx tsx packages/spike/src/oracle-probe.ts --symbols BTC/USDC:PERP --dry-run`**
+```
+oracle-probe: g1d-probe-p1, symbols BTC/USDC:PERP, consensus Majority (4-argument createRequest); floor 30000000000000000 wei, sending 30900000000000000 wei from 0xE358D82209ea9360F411A041C0200adc385877eb
+dry-run: no transaction sent
+```
+Safety checks passed: from = REFEREE, consensus Majority, amount 0.0309 STT (limit 0.1 STT). Referee before: nonce 3,
+0.9961781285392 STT.
+
+**2. `npx tsx packages/spike/src/oracle-probe.ts --symbols BTC/USDC:PERP`** (live, exit 0)
+```
+oracle-probe: g1d-probe-p1, symbols BTC/USDC:PERP, consensus Majority (4-argument createRequest); floor 30000000000000000 wei, sending 30900000000000000 wei from 0xE358D82209ea9360F411A041C0200adc385877eb
+oracle-probe: request 7782661 -> Success (2 validator responses; finalized in 0x7993e4d8f39333d4b157ac4087ac32ee4fb2d394dd28708576b4d9411b3af64d)
+answers: 2 decoded, identical: true
+  BTC/USDC:PERP: 73735850000000003080192 (6 sources)
+PASS g1d-probe-p1
+```
+
+**Evidence file:** `docs/evidence/g1d-probe-p1.json`, left **UNCOMMITTED** for the orchestrator.
+- `requestId` 7782661, `consensus` Majority, `finalStatus` Success (code 2), `responses` 2.
+- Subcommittee: `0xc400f086…1850`, `0xF48394d6…932E`, `0x92d237DE…f6AD`.
+- Answers, decoded from the callback in the finalize tx: `0xF48394d6…` and `0xc400f086…` each returned status 2,
+  price 73735850000000003080192 (18 decimals, so about 73,735.85), numSources 6, lastUpdated 1794402664783.
+  **Identical: true.**
+- The consensus reading (`symbols`): BTC/USDC:PERP, price 73735850000000003080192, **numSources 6**.
+- createRequest tx **`0xbaeac4b95c08feea5c2bbf0e21bf260c8b0a5dfea8b804c627d61ba216a889df`**: status success, block
+  47485272, gas 226,024, gas cost 0.001356144 STT, value 0.0309 STT.
+- Finalize tx **`0x7993e4d8f39333d4b157ac4087ac32ee4fb2d394dd28708576b4d9411b3af64d`**: block 47485273.
+
+**Concierge read-only check** (`eth_getLogs` on SomniaAgents, topic1 = request id, blocks 47485272–47485564):
+four logs. The first is `RequestCreated` (block 47485272). Then, all in block 47485273, come two validator response
+events (txs `0x57a82d30…` and `0x7993e4d8…`) and `RequestFinalized` with data = **2 (Success)**. The third
+subcommittee member (`0x92d237DE…`) had not responded within about 290 blocks: two identical answers out of 3 met
+Majority, and the request finalized at once. The evidence file agrees with the chain (no read-back gap this time).
+
+**Cost:** REFEREE went from 0.9961781285392 to **0.9944666265982 STT** (nonce 4), a net spend of 0.001711501941 STT.
+That is exactly 0.001356144 of gas plus 0.000355357941 kept by the two validators; the rest of the 0.0309 deposit was
+refunded.
+
+**Meaning (per spike:16's plan text):** P1 succeeding means the registry's exact path (`getPrices([oracleSymbol], 18)`
+through the 4-argument `createRequest`) works unchanged; P2 is only for the case where P1 finalized Failed.
