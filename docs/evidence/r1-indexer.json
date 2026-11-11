@@ -1,0 +1,52 @@
+{
+  "evidence": "r1-indexer",
+  "writtenAt": "2026-11-11T02:05:57.965Z",
+  "account": "0x47537E3A3ea6e9391F3B26Ea45618db6828c8bfF",
+  "sdkVersion": "0.33.0",
+  "indexer": "https://hideki-dev.smk.somnia.host/v1/graphql",
+  "reads": [
+    {
+      "name": "getMarginEvents",
+      "ok": true,
+      "rows": 50,
+      "sample": [
+        {
+          "id": "0x012c3344c8823c7bd1194a253f307d9cd2da2adc82bc7b85cef2a0887f3f46a3_46",
+          "account": "0x47537e3a3ea6e9391f3b26ea45618db6828c8bff",
+          "kind": "Locked",
+          "pool": "0x2a73129f26917124bd2a47a9b355c395c537f050",
+          "amount": "200085077500000000000",
+          "granter": null,
+          "timestamp": "1794362757",
+          "blockNumber": "47086632",
+          "logIndex": 46,
+          "txHash": "0x012c3344c8823c7bd1194a253f307d9cd2da2adc82bc7b85cef2a0887f3f46a3"
+        },
+        {
+          "id": "0x012c3344c8823c7bd1194a253f307d9cd2da2adc82bc7b85cef2a0887f3f46a3_43",
+          "account": "0x47537e3a3ea6e9391f3b26ea45618db6828c8bff",
+          "kind": "Locked",
+          "pool": "0x2a73129f26917124bd2a47a9b355c395c537f050",
+          "amount": "199873357500000000000",
+          "granter": null,
+          "timestamp": "1794362757",
+          "blockNumber": "47086632",
+          "logIndex": 43,
+          "txHash": "0x012c3344c8823c7bd1194a253f307d9cd2da2adc82bc7b85cef2a0887f3f46a3"
+        }
+      ]
+    },
+    {
+      "name": "listPerpMarginPulls",
+      "ok": true,
+      "rows": 0,
+      "sample": []
+    },
+    {
+      "name": "listPerpMainFundingEvents",
+      "ok": true,
+      "rows": 0,
+      "sample": []
+    }
+  ]
+}

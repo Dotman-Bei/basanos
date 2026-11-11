@@ -1,0 +1,59 @@
+{
+  "evidence": "g1c-history",
+  "writtenAt": "2026-11-11T02:05:51.808Z",
+  "account": "0x47537E3A3ea6e9391F3B26Ea45618db6828c8bfF",
+  "head": "47086533",
+  "depths": [
+    {
+      "back": 10,
+      "block": "47086523",
+      "ok": true,
+      "equityOk": true,
+      "equity": "3537778055357479384845387"
+    },
+    {
+      "back": 1000,
+      "block": "47085533",
+      "ok": true,
+      "equityOk": true,
+      "equity": "3532270132482864720250099"
+    },
+    {
+      "back": 36000,
+      "block": "47050533",
+      "ok": true,
+      "equityOk": true,
+      "equity": "3547949551568325974680154"
+    },
+    {
+      "back": 864000,
+      "block": "46222533",
+      "ok": true,
+      "equityOk": true,
+      "equity": "3284047700331573471071255"
+    },
+    {
+      "back": 3000000,
+      "block": "44086533",
+      "ok": true,
+      "equityOk": true,
+      "equity": "2893974940252936418121345"
+    },
+    {
+      "back": 10000000,
+      "block": "37086533",
+      "ok": true,
+      "equityOk": true,
+      "equity": "2101177488565453555545826"
+    },
+    {
+      "back": 20000000,
+      "block": "27086533",
+      "ok": true,
+      "equityOk": true,
+      "equity": "508150558255951600997404"
+    }
+  ],
+  "maxServedBack": 20000000,
+  "call": "MarginBank.tryGetAccountEquity(account)"
+}
