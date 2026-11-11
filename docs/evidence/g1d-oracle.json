@@ -1,0 +1,80 @@
+{
+  "evidence": "g1d-oracle",
+  "writtenAt": "2026-11-11T13:05:10.584Z",
+  "mode": "from-tx",
+  "requestId": "7773100",
+  "agentId": "9911223344556677889",
+  "requester": "0xe358d82209ea9360f411a041c0200adc385877eb",
+  "callback": "referee EOA",
+  "callbackSelector": "0x00000000",
+  "payload": {
+    "selector": "0x1ca1d20c",
+    "symbols": [
+      "BTC/USDC:PERP",
+      "BTC/USDC"
+    ],
+    "decimals": 18
+  },
+  "depositFloorWei": "30000000000000000",
+  "sentWei": "30900000000000000",
+  "perAgentBudget": "300000000000000",
+  "subcommittee": [
+    "0xd47dAa55Bd8f40fFf358Ad139Dd8549704DC842E",
+    "0x92d237DEa7eb9d37E1B303DA586f4B83956df6AD",
+    "0xc400f086fDB3AA5b0A565DFc8988FB6Fe2511850"
+  ],
+  "finalStatus": "Failed",
+  "finalStatusCode": 3,
+  "finalizeTx": "0x851aaa04f95533ccabd87e11e3398b09eb85dfe9d709f393223126a3c9582301",
+  "finalizeBlock": "47437498",
+  "responses": 3,
+  "validatorResponses": [
+    {
+      "validator": "0x92d237DEa7eb9d37E1B303DA586f4B83956df6AD",
+      "executionCostWei": "166037878800000",
+      "words": [
+        "1",
+        "0",
+        "0",
+        "166037878800000"
+      ],
+      "tx": "0x47895651a20ef56ff8181490cbe02faa321cacdc2ef944981e3d0e90e4d8c386",
+      "block": "47437498"
+    },
+    {
+      "validator": "0xc400f086fDB3AA5b0A565DFc8988FB6Fe2511850",
+      "executionCostWei": "174149532000000",
+      "words": [
+        "1",
+        "0",
+        "0",
+        "174149532000000"
+      ],
+      "tx": "0x9dc37d0f9cfeadd0e3e2b4f29838f3f9b53e877a6c12d47e3cf3ee53a4c92a80",
+      "block": "47437498"
+    },
+    {
+      "validator": "0xd47dAa55Bd8f40fFf358Ad139Dd8549704DC842E",
+      "executionCostWei": "251392050000000",
+      "words": [
+        "1",
+        "0",
+        "0",
+        "251392050000000"
+      ],
+      "tx": "0x851aaa04f95533ccabd87e11e3398b09eb85dfe9d709f393223126a3c9582301",
+      "block": "47437498"
+    }
+  ],
+  "validatorCostWei": "591579460800000",
+  "outcomeSource": "SomniaAgents logs: RequestFinalized and the per-validator response events",
+  "symbols": [],
+  "tx": {
+    "label": "createRequest",
+    "hash": "0xdf795f1f7938638ebd78a119d5de95c05930b6f1cd779d5f7ca402df0befa30d",
+    "status": "success",
+    "gasUsed": "256781",
+    "costWei": "1540686000000000",
+    "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0xdf795f1f7938638ebd78a119d5de95c05930b6f1cd779d5f7ca402df0befa30d"
+  }
+}
