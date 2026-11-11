@@ -65,7 +65,7 @@ P1–P3 feed the Nov 11 tripwire (spike:11 needs ACCOUNT_A's voucher and the ref
 | # | Gate | Tier | Pass | Who | Needs from preflight | Status |
 |---|---|---|---|---|---|---|
 | spike:11 | LIVE: the referee closes a voucher account (G1 a, e; the Nov 11 tripwire), `gate_profile: wallet` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK`, `ACCOUNT_A_PK`, A's voucher (P3), STT on both | pending (not this seat) |
-| spike:12 | LIVE: one Price Oracle request on Tokyo testnet (about 0.031 STT), `wallet` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT | pending (not this seat) |
+| spike:12 | LIVE: one Price Oracle request on Tokyo testnet (about 0.031 STT), `wallet` | A | orchestrator-pause, **run by the concierge on the user's explicit go (2026-11-11)** | concierge (user consent for spike:12 only) | `REFEREE_PK` + STT | **run**: gate prints `PASS g1d-oracle`. On-chain outcome **Failed** (RequestFinalized status 3), no prices. The evidence file records `Pending` (read-back bug), so it is left uncommitted for the orchestrator (see Evidence) |
 | contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | pending (not this seat) |
 | referee:10 | LIVE: referee rehearsal (Nov 12), the first real verdicts, `wallet` | A in principle | orchestrator-pause | user + guide | all three burners funded; `REGISTRY_ADDRESS` | pending (not this seat) |
 | ship:3 | LIVE: money shot (one PASS, one FAIL) + `FEATURED_RUN_ID`, `wallet` | A in principle | orchestrator-pause | user + guide | as referee:10 | pending (not this seat) |
@@ -231,3 +231,54 @@ D2[ws2] after {"latest":2,"pending":2,"balance":"998310394000000000"}
   revert, rejected at the sync-send endpoint.
 - **Feedback-track candidate** (strong; duplicate-check first): eligibility says `eligible: true` while
   `VoucherDistributor.claim()` reverts for every address with `0x3e31dcc2`, an error not in the SDK's ABIs.
+
+### spike:12: Price Oracle request. RUN 2026-11-11 ~12:54 WAT (user's explicit go, spike:12 only)
+
+The user's consent covered spike:12 only; the kickoff's "do not run" line still holds for every other manifest
+gate. Commands were run from the repo root, one at a time.
+
+**1. `npx tsx packages/spike/src/oracle-probe.ts --dry-run`**
+```
+oracle-probe: floor 30000000000000000 wei, sending 30900000000000000 wei from 0xE358D82209ea9360F411A041C0200adc385877eb
+dry-run: no transaction sent
+```
+Both safety checks passed: from = REFEREE, and the amount is 0.0309 STT (limit 0.1 STT).
+
+**2. `npx tsx packages/spike/src/oracle-probe.ts`** (live)
+```
+oracle-probe: floor 30000000000000000 wei, sending 30900000000000000 wei from 0xE358D82209ea9360F411A041C0200adc385877eb
+oracle-probe: request 7773100 -> Pending
+```
+
+**3. `npx tsx packages/spike/src/check-evidence.ts g1d-oracle`**
+```
+PASS g1d-oracle
+```
+
+**Evidence file:** `docs/evidence/g1d-oracle.json`, left **UNCOMMITTED** for the orchestrator.
+- `requestId` 7773100, agentId 9911223344556677889, `sentWei` 30900000000000000.
+- `finalStatus` "Pending", `responses` 0, `symbols` [] (no prices; nothing for BTC/USDC:PERP or BTC/USDC).
+- `readError`: `getRequest` reverted `0x4ec726c7`, which is `RequestNotFound(uint256)` (openchain).
+- createRequest tx **`0xdf795f1f7938638ebd78a119d5de95c05930b6f1cd779d5f7ca402df0befa30d`**: status success, block
+  47437497, gas 256,781, gas cost 0.001540686 STT.
+
+**What the chain says** (verified read-only by the concierge, decoded with the repo's `somniaAgentsAbi` at
+`0x7407cb35…CbE3`):
+- Block 47437497: `RequestCreated`, requestId 7773100, subcommittee of three validators, perAgentBudget
+  0.0003 STT.
+- Block 47437498 (the next block): three response events (topic0 `0x1b44ed53…`, not in the repo ABI and unknown to
+  openchain). One per validator; each carries words `1 | 0 | 0 | <cost>`, i.e. an empty result.
+  Costs: 0.0001660, 0.0001741 and 0.0002514 STT.
+- In tx `0x851aaa04…`: **`RequestFinalized { requestId: 7773100, status: 3 }`**. The repo's `ORACLE_STATUS` table
+  maps 3 to **Failed**.
+- **On-chain final status = Failed. No prices were returned.**
+
+**Why the evidence says "Pending":** the request finalized within about 100 ms and was then removed from storage.
+Every `getRequest` read in the 180 s poll reverted with `RequestNotFound`, so `finalStatus` kept the script's
+initial value of 1 ("Pending"). The gate passes because `check-evidence` only checks that the fields exist.
+**Plan-bug for the orchestrator/architect:** read the outcome from the `RequestFinalized` event, not from
+`getRequest`.
+
+**Cost:** REFEREE STT went from 0.998310394 to **0.996178128539**, a net spend of about 0.00213 STT. That is 0.00154
+STT of gas plus about 0.00059 STT kept by the three validators (the sum of their cost words). The remainder of the
+0.0309 deposit was refunded.
