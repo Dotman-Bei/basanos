@@ -37,8 +37,10 @@ exposure cap, time limit) it cancels resting orders and closes the position with
 **FAILED** on-chain with the rule, the breach block, the raw reads and the close transaction hashes. When the
 profit target is reached after the minimum time, the referee locks the gain by flattening, and the registry checks
 the end state itself (flat, equity at or above the target, minimum time, referee grant still held) before it
-records **PASSED** and mints a non-transferable certificate. A Price Oracle cross-check is implemented in the
-registry but switched off for this build: our test request on Tokyo testnet (request 7773100, 2026-11-11) finalized Failed, because its three validators' price answers differed and the default Majority consensus needs identical answers.
+records **PASSED** and mints a non-transferable certificate. Each PASS or FAIL verdict also asks Somnia's Price
+Oracle for the BTC perp median, inside `try`, so a failed request never blocks a verdict. A verdict page shows the
+reading only when one was recorded.
+TBD-post-build:oracle-line (the featured verdict's reading, from the featured-run snapshot; delete this line if the snapshot has none)
 
 Trust model, stated exactly: every certificate is chain-checked at mint; every verdict is replayable. Path rules
 (daily loss, trailing drawdown, exposure) are enforced by the referee and shown by replay; they are not checked by
@@ -53,9 +55,8 @@ Demo disclosure: the demo's two challenge accounts are burners operated by the b
 the terminal, one by a scripted bot. Somnia Tokyo testnet only, paper USDso, no real funds, no payouts; Basanos is
 not a financial service.
 
-**Somnia primitive used:** off-chain Reactivity (`somnia_watch` with attached `eth_call` simulations) for the
-referee. A Somnia Agents Price Oracle cross-check is implemented but switched off for this build, because our test
-request on Tokyo testnet finalized Failed.
+**Somnia primitives used:** off-chain Reactivity (`somnia_watch` with attached `eth_call` simulations) for the
+referee; Somnia Agents (the Price Oracle on Tokyo testnet), which the registry asks at each verdict on a best-effort basis.
 
 **Tech stack:** TypeScript on Node 22 (strict ESM), `@somnia-chain/markets-sdk` 0.33.0, viem 2.57.12; Solidity 0.8.28
 (Foundry 1.7.1, `evm_version = cancun`) for the verdict registry and soulbound certificate (ERC-721 + ERC-5192);

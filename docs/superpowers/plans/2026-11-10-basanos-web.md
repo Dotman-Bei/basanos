@@ -2214,3 +2214,101 @@ Expected: PASS — `28 passed`.
 
 - [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
 Message: `fix(web): verdict page states the Price Oracle cross-check is off; ORACLE_ENABLED=false by default`
+
+---
+
+### Task 9: Oracle un-cut — the verdict page states only what was recorded; `.env.example` sets `ORACLE_ENABLED=true`
+
+**Files:**
+- Modify: `apps/web/src/components/VerdictView.tsx`
+- Modify: `.env.example`
+- Test: `apps/web/test/oracle-off.test.tsx`
+
+**Depends on:** Task 6, Task 8
+**Effort:** low
+**Provides:** `ORACLE_NO_READING_LINE = "No Price Oracle reading was recorded for this verdict."`, `.env.example with ORACLE_ENABLED=true`
+**Requires:** `interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }`, `VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void })`, `ORACLE_OFF_LINE: string (the verdict page's Price Oracle line while the cross-check is cut)`
+
+Why (guide decision, 2026-11-11): probe P1 (request 7782661) finalized Success on the registry's own 4-argument path, so the cut is reversed in its cheapest form. `ORACLE_ENABLED=true`; every oracle statement either describes the best-effort request or appears only with a real recorded reading.
+- **The page today:** Task 8's fallback line says the cross-check is "Off for this build". Once requests are made that becomes false, so the fallback becomes a neutral no-reading line.
+- **A recorded reading** already shows beside the mark; this task does not change that.
+- **`.env.example`** goes back to `true`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Replace `apps/web/test/oracle-off.test.tsx` with:
+```tsx
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { ORACLE_NO_READING_LINE, VerdictView, type VerdictData } from "../src/components/VerdictView";
+
+const E18 = 10n ** 18n;
+const read = (equity: bigint, block: bigint) => ({ blockNumber: block, equityOk: true, equity, lockedCollateral: 0n, positionSize: 0n, markOk: true, markPrice: 74_500n * E18 });
+const base: VerdictData = {
+  runId: 4n,
+  account: "0x00000000000000000000000000000000000000a1",
+  status: 3,
+  rule: 1,
+  voidReason: 0,
+  rulebookLabel: "Tokyo Sprint · Demo",
+  rulebookId: `0x${"11".repeat(32)}`,
+  rulebookJson: null,
+  start: read(1_000n * E18, 100n),
+  breach: read(994n * E18, 160n),
+  end: read(993n * E18, 165n),
+  closeTxs: [`0x${"aa".repeat(32)}`],
+  oraclePrice: 0n,
+  oracleSources: 0,
+  oracleDone: false,
+};
+
+describe("Price Oracle cross-check line (truth by construction)", () => {
+  it("shows a recorded reading beside the mark", () => {
+    render(
+      <VerdictView data={{ ...base, oraclePrice: 7_373_585n * 10n ** 16n, oracleSources: 6, oracleDone: true }} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />,
+    );
+    expect(screen.getByRole("heading", { name: "Price Oracle cross-check" })).toBeTruthy();
+    expect(screen.getByText("73,735.85 (6 sources) vs mark 74,500.00")).toBeTruthy();
+  });
+  it("says no reading was recorded when there is none, and claims nothing else", () => {
+    const { container } = render(<VerdictView data={base} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />);
+    expect(ORACLE_NO_READING_LINE).toBe("No Price Oracle reading was recorded for this verdict.");
+    expect(screen.getByText(ORACLE_NO_READING_LINE)).toBeTruthy();
+    expect(container.textContent ?? "").not.toMatch(/sources\) vs mark|Off for this build/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm they fail**
+Run: `npm test -w @basanos/web -- test/oracle-off.test.tsx`
+Expected: FAIL — `ORACLE_NO_READING_LINE` is not exported yet (the second test fails; the first already passes).
+
+- [ ] **Step 3: Replace the fallback line**
+In `apps/web/src/components/VerdictView.tsx`, replace
+```tsx
+/** The Price Oracle cross-check is cut for this build (ORACLE_ENABLED=false): spike:12's request finalized Failed. */
+export const ORACLE_OFF_LINE =
+  "Off for this build: the registry can request a Price Oracle reading at each verdict, but our test request on Tokyo testnet finalized Failed because the validators' answers differed and the default Majority consensus needs identical answers. Verdicts do not request one.";
+```
+with
+```tsx
+/** Shown when a verdict has no recorded Price Oracle reading (the registry asks at each verdict, best-effort, inside try). */
+export const ORACLE_NO_READING_LINE = "No Price Oracle reading was recorded for this verdict.";
+```
+and replace `: ORACLE_OFF_LINE}` with `: ORACLE_NO_READING_LINE}`. Change nothing else.
+
+- [ ] **Step 4: Switch the default back on**
+In `.env.example`, replace the line `ORACLE_ENABLED=false` with `ORACLE_ENABLED=true`. Change nothing else.
+
+- [ ] **Step 5: Run the test and the build**
+Run: `npm test -w @basanos/web -- test/oracle-off.test.tsx`
+Expected: `2 passed`.
+Run: `npm run build -w @basanos/web`
+Expected: `check-env: no VITE_*_PK variables`, then Vite's `✓ built in …`.
+
+- [ ] **Step 6: Run the package tests (the gate)**
+Run: `npm test -w @basanos/web`
+Expected: PASS — `29 passed`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `fix(web): the oracle line states only what was recorded; ORACLE_ENABLED=true by default`

@@ -350,11 +350,12 @@ Message: `feat(landing): featured snapshot from the first real verdict run`
 - Create: `apps/landing/src/page.html`
 - Create: `apps/landing/src/landing.css`
 - Create: `apps/landing/scripts/build.ts`
+- Create: `apps/landing/scripts/oracle-row.ts`
 - Test: `apps/landing/test/page.test.ts`
 
 **Depends on:** Task 1, Task 2, web:Task 1, spike:Task 1
 **Effort:** high
-**Provides:** `apps/landing/src/page.html (the template)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `apps/landing/dist/index.html (+ assets/ and img/)`
+**Provides:** `apps/landing/src/page.html (the template)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `apps/landing/dist/index.html (+ assets/ and img/)`, `withOracleRow(template: string, f: FeaturedLike): string (the Price Oracle row only with a real reading)`
 **Requires:** `renderPage(template: string, f: FeaturedLike): string`, `findUnbacked(html: string, f: FeaturedLike): string[]`, `apps/landing/src/featured-verdict.json (the page's only data source)`, `@basanos/design package (exports "./tokens.css", "./system.css", "./motion.css", "./motion.js")`, `apps/landing/vendor/manifest.json (four landing kit files with sha256)`, `repoPath(rel: string): string`
 
 Applies `docs/design/frontend.md` (§1 kind = software; §2 tech plan; house rules 1–9; checklist §5):
@@ -369,12 +370,13 @@ Applies `docs/design/frontend.md` (§1 kind = software; §2 tech plan; house rul
 ```ts
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { withOracleRow } from "../scripts/oracle-row";
 import { renderPage, type FeaturedLike } from "../scripts/render";
 import { findUnbacked } from "../scripts/truth";
 
 const template = readFileSync(new URL("../src/page.html", import.meta.url), "utf8");
 const f = JSON.parse(readFileSync(new URL("../src/featured-verdict.json", import.meta.url), "utf8")) as FeaturedLike;
-const html = renderPage(template, f);
+const html = renderPage(withOracleRow(template, f), f);
 
 describe("landing page", () => {
   it("declares the software kind and the dealt design", () => {
@@ -398,7 +400,11 @@ describe("landing page", () => {
     expect(html).toContain(f.demoDisclosure);
     expect(html.toLowerCase()).not.toContain("verifies every verdict");
     expect(html.toLowerCase()).not.toContain("trusted by");
-    expect(html).not.toMatch(/Somnia Agents|Price Oracle/); // the oracle cross-check is cut (2026-11-11)
+    // The Price Oracle row appears only when the featured snapshot holds a real reading (truth by construction).
+    const none = { ...f, oracle: null };
+    expect(renderPage(withOracleRow(template, none), none)).not.toMatch(/Somnia Agents|Price Oracle/);
+    const reading = { ...f, oracle: { price: "73,735.85", sources: 6 } };
+    expect(renderPage(withOracleRow(template, reading), reading)).toContain("73,735.85 (6 sources)");
   });
   it("shows nothing the snapshot does not hold", () => {
     expect(findUnbacked(html, f)).toEqual([]);
@@ -474,6 +480,7 @@ Expected: FAIL — `ENOENT … src/page.html`.
                 <div class="d-row"><span class="d-thumb"></span><div><b>End equity</b><small>read by the registry · block {{endBlock}}</small></div><span class="num">{{endEquity}}</span><span class="d-chip">Chain-checked</span></div>
                 <div class="d-row"><span class="d-thumb"></span><div><b>Profit target</b><small>contract-checked at mint</small></div><span class="num">{{targetPct}}</span><span class="d-chip">Rule</span></div>
                 <div class="d-row"><span class="d-thumb"></span><div><b>Daily-loss floor</b><small>referee-enforced, replayable</small></div><span class="num">{{dailyPct}}</span><span class="d-chip">Rule</span></div>
+                <!-- oracle-row --><div class="d-row"><span class="d-thumb"></span><div><b>Price Oracle at the verdict</b><small>Somnia Agents · recorded on-chain</small></div><span class="num">{{oracleLine}}</span><span class="d-chip">Cross-check</span></div><!-- /oracle-row -->
               </div>
             </div>
           </div>
@@ -583,6 +590,18 @@ Expected: FAIL — `ENOENT … src/page.html`.
 
 - [ ] **Step 4: Write the build script**
 
+`apps/landing/scripts/oracle-row.ts`:
+```ts
+// The Price Oracle row shows only when the featured-run snapshot holds a real reading (truth by construction).
+import type { FeaturedLike } from "./render";
+
+const ROW = /[ \t]*<!-- oracle-row -->[\s\S]*?<!-- \/oracle-row -->\n?/;
+
+export function withOracleRow(template: string, f: FeaturedLike): string {
+  return f.oracle ? template.replace(/<!-- \/?oracle-row -->/g, "") : template.replace(ROW, "");
+}
+```
+
 `apps/landing/scripts/build.ts`:
 ```ts
 // Renders dist/index.html from the template and the featured snapshot, copies the design and kit files,
@@ -590,13 +609,14 @@ Expected: FAIL — `ENOENT … src/page.html`.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { repoPath } from "@basanos/core/node";
+import { withOracleRow } from "./oracle-row";
 import { renderPage, type FeaturedLike } from "./render";
 import { findUnbacked } from "./truth";
 
 const app = repoPath("apps/landing");
 const dist = join(app, "dist");
 const f = JSON.parse(readFileSync(join(app, "src", "featured-verdict.json"), "utf8")) as FeaturedLike;
-const html = renderPage(readFileSync(join(app, "src", "page.html"), "utf8"), f);
+const html = renderPage(withOracleRow(readFileSync(join(app, "src", "page.html"), "utf8"), f), f);
 const copies: [string, string][] = [
   [repoPath("packages/design/vendor/system.css"), "assets/system.css"],
   [repoPath("packages/design/vendor/motion/motion.css"), "assets/motion/motion.css"],
@@ -638,7 +658,7 @@ Message: `feat(landing): collage hero, three steps, real verdict, replay, testne
 - Create: `apps/landing/scripts/shoot-verdict.mjs`
 - Create: `apps/landing/src/img/verdict.png`
 
-**Depends on:** Task 2, Task 3, web:Task 2, web:Task 7, web:Task 8
+**Depends on:** Task 2, Task 3, web:Task 2, web:Task 7, web:Task 8, web:Task 9
 **Effort:** medium
 **Provides:** `apps/landing/src/img/verdict.png (1440x900 shoot.mjs screenshot of /app/#/run/<featured id>, real product UI)`, `CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>`
 **Requires:** `apps/landing/src/featured-verdict.json (the page's only data source)`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `apps/web/dist (static build served at /app/)`
