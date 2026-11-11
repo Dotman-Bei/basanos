@@ -1,3 +1,7 @@
+import { CertificatePage } from "./pages/Certificate";
+import { Home } from "./pages/Home";
+import { Terminal } from "./pages/Terminal";
+import { VerdictPage } from "./pages/Verdict";
 import { routeHref, useRoute } from "./routes";
 
 export function Header() {
@@ -26,9 +30,15 @@ export function App() {
     <>
       <Header />
       <main className="app-main">
-        <div className="wrap">
-          <p className="label">Route: {route.name}</p>
-        </div>
+        {route.name === "challenge" ? (
+          <Terminal />
+        ) : route.name === "run" ? (
+          <VerdictPage runId={route.runId} />
+        ) : route.name === "cert" ? (
+          <CertificatePage runId={route.runId} />
+        ) : (
+          <Home />
+        )}
       </main>
     </>
   );
