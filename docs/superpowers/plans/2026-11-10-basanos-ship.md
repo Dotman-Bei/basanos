@@ -701,7 +701,7 @@ Message: `docs(evidence): money shot — one PASS with certificate, one FAIL clo
 - Create: `feedback/sdk-indexer-reads-fail-on-hideki.md`
 - Create: `feedback/explorer-verify-cancun-build.md`
 
-**Depends on:** Task 1, spike:Task 9, spike:Task 13, contracts:Task 12
+**Depends on:** Task 1, spike:Task 9, contracts:Task 12
 **Effort:** medium
 **Provides:** `feedback/*.md (event template; reproducible, de-duplicated items)`
 **Requires:** `CLI: npx tsx packages/ship/src/check-feedback.ts -> PASS feedback`, `docs/evidence/g1b-watch.json`, `docs/evidence/r1-indexer.json`, `docs/evidence/verify.json (runtime bytecode match with immutables masked; explorer attempt output)`
