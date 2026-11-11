@@ -67,7 +67,7 @@ P1–P3 feed the Nov 11 tripwire (spike:11 needs ACCOUNT_A's voucher and the ref
 | spike:11 | LIVE: the referee closes a voucher account (G1 a, e; the Nov 11 tripwire), `gate_profile: wallet` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK`, `ACCOUNT_A_PK`, A's voucher (P3), STT on both | pending (not this seat) |
 | spike:12 | LIVE: one Price Oracle request on Tokyo testnet (about 0.031 STT), `wallet` | A | orchestrator-pause, **run by the concierge on the user's explicit go (2026-11-11)** | concierge (user consent for spike:12 only) | `REFEREE_PK` + STT | **run**: gate prints `PASS g1d-oracle`. On-chain outcome **Failed** (RequestFinalized status 3), no prices. The evidence file records `Pending` (read-back bug), so it is left uncommitted for the orchestrator (see Evidence) |
 | spike:16 P1 | LIVE: oracle probe P1, one symbol `BTC/USDC:PERP`, 4-argument `createRequest` (Majority), about 0.031 STT (outside the manifest; runbook in spike:16) | A | **run by the concierge on the user's explicit go (2026-11-11, P1 only; P2 needs a separate go)** | concierge | `REFEREE_PK` + STT | **run**: `PASS g1d-probe-p1`. Request 7782661 **Success** (status 2), 2 of 3 validators answered, answers IDENTICAL, BTC/USDC:PERP 73,735.85 (6 sources). Evidence left uncommitted for the orchestrator (see Evidence) |
-| contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | **user go 2026-11-11 ~14:45 WAT (contracts:10 only), STOPPED at the cost check, nothing sent**: build current, dry-run OK (deployer = owner = referee, two rulebook lines, 0.9944666 STT), but `eth_estimateGas` for the deployment = 77,007,457 gas × 6 gwei = **0.462 STT**, above the user's 0.3 STT cap (see Evidence) |
+| contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | **DONE 2026-11-11 ~14:40 WAT by the concierge (user go: faucet top-up + contracts:10, 0.6 STT cap)**: `PASS deployment`. Registry **`0xf5D8099239200DF961E0910A42C105214D1E9370`**, deploy block 47503978, tx `0x0046bcd4…3190`; rulebooks `tokyo-sprint` `0x2b322b0c…3223` and `tokyo-sprint-demo` `0x59e93903…0757` registered. Spent 0.31665231 STT; referee 1.6778143 STT. `.env` += `REGISTRY_ADDRESS`, `ORACLE_ENABLED=true`. `deployments/hideki.json` left uncommitted for the orchestrator. (First go ~14:30 stopped at the 0.3 STT cap; see Evidence) |
 | referee:10 | LIVE: referee rehearsal (Nov 12), the first real verdicts, `wallet` | A in principle | orchestrator-pause | user + guide | all three burners funded; `REGISTRY_ADDRESS` | pending (not this seat) |
 | ship:3 | LIVE: money shot (one PASS, one FAIL) + `FEATURED_RUN_ID`, `wallet` | A in principle | orchestrator-pause | user + guide | as referee:10 | pending (not this seat) |
 | ship:6 | LIVE: deploy to Vercel + `setBaseUrl`, `deploy` | B (Vercel account) | orchestrator-pause | user + guide | `VERCEL_TOKEN` (C4), `REFEREE_PK` + STT | pending (not this seat) |
@@ -332,7 +332,7 @@ refunded.
 **Meaning (per spike:16's plan text):** P1 succeeding means the registry's exact path (`getPrices([oracleSymbol], 18)`
 through the 4-argument `createRequest`) works unchanged; P2 is only for the case where P1 finalized Failed.
 
-### contracts:10: registry deploy. STOPPED at the cost check 2026-11-11 ~14:50 WAT (user's explicit go, contracts:10 only)
+### contracts:10: registry deploy. STOPPED at the cost check 2026-11-11 ~14:30 WAT (user's explicit go, contracts:10 only)
 
 Nothing was sent. The referee is unchanged: nonce 4, 0.9944666265982 STT. `.env` is unchanged (no `REGISTRY_ADDRESS`,
 no `ORACLE_ENABLED`), and no `deployments/hideki.json` was written.
@@ -357,3 +357,63 @@ no `ORACLE_ENABLED`), and no `deployments/hideki.json` was written.
   This is **above the user's 0.3 STT cap: STOP, live deploy not run.** For comparison, the spike tasks measured
   ~0.0015 STT per oracle tx. Somnia prices code deposit far above Ethereum: about 4,800 gas per byte here.
 - **Not run:** `deploy.ts` (live), `check-deployment.ts`, the paris fallback.
+
+### Referee faucet top-up + contracts:10 deploy. DONE 2026-11-11 ~14:40 WAT (user's explicit go: STEP 1 faucet, STEP 2 contracts:10, cap 0.6 STT)
+
+**STEP 1: faucet top-up (one drip, REFEREE only).** Claude in Chrome on https://explorer.testnet.somnia.network/tokyo/faucet
+had "Tokyo testnet" selected and no CAPTCHA, wallet-connect or sign-in. The concierge typed the referee address
+(checked against the field before submitting) and pressed "Send 1 STT" once. The page answered "Sent 1 STT. View the
+transaction". The first attempt found the Chrome extension disconnected; nothing was tried by any other route until the
+user reconnected it.
+- Faucet tx **`0x3f8a46f1e617e391de6f2863bd6e50aa4457a4de3e770c2cd0ab1a44929b5dd8`**: status 1, block 47502628,
+  from the faucet sender `0x2c2a654b…e74f`, to the referee, value exactly 1 STT.
+- Referee balance: **0.9944666265982 → 1.9944666265982 STT** (nonce 4), above the user's 1.9 STT minimum.
+
+**STEP 2: contracts:10**, from Git Bash at the repo root, one command at a time.
+1. `node contracts/script/forge.mjs build`: `No files changed, compilation skipped`, exit 0.
+2. `npx tsx contracts/script/deploy.ts --dry-run`: the same three lines as the stopped run above, now with
+   `balance 1994466626598200000 wei`, then `dry-run: no transaction sent`. Checks passed.
+3. **Cost check, total of the deploy and both registrations** (read-only, no key). `eth_simulateV1` is not served on
+   Hideki, so the concierge used three reads instead:
+   - the deploy's `eth_estimateGas`;
+   - an `eth_call` of the creation, which returns the constructed runtime code (15,197 bytes, with the immutable
+     owner and referee filled in);
+   - an `eth_estimateGas` of each `registerRulebook`, with that code overridden at the predicted address
+     `0xf5D8…9370` (referee nonce 4).
+   `registerRulebook` writes only the empty `_rulebooks` mapping, so a code-only override is faithful.
+   - Deploy: 77,007,457 gas.
+   - Each register: 2,077,810 gas.
+   - **Total 81,163,077 gas × 6 gwei = 0.486978462 STT**, under the 0.6 STT cap.
+4. `npx tsx contracts/script/deploy.ts` (exit 0):
+   ```
+   registry 0xf5d8099239200df961e0910a42c105214d1e9370 — https://explorer.testnet.somnia.network/tokyo/tx/0x0046bcd478e0bb69db882a2b0da3ca15d34f73f2abbd1ed6bfbbf5c63d513190
+   next: put REGISTRY_ADDRESS=<registry> into .env
+   ```
+   No revert at creation, so the paris fallback was not used and `foundry.toml` is unchanged (cancun).
+5. `npx tsx contracts/script/check-deployment.ts`: **`PASS deployment`** (exit 0).
+
+**Deployment** (`deployments/hideki.json`, left **UNCOMMITTED** for the orchestrator; note that `deployments/` is not
+git-ignored):
+
+| What | Value |
+|---|---|
+| Registry | **`0xf5D8099239200DF961E0910A42C105214D1E9370`** |
+| Deploy tx | `0x0046bcd478e0bb69db882a2b0da3ca15d34f73f2abbd1ed6bfbbf5c63d513190`, block **47503978**, gas 51,338,305, 0.30802983 STT |
+| `tokyo-sprint` | id `0x2b322b0cb6730d16799a40cfbd51ecf9c6be76ae9474beccdf0c949050c23223`; tx `0x6acec9f440477e4d31954a40d7df91f48a1faa5b04519c532c797194f6a8449b`, block 47504002, gas 718,540, 0.00431124 STT |
+| `tokyo-sprint-demo` | id `0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757`; tx `0xe119222c4093dd34828d70bfcf06fa1dc7a8c4e9e3c8cade44598f92ed6e9016`, block 47504026, gas 718,540, 0.00431124 STT |
+| Build | solc 0.8.28, evm cancun, via-IR |
+
+**Concierge read-only check:**
+- All three receipts have status success, from the referee, at 6 gwei.
+- On the registry, `owner()` and `referee()` both return `0xE358D822…77eb`; `marginBank`, `somniaAgents` and `baseUrl`
+  are as constructed; `oracleDeposit` is 0.0309 STT; `runCount` is 0.
+- `getRulebook`: `tokyo-sprint` has pool `0x4181…94C0`, 150 bps, min 120 s, limit 1800 s, `BTC/USDC:PERP`, exists.
+  `tokyo-sprint-demo` has 50 bps, min 60 s, limit 900 s, `BTC/USDC:PERP`, exists.
+- Actual gas used came in below the estimates: 51.3M vs 77.0M for the deploy, 0.72M vs 2.08M per register.
+
+**Spend:** **0.31665231 STT** in total (0.30802983 + 2 × 0.00431124), exactly the drop in the referee's balance.
+The referee now holds **1.6778143165982 STT**, nonce 7.
+
+**`.env`** (git-ignored): added `REGISTRY_ADDRESS` (the public registry address above) and `ORACLE_ENABLED=true`
+(a non-secret switch). Names now: REFEREE_PK, REFEREE_ADDRESS, ACCOUNT_A_PK, ACCOUNT_A_ADDRESS, ACCOUNT_B_PK,
+ACCOUNT_B_ADDRESS, REGISTRY_ADDRESS, ORACLE_ENABLED.
