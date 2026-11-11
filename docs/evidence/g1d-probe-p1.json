@@ -1,0 +1,103 @@
+{
+  "evidence": "g1d-probe-p1",
+  "writtenAt": "2026-11-11T13:11:05.371Z",
+  "mode": "live",
+  "probe": "P1",
+  "request": "createRequest",
+  "consensus": "Majority",
+  "requestId": "7782661",
+  "agentId": "9911223344556677889",
+  "requester": "0xE358D82209ea9360F411A041C0200adc385877eb",
+  "callback": "referee EOA",
+  "callbackSelector": "0x00000000",
+  "payload": {
+    "selector": "0x1ca1d20c",
+    "symbols": [
+      "BTC/USDC:PERP"
+    ],
+    "decimals": 18
+  },
+  "depositFloorWei": "30000000000000000",
+  "sentWei": "30900000000000000",
+  "perAgentBudget": "300000000000000",
+  "subcommittee": [
+    "0xc400f086fDB3AA5b0A565DFc8988FB6Fe2511850",
+    "0xF48394d6fDCc83D519C7a22C2cF246d210F1932E",
+    "0x92d237DEa7eb9d37E1B303DA586f4B83956df6AD"
+  ],
+  "finalStatus": "Success",
+  "finalStatusCode": 2,
+  "finalizeTx": "0x7993e4d8f39333d4b157ac4087ac32ee4fb2d394dd28708576b4d9411b3af64d",
+  "finalizeBlock": "47485273",
+  "responses": 2,
+  "validatorResponses": [
+    {
+      "validator": "0xF48394d6fDCc83D519C7a22C2cF246d210F1932E",
+      "executionCostWei": "154015185000000",
+      "words": [
+        "1",
+        "0",
+        "0",
+        "154015185000000"
+      ],
+      "tx": "0x57a82d30bcbe4d0d8885daf2887966703f31477ba947dd17efd20cb5f0c65b24",
+      "block": "47485273"
+    },
+    {
+      "validator": "0xc400f086fDB3AA5b0A565DFc8988FB6Fe2511850",
+      "executionCostWei": "201342756000000",
+      "words": [
+        "1",
+        "0",
+        "0",
+        "201342756000000"
+      ],
+      "tx": "0x7993e4d8f39333d4b157ac4087ac32ee4fb2d394dd28708576b4d9411b3af64d",
+      "block": "47485273"
+    }
+  ],
+  "validatorCostWei": "355357941000000",
+  "outcomeSource": "SomniaAgents logs: RequestFinalized and the per-validator response events",
+  "answers": [
+    {
+      "validator": "0xF48394d6fDCc83D519C7a22C2cF246d210F1932E",
+      "status": 2,
+      "prices": [
+        {
+          "price": "73735850000000003080192",
+          "numSources": 6,
+          "lastUpdated": "1794402664783"
+        }
+      ]
+    },
+    {
+      "validator": "0xc400f086fDB3AA5b0A565DFc8988FB6Fe2511850",
+      "status": 2,
+      "prices": [
+        {
+          "price": "73735850000000003080192",
+          "numSources": 6,
+          "lastUpdated": "1794402664783"
+        }
+      ]
+    }
+  ],
+  "answersIdentical": true,
+  "answersSource": "the callback in the finalize transaction (debug_traceTransaction)",
+  "symbols": [
+    {
+      "symbol": "BTC/USDC:PERP",
+      "price": "73735850000000003080192",
+      "numSources": 6,
+      "lastUpdated": "1794402664783"
+    }
+  ],
+  "tx": {
+    "label": "createRequest",
+    "hash": "0xbaeac4b95c08feea5c2bbf0e21bf260c8b0a5dfea8b804c627d61ba216a889df",
+    "status": "success",
+    "gasUsed": "226024",
+    "costWei": "1356144000000000",
+    "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0xbaeac4b95c08feea5c2bbf0e21bf260c8b0a5dfea8b804c627d61ba216a889df"
+  }
+}
