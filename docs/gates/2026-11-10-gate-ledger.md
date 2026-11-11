@@ -53,7 +53,7 @@ ever appears here.
 |---|---|---|---|---|---|---|---|
 | P1 | **Burners.** Three fresh keypairs: REFEREE (also the registry deployer and owner), ACCOUNT_A (human challenge account), ACCOUNT_B (bot challenge account). Written to the repo-root `.env` as `REFEREE_PK`, `REFEREE_ADDRESS`, `ACCOUNT_A_PK`, `ACCOUNT_A_ADDRESS`, `ACCOUNT_B_PK`, `ACCOUNT_B_ADDRESS` (the manifest `env` names) | A | preflight | Bash: (1) `git check-ignore .env` must report ignored; (2) a node script in the scratch folder, `viem@2.57.12` `generatePrivateKey` + `privateKeyToAccount`, appends the six lines straight to `.env`, refuses to run if any of those names already exist, and prints **addresses only** | none | A key reaching stdout, a log or a commit. Mitigated: the script never prints a key, `.env` is git-ignored, and every commit is by explicit path. Blast radius: three empty testnet burners | **done** 2026-11-11 (see Evidence) |
 | P2 | **STT.** Fund REFEREE, ACCOUNT_A and ACCOUNT_B to about 1 STT each from the Hideki faucet. Then write the faucet playbook `references/faucets/somnia-hideki-testnet.md` from `_template.md` | A, but **B** if a CAPTCHA or wallet-connect appears | preflight | claude-in-chrome on `https://explorer.testnet.somnia.network/tokyo/faucet`: discovery, then one claim per burner address. Bash: `eth_getBalance` on `api.hideki.infra…` (fallback `api.hideki2.infra…`) before and after. Write + `git commit` by explicit path in the kit checkout (public facts only, no addresses). **Local commit only:** no push right on the kit (see the session card) | only if the page shows a CAPTCHA or wallet-connect: the user makes that click, then the concierge continues | Pack facts: 1 STT per address per hour, paid only while the balance is under 1 STT, five per connection, "a form meant for a person". Three addresses fit in one connection. A wasted attempt costs nothing but the cooldown. Blast radius: none (the faucet sends; nothing is signed) | **done** 2026-11-11: 3 × 1 STT, no CAPTCHA (see Evidence) |
-| P3 | **Vouchers.** For ACCOUNT_A and ACCOUNT_B ONLY (never the referee), claim the one-time 1,000 paper-USDso voucher, ONCE each | A | preflight | Bash: a scratch folder outside the repo and kit with exact pins `@somnia-chain/markets-sdk@0.33.0` and `viem@2.57.12` (`--legacy-peer-deps` if npm crashes with "edgesOut"). The script reads over **WebSocket** (`wss://api.hideki.infra…/ws`) and takes the key from `.env` without printing it: `listPerpMarkets()` → BTC row → `getPerpVoucherEligibility(btc.marginBank, account)` → only if `eligible`, `trader.claimPerpVoucher({ marginBank })`. Verify: `getPerpVoucher`, total equity about 1,000 USDso (quote token read off the market row, NOT `SOMNIA_HIDEKI_TESTNET_ADDRESSES.collateral`), account flat (no positions, no locked collateral), `getPerpLeverage` | none | **One-shot per address, for the distributor's life.** A failed claim still mines and costs gas. Rule: one attempt per account; on any error STOP and report; never re-send without re-reading eligibility. Needs about 0.6 STT of headroom, so it depends on P2 for A and B. If a claim is lost, that account would need a new burner and a new `.env` entry. Testnet only | **BLOCKED** 2026-11-11: ACCOUNT_A's one claim failed to send (outcome-unknown error; verified NOT mined, still eligible); STOPPED per the rule; ACCOUNT_B not attempted. Awaiting the user (see Evidence) |
+| P3 | **Vouchers.** For ACCOUNT_A and ACCOUNT_B ONLY (never the referee), claim the one-time 1,000 paper-USDso voucher, ONCE each | A | preflight | Bash: a scratch folder outside the repo and kit with exact pins `@somnia-chain/markets-sdk@0.33.0` and `viem@2.57.12` (`--legacy-peer-deps` if npm crashes with "edgesOut"). The script reads over **WebSocket** (`wss://api.hideki.infra…/ws`) and takes the key from `.env` without printing it: `listPerpMarkets()` → BTC row → `getPerpVoucherEligibility(btc.marginBank, account)` → only if `eligible`, `trader.claimPerpVoucher({ marginBank })`. Verify: `getPerpVoucher`, total equity about 1,000 USDso (quote token read off the market row, NOT `SOMNIA_HIDEKI_TESTNET_ADDRESSES.collateral`), account flat (no positions, no locked collateral), `getPerpLeverage` | none | **One-shot per address, for the distributor's life.** A failed claim still mines and costs gas. Rule: one attempt per account; on any error STOP and report; never re-send without re-reading eligibility. Needs about 0.6 STT of headroom, so it depends on P2 for A and B. If a claim is lost, that account would need a new burner and a new `.env` entry. Testnet only | **BLOCKED** 2026-11-11. Attempt 1 (SDK send): outcome-unknown, never mined. Retry (user go, viem path): **`claim()` reverts in simulation for EVERY caller** with custom error `0x3e31dcc2`, although the SDK reports A eligible. Nothing was sent; A still has nonce 0, 1 STT and an unclaimed voucher. ACCOUNT_B not attempted. Awaiting the user (see Evidence) |
 | P4 | **Ledger.** This file: per-gate tier, tools, risk, status and evidence. Committed and pushed by explicit path | A | preflight | Write; `git add docs/gates/2026-11-10-gate-ledger.md`; `git -c credential.helper= -c "credential.helper=!gh auth git-credential" push` | none | Shared working tree (architect + orchestrator). Mitigated: explicit-path add, `pull --ff-only`, no stash/reset/clean/checkout on other seats' files | **done**: created and pushed by this commit; evidence rows are added as each gate runs |
 
 **Recommended order:** P1 → P2 (all three addresses in one faucet connection) → P3 (ACCOUNT_A, then ACCOUNT_B, one
@@ -166,3 +166,68 @@ _Filled per gate as it runs. Public addresses and tx hashes only._
   - The next attempt for either account needs the user's explicit go.
 - **Feedback-track candidate** (duplicate-check first): `claimPerpVoucher` on 0.33.0 surfaced an outcome-unknown
   send for a transaction that never reached the chain.
+
+### P3 retry: user go 2026-11-11 ~03:20 WAT (diagnostics D1/D2 from the REFEREE, then ONE claim for ACCOUNT_A)
+
+The user's method:
+1. D1 and D2 run from the referee only.
+2. Re-read A's state immediately before sending.
+3. Build the claim UNSIGNED with `buildClaimPerpVoucher`.
+4. Sign and send it with viem over a path D1/D2 proved, with explicit nonce 0, gas 1.5× the estimate and gas
+   price 1.3× `eth_gasPrice`.
+5. Wait up to 90 s for the receipt.
+
+On any error, STOP. No SDK pin or plan change.
+
+**D1 (verbatim): viem `sendTransaction`, 0-value self-transfer from the REFEREE over `https://api.hideki.infra…`.
+WORKS.**
+```
+D1 host https://api.hideki.infra.testnet.somnia.network before {"latest":0,"pending":0,"balance":"1000000000000000000"}
+D1 sent 0x3a720759acf930500206dd28fe4b34368f30ef3a4c3b266e4ef0ad3f56fcf061
+D1 receipt {"hash":"0x3a720759acf930500206dd28fe4b34368f30ef3a4c3b266e4ef0ad3f56fcf061","status":"success","block":"47088026","gasUsed":"21000","effectiveGasPrice":"6000000000","type":"eip1559"}
+D1 after {"latest":1,"pending":1,"balance":"999874000000000000"}
+```
+(`api.hideki2` was not needed.)
+
+**D2 (verbatim): SDK 0.33.0 `trader.approvePerpMargin({ amount: 1n, marginBank })` from the REFEREE.**
+This is a 1-wei USDso allowance to the MarginBank on an account with 0 USDso: no funds move and no voucher is
+touched.
+- Default send path: **WORKS.** The SDK sent it with type 2 and a fixed gas of 10,000,000.
+- Non-default `wsRpcUrl` `wss://api.hideki2.infra…/ws`: **FAILS before sending.**
+```
+D2[default] before {"latest":1,"pending":1,"balance":"999874000000000000"}
+D2[default] OK {"hash":"0xce514c94a40b6077ebbe44b457c52464b28f626dd3a549bde0dc625783185b26","status":"success","block":"47088233","gasUsed":"260601"}
+D2[default] after {"latest":2,"pending":2,"balance":"998310394000000000"}
+D2[ws2] before {"latest":2,"pending":2,"balance":"998310394000000000"}
+D2[ws2] FAILED RpcError:  | @somnia-chain/markets-sdk: rpc getBlock failed: genesis check failed
+D2[ws2] after {"latest":2,"pending":2,"balance":"998310394000000000"}
+```
+- Referee STT after D1 + D2: 0.998310394. Its nonce is now 2.
+
+**ACCOUNT_A claim: STOPPED before sending.**
+- **Pre-read** (just before the send step): nonce latest 0 / pending 0, STT 1.0, `eligible: true` (grant 1,000
+  USDso), voucher `claimed: false`, equity 0, BTC position 0.
+- **Unsigned call** (`buildClaimPerpVoucher`): chainId 50383, to the VoucherDistributor
+  `0x2ACD9EFdA721450906bfE1bef3edE269636E42C4`, value 0, data `0x4e71d92d` (`claim()`).
+- **`eth_estimateGas` from A → `EstimateGasExecutionError: Execution reverted for an unknown reason`.** The script
+  exited before signing. **No transaction was sent.**
+- **Read-only follow-up** (no send):
+  - A's nonce is still 0 / 0, STT 1.0, still eligible, voucher unclaimed.
+  - `eth_call` of `claim()` from A, with and without gas 10,000,000, reverts with data **`0x3e31dcc2`**.
+    `eth_estimateGas` with a 10M cap gives the same.
+  - **The same revert, `0x3e31dcc2`, appears when simulating from ACCOUNT_B and from two never-used addresses
+    (`0x…dEaD`, `0x1111…1111`), so it is GLOBAL, not account-specific.**
+  - The selector is not among the 591 custom errors in the SDK 0.33.0 ABIs, and is unknown to openchain and
+    4byte.
+  - The distributor is an EIP-1967 proxy; implementation slot = `0x9657f0fd53efc01cd108d93c835bb4b517732b43`.
+  - `getPerpVoucherCampaign` shows the campaign is active:
+    - startsAt 1790553600 (2026-09-28), endsAt 1798477478 (2026-12-28);
+    - budgetRemaining and claimsRemaining both 70,779 (that is, 70,779 claims of 1,000 USDso left);
+    - grant 1,000 USDso, leverageCapX 20.
+    - Chain head time was 2026-11-11T02:11Z.
+  - Recent distributor logs could not be scanned: `eth_getLogs` is capped at 1,000 blocks (about 100 s).
+- **Reading:** the distributor itself rejects every `claim()` right now with an error the SDK does not know. The
+  SDK's eligibility read does not reflect it. Attempt 1's "outcome-unknown" send was most likely this same
+  revert, rejected at the sync-send endpoint.
+- **Feedback-track candidate** (strong; duplicate-check first): eligibility says `eligible: true` while
+  `VoucherDistributor.claim()` reverts for every address with `0x3e31dcc2`, an error not in the SDK's ABIs.
