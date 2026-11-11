@@ -1,0 +1,32 @@
+{
+  "chainId": 50383,
+  "registry": "0xf5d8099239200df961e0910a42c105214d1e9370",
+  "deployTx": "0x0046bcd478e0bb69db882a2b0da3ca15d34f73f2abbd1ed6bfbbf5c63d513190",
+  "deployBlock": "47503978",
+  "owner": "0xE358D82209ea9360F411A041C0200adc385877eb",
+  "referee": "0xE358D82209ea9360F411A041C0200adc385877eb",
+  "marginBank": "0x478769E1177C0773c43A593DCCc4Ad15F15F1394",
+  "somniaAgents": "0x7407cb35a17D511D1Bd32dD726ADb8D5344ECbE3",
+  "baseUrl": "https://basanos.vercel.app/app/#/cert/",
+  "solc": "0.8.28",
+  "evmVersion": "cancun",
+  "viaIr": true,
+  "deployGasUsed": "51338305",
+  "deployCostWei": "308029830000000000",
+  "rulebooks": [
+    {
+      "name": "tokyo-sprint",
+      "id": "0x2b322b0cb6730d16799a40cfbd51ecf9c6be76ae9474beccdf0c949050c23223",
+      "tx": "0x6acec9f440477e4d31954a40d7df91f48a1faa5b04519c532c797194f6a8449b",
+      "status": "success",
+      "gasUsed": "718540"
+    },
+    {
+      "name": "tokyo-sprint-demo",
+      "id": "0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757",
+      "tx": "0xe119222c4093dd34828d70bfcf06fa1dc7a8c4e9e3c8cade44598f92ed6e9016",
+      "status": "success",
+      "gasUsed": "718540"
+    }
+  ]
+}
