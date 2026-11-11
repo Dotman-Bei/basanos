@@ -119,3 +119,27 @@ which spike:11 produces; the manifest lacks a `contracts:11 -> spike:11` edge. C
 contracts:11 stays held until spike:11 lands (blocked on B14 / USDso).
 
 Status: 45 / 59 done. Ready: spike:11 (human gate, B14), contracts:11 (held, needs spike:11).
+
+## Resume 2026-11-11 (architect decouplings and new tasks: web:9, ship:4, ship:5, ship:8, ship:9, referee:11)
+
+| Task | Routed | Commit | Gate (re-run by orchestrator) |
+|---|---|---|---|
+| web:9 | executor-high / sonnet (worktree) | 2b26225 | web 29 passed; ORACLE_OFF_LINE fully replaced |
+| ship:5 | executor-high / sonnet (worktree) | 3c4a1b8 | check-readme PASS; README, LICENSE, check-readme.ps1 byte-identical to the current plan (incl. 2b052eb) |
+| ship:4 | executor-high / sonnet (worktree, resumed once) | cca9c8d | PASS feedback (5 items); 3 templated items match the plan templates exactly outside Evidence; explorer item Severity normal / Area app; indexer item skipped (all R1 reads ok) |
+| ship:9 | executor-medium / opus (worktree) | 7fc9f46 | base-url 2 passed; 4 plan blocks present; typecheck 0; set-base-url / check-deploy not run |
+| ship:8 | executor-medium / opus (worktree) | b795855 | vercel 2 passed; token only in child env, argv guard (resolves the ship:1 observation) |
+| referee:11 | executor-high / sonnet (main tree) | f771ae9 | sizing 3 passed; bot 7 passed; typecheck 0; demo-check not run |
+
+Workspace totals after this wave: core 53, referee 21, spike 25, web 29, ship 10, bot 7, landing 4.
+
+**Orchestrator incidents (fixed):**
+- The prompt builder ended a task block at the first `\n## ` line, which cut ship:4 and ship:5 inside their fenced markdown
+  templates. Audit of all 63 tasks: only those two were affected. ship:5's executor read the plan itself (verified identical);
+  ship:4's executor was resumed with the full block and conformed its files. Builder now ends a block only at
+  `### Task N:` or `---` followed by `## `.
+- land.sh `commit` tried to `git add` a declared-but-intentionally-absent file (ship:4's skipped indexer item), so no commit
+  was made while the script still printed "pushed". Committed by explicit path; land.sh now skips absent untracked files and
+  stops with "COMMIT FAILED" if HEAD did not move.
+
+Status: 51 / 63 done. Ready: spike:11 only (human gate, B14 / USDso). contracts:11 now depends on spike:11 (63b70d3).
