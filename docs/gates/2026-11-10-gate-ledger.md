@@ -51,9 +51,9 @@ ever appears here.
 
 | # | Gate | Tier | Pass | Tool plan | Human moment | Risk note | Status |
 |---|---|---|---|---|---|---|---|
-| P1 | **Burners.** Three fresh keypairs: REFEREE (also the registry deployer and owner), ACCOUNT_A (human challenge account), ACCOUNT_B (bot challenge account). Written to the repo-root `.env` as `REFEREE_PK`, `REFEREE_ADDRESS`, `ACCOUNT_A_PK`, `ACCOUNT_A_ADDRESS`, `ACCOUNT_B_PK`, `ACCOUNT_B_ADDRESS` (the manifest `env` names) | A | preflight | Bash: (1) `git check-ignore .env` must report ignored; (2) a node script in the scratch folder, `viem@2.57.12` `generatePrivateKey` + `privateKeyToAccount`, appends the six lines straight to `.env`, refuses to run if any of those names already exist, and prints **addresses only** | none | A key reaching stdout, a log or a commit. Mitigated: the script never prints a key, `.env` is git-ignored, and every commit is by explicit path. Blast radius: three empty testnet burners | pending |
-| P2 | **STT.** Fund REFEREE, ACCOUNT_A and ACCOUNT_B to about 1 STT each from the Hideki faucet. Then write the faucet playbook `references/faucets/somnia-hideki-testnet.md` from `_template.md` | A, but **B** if a CAPTCHA or wallet-connect appears | preflight | claude-in-chrome on `https://explorer.testnet.somnia.network/tokyo/faucet`: discovery, then one claim per burner address. Bash: `eth_getBalance` on `api.hideki.infra…` (fallback `api.hideki2.infra…`) before and after. Write + `git commit` by explicit path in the kit checkout (public facts only, no addresses). **Local commit only:** no push right on the kit (see the session card) | only if the page shows a CAPTCHA or wallet-connect: the user makes that click, then the concierge continues | Pack facts: 1 STT per address per hour, paid only while the balance is under 1 STT, five per connection, "a form meant for a person". Three addresses fit in one connection. A wasted attempt costs nothing but the cooldown. Blast radius: none (the faucet sends; nothing is signed) | pending |
-| P3 | **Vouchers.** For ACCOUNT_A and ACCOUNT_B ONLY (never the referee), claim the one-time 1,000 paper-USDso voucher, ONCE each | A | preflight | Bash: a scratch folder outside the repo and kit with exact pins `@somnia-chain/markets-sdk@0.33.0` and `viem@2.57.12` (`--legacy-peer-deps` if npm crashes with "edgesOut"). The script reads over **WebSocket** (`wss://api.hideki.infra…/ws`) and takes the key from `.env` without printing it: `listPerpMarkets()` → BTC row → `getPerpVoucherEligibility(btc.marginBank, account)` → only if `eligible`, `trader.claimPerpVoucher({ marginBank })`. Verify: `getPerpVoucher`, total equity about 1,000 USDso (quote token read off the market row, NOT `SOMNIA_HIDEKI_TESTNET_ADDRESSES.collateral`), account flat (no positions, no locked collateral), `getPerpLeverage` | none | **One-shot per address, for the distributor's life.** A failed claim still mines and costs gas. Rule: one attempt per account; on any error STOP and report; never re-send without re-reading eligibility. Needs about 0.6 STT of headroom, so it depends on P2 for A and B. If a claim is lost, that account would need a new burner and a new `.env` entry. Testnet only | pending (depends on P1, P2) |
+| P1 | **Burners.** Three fresh keypairs: REFEREE (also the registry deployer and owner), ACCOUNT_A (human challenge account), ACCOUNT_B (bot challenge account). Written to the repo-root `.env` as `REFEREE_PK`, `REFEREE_ADDRESS`, `ACCOUNT_A_PK`, `ACCOUNT_A_ADDRESS`, `ACCOUNT_B_PK`, `ACCOUNT_B_ADDRESS` (the manifest `env` names) | A | preflight | Bash: (1) `git check-ignore .env` must report ignored; (2) a node script in the scratch folder, `viem@2.57.12` `generatePrivateKey` + `privateKeyToAccount`, appends the six lines straight to `.env`, refuses to run if any of those names already exist, and prints **addresses only** | none | A key reaching stdout, a log or a commit. Mitigated: the script never prints a key, `.env` is git-ignored, and every commit is by explicit path. Blast radius: three empty testnet burners | **done** 2026-11-11 (see Evidence) |
+| P2 | **STT.** Fund REFEREE, ACCOUNT_A and ACCOUNT_B to about 1 STT each from the Hideki faucet. Then write the faucet playbook `references/faucets/somnia-hideki-testnet.md` from `_template.md` | A, but **B** if a CAPTCHA or wallet-connect appears | preflight | claude-in-chrome on `https://explorer.testnet.somnia.network/tokyo/faucet`: discovery, then one claim per burner address. Bash: `eth_getBalance` on `api.hideki.infra…` (fallback `api.hideki2.infra…`) before and after. Write + `git commit` by explicit path in the kit checkout (public facts only, no addresses). **Local commit only:** no push right on the kit (see the session card) | only if the page shows a CAPTCHA or wallet-connect: the user makes that click, then the concierge continues | Pack facts: 1 STT per address per hour, paid only while the balance is under 1 STT, five per connection, "a form meant for a person". Three addresses fit in one connection. A wasted attempt costs nothing but the cooldown. Blast radius: none (the faucet sends; nothing is signed) | **done** 2026-11-11: 3 × 1 STT, no CAPTCHA (see Evidence) |
+| P3 | **Vouchers.** For ACCOUNT_A and ACCOUNT_B ONLY (never the referee), claim the one-time 1,000 paper-USDso voucher, ONCE each | A | preflight | Bash: a scratch folder outside the repo and kit with exact pins `@somnia-chain/markets-sdk@0.33.0` and `viem@2.57.12` (`--legacy-peer-deps` if npm crashes with "edgesOut"). The script reads over **WebSocket** (`wss://api.hideki.infra…/ws`) and takes the key from `.env` without printing it: `listPerpMarkets()` → BTC row → `getPerpVoucherEligibility(btc.marginBank, account)` → only if `eligible`, `trader.claimPerpVoucher({ marginBank })`. Verify: `getPerpVoucher`, total equity about 1,000 USDso (quote token read off the market row, NOT `SOMNIA_HIDEKI_TESTNET_ADDRESSES.collateral`), account flat (no positions, no locked collateral), `getPerpLeverage` | none | **One-shot per address, for the distributor's life.** A failed claim still mines and costs gas. Rule: one attempt per account; on any error STOP and report; never re-send without re-reading eligibility. Needs about 0.6 STT of headroom, so it depends on P2 for A and B. If a claim is lost, that account would need a new burner and a new `.env` entry. Testnet only | **BLOCKED** 2026-11-11: ACCOUNT_A's one claim failed to send (outcome-unknown error; verified NOT mined, still eligible); STOPPED per the rule; ACCOUNT_B not attempted. Awaiting the user (see Evidence) |
 | P4 | **Ledger.** This file: per-gate tier, tools, risk, status and evidence. Committed and pushed by explicit path | A | preflight | Write; `git add docs/gates/2026-11-10-gate-ledger.md`; `git -c credential.helper= -c "credential.helper=!gh auth git-credential" push` | none | Shared working tree (architect + orchestrator). Mitigated: explicit-path add, `pull --ff-only`, no stash/reset/clean/checkout on other seats' files | **done**: created and pushed by this commit; evidence rows are added as each gate runs |
 
 **Recommended order:** P1 → P2 (all three addresses in one faucet connection) → P3 (ACCOUNT_A, then ACCOUNT_B, one
@@ -100,6 +100,69 @@ P1–P3 feed the Nov 11 tripwire (spike:11 needs ACCOUNT_A's voucher and the ref
 
 _Filled per gate as it runs. Public addresses and tx hashes only._
 
-- P1: —
-- P2: —
-- P3: —
+### P1: Burners. DONE 2026-11-11 ~03:00 WAT (user: "run gates P1–P3")
+
+- `git check-ignore -v .env` → `.gitignore:2:.env`, checked before writing and again after.
+- Script: `viem@2.57.12` `generatePrivateKey`, run from the session scratch folder outside the repo and the kit.
+  - It created `.env` exclusively (`wx` flag) with six names: `REFEREE_PK`, `REFEREE_ADDRESS`, `ACCOUNT_A_PK`,
+    `ACCOUNT_A_ADDRESS`, `ACCOUNT_B_PK`, `ACCOUNT_B_ADDRESS`.
+  - Readback: every PK derives its stored address (OK × 3).
+  - No key was printed.
+- `.env` does not appear in `git status`.
+- Public addresses:
+  - REFEREE (deployer / registry owner): `0xE358D82209ea9360F411A041C0200adc385877eb`
+  - ACCOUNT_A (human challenge account): `0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1`
+  - ACCOUNT_B (bot challenge account): `0x1609F6ABE3aD29B45D1F2fdd15a15d17AbB326aD`
+
+### P2: STT. DONE 2026-11-11 ~03:05 WAT
+
+- The faucet page `explorer.testnet.somnia.network/tokyo/faucet` (Tokyo selected) showed one address field and a
+  "Send 1 STT" button.
+  - **No CAPTCHA, no wallet-connect.** There was no user moment.
+  - The page answered "Sent 1 STT. View the transaction" for each claim.
+- Before: `eth_getBalance` = `0x0` for all three addresses.
+- After: **1.0 STT each** (`api.hideki.infra…`).
+- Faucet txs, all status `0x1`, value 1 STT, all from the same faucet sender:
+
+| To | Tx hash | Block |
+|---|---|---|
+| REFEREE | `0xd964936b3475df11d517a14e51bbda3eddc3430477e42bce50267acfca14bff4` | 47078869 |
+| ACCOUNT_A | `0xf87f6ef953a5664fd8af21f81eaafb7f13d6b5125929cc5c822cc6e6695de629` | 47079146 |
+| ACCOUNT_B | `0x2daa19c2269971df71898bc99cad732a1cbdf084f46bfe85f4a314208f5ccf26` | 47079380 |
+
+- Faucet playbook: `references/faucets/somnia-hideki-testnet.md`, committed in the kit checkout as **`0e63cfa`
+  (LOCAL ONLY)**. Dotman-Bei has no push right on `bitnormie01/build-system`; the kit's `main` is ahead 1.
+
+### P3: Vouchers. BLOCKED 2026-11-11 ~03:15 WAT
+
+- **Setup:** scratch folder, exact pins `@somnia-chain/markets-sdk@0.33.0` and `viem@2.57.12`. npm installed cleanly;
+  `--legacy-peer-deps` was not needed.
+- **Read-only pre-check** (WebSocket SDK, no key loaded), both accounts:
+  - `getPerpVoucherEligibility` → `eligible: true`, `grantAmount` 1,000 USDso;
+  - `getPerpVoucher` → `claimed: false`;
+  - total equity 0, locked collateral 0, BTC position 0;
+  - `getPerpLeverage` → `voucherLeverageCapX: 20`, `voucherMarketAllowed: true`, `protocolMaxLeverageX: 40`;
+  - STT 1.0 each.
+- **Market row:**
+  - BTC/USDso, pool `0x4181dd08E73BbCdd1Ba3E615A18f6abD941b94C0`, marginBank
+    `0x478769E1177C0773c43A593DCCc4Ad15F15F1394`.
+  - Quote token **`0xed7993a74dae1e6656b704a424dcd8711aaf4f72` (USDso, 18 decimals)**. This confirms the pack's
+    gotcha: `SOMNIA_HIDEKI_TESTNET_ADDRESSES.collateral` is a different token (`0x9E94…148f`).
+- **ACCOUNT_A, the one claim attempt:** `trader.claimPerpVoucher({ marginBank })` threw
+  `TransactionOutcomeUnknownError`, which said: "rpc eth_sendRawTransactionSync failed: transaction
+  `0x8bcb9be8c6cb45bc57eb62d0245efe1b59bb2a82aacae10ab93da4e98a02f038` on chain 50383 may have been sent; its
+  receipt was not observed".
+- **Verified afterwards, read-only:**
+  - `eth_getTransactionByHash` and `eth_getTransactionReceipt` → `null` on both `api.hideki` and `api.hideki2`;
+  - account A nonce `0x0` (latest AND pending);
+  - STT still exactly 1.0 (no gas spent);
+  - re-read eligibility → still `eligible: true`, voucher `claimed: false`.
+  - **Conclusion: the claim was NOT mined and the voucher is NOT spent.**
+  - At that moment the SDK chain's `default`, `send` (`send.hideki.infra…`) and `session` hosts all answered
+    `eth_chainId` = 50383, so the cause is unknown (a dropped or timed-out sync send at the validator endpoint).
+- **Per the rule** (one attempt per account; on any error STOP and report; never re-send without re-reading
+  eligibility), the concierge STOPPED.
+  - **No re-send for A. ACCOUNT_B was not attempted.**
+  - The next attempt for either account needs the user's explicit go.
+- **Feedback-track candidate** (duplicate-check first): `claimPerpVoucher` on 0.33.0 surfaced an outcome-unknown
+  send for a transaction that never reached the chain.
