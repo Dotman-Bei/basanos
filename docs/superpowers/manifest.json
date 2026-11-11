@@ -2,18 +2,22 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 in progress (append-only): referee and web appended; ship and landing follow. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control).",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control).",
   "subsystems": [
     "spike",
     "contracts",
     "referee",
-    "web"
+    "web",
+    "ship",
+    "landing"
   ],
   "plans": [
     "docs/superpowers/plans/2026-11-10-basanos-spike.md",
     "docs/superpowers/plans/2026-11-10-basanos-contracts.md",
     "docs/superpowers/plans/2026-11-10-basanos-referee.md",
-    "docs/superpowers/plans/2026-11-10-basanos-web.md"
+    "docs/superpowers/plans/2026-11-10-basanos-web.md",
+    "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+    "docs/superpowers/plans/2026-11-10-basanos-landing.md"
   ],
   "env": [
     {
@@ -2366,6 +2370,578 @@
         "expect": "PASS — `check-env: no VITE_*_PK variables`, then Vite's `✓ built in …` with `dist/index.html` written."
       },
       "commit": "feat(web): recent-verdicts home, router and the static /app build",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:1",
+      "subsystem": "ship",
+      "title": "`@basanos/ship` — featured snapshot, X posts, checks, site assembly, evidence index",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "referee:3",
+        "referee:6",
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "contracts:8"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "packages/ship/package.json",
+          "packages/ship/tsconfig.json",
+          "packages/ship/vitest.config.ts",
+          "packages/ship/src/text.ts",
+          "packages/ship/src/featured.ts",
+          "packages/ship/src/snapshot-run.ts",
+          "packages/ship/src/x-posts.ts",
+          "packages/ship/src/check-money-shot.ts",
+          "packages/ship/src/check-feedback.ts",
+          "packages/ship/src/assemble-site.ts",
+          "packages/ship/src/check-deploy.ts",
+          "packages/ship/src/evidence-index.ts"
+        ],
+        "modify": [
+          ".gitignore"
+        ],
+        "test": [
+          "packages/ship/test/ship.test.ts"
+        ]
+      },
+      "provides": [
+        "TRUST_LINE",
+        "DEMO_DISCLOSURE",
+        "TESTNET_NOTICE",
+        "FORBIDDEN_CLAIMS: readonly string[]",
+        "interface ReadOut { block: string; equity: string; equityRaw: string; size: string; mark: string }",
+        "interface FeaturedRun { schema: \"basanos.featured/1\"; chainId: 50383; registry: Address; runId: string; status: string; rule: string | null; rulebook: { label: string; id: Hex; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number }; account: Address; start: ReadOut; breach: ReadOut | null; end: ReadOut; closeTxs: { hash: Hex; url: string }[]; verdictTx: { hash: Hex; url: string } | null; oracle: { price: string; sources: number } | null; links: { verdict: string; certificate: string | null }; trustLine: string; demoDisclosure: string; testnetNotice: string }",
+        "buildFeatured(input: FeaturedInput): FeaturedRun",
+        "FEATURED_PATH = \"docs/evidence/featured-run.json\"",
+        "buildPosts(f: FeaturedRun, siteUrl: string | null): string[]",
+        "moneyShotOk(take: { runs: { status: string }[] }): boolean",
+        "checkFeedbackText(name: string, text: string): string[]",
+        "renderEvidenceIndex(items: readonly { title: string; path: string; links: readonly string[] }[]): string",
+        "CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json",
+        "CLI: npx tsx packages/ship/src/x-posts.ts -> writes docs/gates/x-posts-draft.md",
+        "CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot",
+        "CLI: npx tsx packages/ship/src/check-feedback.ts -> PASS feedback",
+        "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/ (landing at /, app at /app/)",
+        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy",
+        "CLI: npx tsx packages/ship/src/evidence-index.ts -> writes docs/evidence/INDEX.md"
+      ],
+      "requires": [
+        "@basanos/referee package (exports \".\" -> src/index.ts)",
+        "jsonSafe(value: unknown): unknown",
+        "readRunsEvidence(path?: string): Record<string, { bundle: unknown; evidenceHash: Hex; verdictTx?: unknown }>",
+        "makePublicClient(url: string): PublicClient",
+        "repoPath(rel: string): string",
+        "loadDotEnv(path?: string): boolean",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "rulebookId(rb: Rulebook): Hex",
+        "explorerTx(hash: Hex): string",
+        "explorerAddress(address: Address): string",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "RULE_NAMES = [\"None\", \"DailyLoss\", \"TrailingDrawdown\", \"MaxExposure\", \"TimeLimit\", \"Liquidated\"]"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/ship",
+        "expect": "PASS — `6 passed`."
+      },
+      "commit": "feat(ship): featured-run snapshot, X-post drafts, checks, site assembly and evidence index",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:2",
+      "subsystem": "ship",
+      "title": "LIVE read-only — snapshot the first real verdict run (the rehearsal) as the featured run",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "referee:10"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "docs/evidence/featured-run.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/featured-run.json (featured run: the first real verdict from the Nov 12 rehearsal; schema basanos.featured/1)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json",
+        "docs/evidence/rehearsal.json (first real verdict runs: firstVerdictRunId, runs with statusName, ruleName, closeTxs)"
+      ],
+      "gate": {
+        "run": "node -e \"const f=require('./docs/evidence/featured-run.json'); if(f.schema!=='basanos.featured/1'||!/^(Passed|Failed)$/.test(f.status)) process.exit(1); console.log('PASS featured', f.runId, f.status)\"",
+        "expect": "PASS — `PASS featured <id> Passed` (or `Failed`)."
+      },
+      "commit": "docs(evidence): featured run = the rehearsal's first real verdict",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:3",
+      "subsystem": "ship",
+      "title": "LIVE — the money shot (one PASS, one FAIL) and the final featured run",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "ship:2",
+        "referee:7",
+        "referee:8",
+        "referee:10",
+        "landing:2"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "docs/evidence/demo-takes.json",
+          "docs/evidence/runs.json",
+          "docs/evidence/featured-run.json",
+          "apps/landing/src/featured-verdict.json"
+        ],
+        "test": []
+      },
+      "provides": [
+        "money shot take in docs/evidence/demo-takes.json (one PASS, one FAIL)",
+        "FEATURED_RUN_ID (the money-shot PASS run; set in .env)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]",
+        "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
+        "CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json",
+        "CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot",
+        "CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json"
+      ],
+      "gate": {
+        "run": "npx tsx packages/ship/src/check-money-shot.ts",
+        "expect": "PASS — `PASS money-shot (take <n>: one PASS, one FAIL)`."
+      },
+      "commit": "docs(evidence): money shot — one PASS with certificate, one FAIL closed by the referee",
+      "human_gate": true,
+      "gate_profile": "wallet",
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:4",
+      "subsystem": "ship",
+      "title": "Feedback items from build friction (Feedback track, by-product)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "spike:9",
+        "spike:13",
+        "contracts:12"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "feedback/sdk-hideki-addresses-missing-operator-registry.md",
+          "feedback/docs-perps-market-list-drift.md",
+          "feedback/docs-somnia-watch-push-has-no-block-number.md",
+          "feedback/sdk-indexer-reads-fail-on-hideki.md",
+          "feedback/explorer-verify-cancun-build.md"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "feedback/*.md (event template; reproducible, de-duplicated items)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/ship/src/check-feedback.ts -> PASS feedback",
+        "docs/evidence/g1b-watch.json",
+        "docs/evidence/r1-indexer.json",
+        "docs/evidence/verify.json (runtime bytecode match with immutables masked; explorer attempt output)"
+      ],
+      "gate": {
+        "run": "npx tsx packages/ship/src/check-feedback.ts",
+        "expect": "PASS — `PASS feedback (<n> items)` with n ≥ 1."
+      },
+      "commit": "docs(feedback): reproducible dreamDEX/Somnia items met while building Basanos",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:5",
+      "subsystem": "ship",
+      "title": "README (schema R1-web-app v1 + event overlay) and LICENSE",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "referee:7",
+        "referee:8",
+        "referee:9",
+        "web:2",
+        "web:7",
+        "contracts:9",
+        "landing:5"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "LICENSE"
+        ],
+        "modify": [
+          "README.md"
+        ],
+        "test": []
+      },
+      "provides": [
+        "README.md (R1-web-app v1 + event-overlay; TBD-post-build lines for live facts)",
+        "LICENSE (MIT, Basanos code; vendored kit files excluded)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]",
+        "CLI: npm run build -w @basanos/web (check-env, then vite build)",
+        "CLI: npx tsx contracts/script/deploy.ts [--dry-run] (REFEREE_PK deploys and owns; registers tokyo-sprint and tokyo-sprint-demo; writes deployments/hideki.json)",
+        "landing checkers PASS (consistency, check, perf, shoot at 1440/1024/820/768/390)"
+      ],
+      "gate": {
+        "run": "powershell -NoProfile -Command \"$want = @('# Basanos','## Demo','## What it does','## Quickstart','## Built at dreamDEX Perps Builder Bounty','## How it works','## Tech stack','## Run locally','## Contract addresses','## Who it is for','## X posts','## Roadmap','## License'); $stamp = '<!-- readme-schema: R1-web-app v1 + event-overlay -->'; $lines = Get-Content README.md -Encoding UTF8; $inFence = $false; $got = foreach ($l in $lines) { if ($l -match '^```') { $inFence = -not $inFence } elseif (-not $inFence -and $l -cmatch '^#{1,2} ') { $l } }; $ok = ($got.Count -eq $want.Count); if ($ok) { for ($i = 0; $i -lt $want.Count; $i++) { if ($got[$i] -cne $want[$i]) { $ok = $false } } }; if ($ok -and ($lines[0] -ceq $stamp)) { 'PASS' } else { 'FAIL' }\"",
+        "expect": "PASS — `PASS`."
+      },
+      "commit": "docs: README (R1-web-app v1 + event overlay) and MIT licence",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:6",
+      "subsystem": "ship",
+      "title": "LIVE — deploy the site to Vercel and point the certificates at it",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "ship:3",
+        "ship:5",
+        "web:2",
+        "web:7",
+        "landing:3",
+        "landing:5",
+        "contracts:10"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "deployments/site.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "deployments/site.json ({ url, deployedAt, baseUrlTx })",
+        "public site: landing at /, app at /app/"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/ (landing at /, app at /app/)",
+        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy",
+        "CLI: npm run build -w @basanos/web (check-env, then vite build)",
+        "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
+        "deployments/hideki.json (registry address, deploy block, rulebook ids)"
+      ],
+      "gate": {
+        "run": "npx tsx packages/ship/src/check-deploy.ts",
+        "expect": "PASS — `PASS deploy (https://<project>.vercel.app)`."
+      },
+      "commit": "chore(deploy): Basanos site live on Vercel; certificates point at it",
+      "human_gate": true,
+      "gate_profile": "deploy",
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:7",
+      "subsystem": "ship",
+      "title": "X-post drafts and the evidence index from the final facts",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "ship:3",
+        "ship:6"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "docs/gates/x-posts-draft.md",
+          "docs/evidence/INDEX.md"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "docs/gates/x-posts-draft.md (3 drafts generated from the featured run and the live URL)",
+        "docs/evidence/INDEX.md (evidence files and their tx links)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/ship/src/x-posts.ts -> writes docs/gates/x-posts-draft.md",
+        "CLI: npx tsx packages/ship/src/evidence-index.ts -> writes docs/evidence/INDEX.md",
+        "deployments/site.json ({ url, deployedAt, baseUrlTx })"
+      ],
+      "gate": {
+        "run": "npx tsx packages/ship/src/evidence-index.ts",
+        "expect": "PASS — `wrote docs/evidence/INDEX.md (<n> files)`."
+      },
+      "commit": "docs: X-post drafts and the evidence index from the final run",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "landing:1",
+      "subsystem": "landing",
+      "title": "Landing package, the four landing kit files, render and truth libraries",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-landing.md",
+      "depends_on": [
+        "web:1",
+        "spike:1",
+        "spike:3"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "apps/landing/package.json",
+          "apps/landing/tsconfig.json",
+          "apps/landing/vitest.config.ts",
+          "apps/landing/scripts/sync-kit.mjs",
+          "apps/landing/scripts/render.ts",
+          "apps/landing/scripts/truth.ts",
+          "apps/landing/vendor/system.js",
+          "apps/landing/vendor/layout/layout.css",
+          "apps/landing/vendor/layout/layout.js",
+          "apps/landing/vendor/layout/demo.css",
+          "apps/landing/vendor/manifest.json"
+        ],
+        "modify": [],
+        "test": [
+          "apps/landing/test/render.test.ts"
+        ]
+      },
+      "provides": [
+        "@basanos/landing package",
+        "apps/landing/vendor/manifest.json (four landing kit files with sha256)",
+        "interface FeaturedLike { runId: string; status: string; rule: string | null; rulebook: { label: string; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number }; start: { block: string; equity: string }; end: { block: string; equity: string }; breach: { block: string; equity: string } | null; closeTxs: { hash: string; url: string }[]; verdictTx: { hash: string; url: string } | null; oracle: { price: string; sources: number } | null; links: { verdict: string; certificate: string | null }; account: string; registry: string; trustLine: string; demoDisclosure: string; testnetNotice: string }",
+        "pageVars(f: FeaturedLike): Record<string, string>",
+        "renderPage(template: string, f: FeaturedLike): string",
+        "findUnbacked(html: string, f: FeaturedLike): string[]"
+      ],
+      "requires": [
+        "@basanos/design package (exports \"./tokens.css\", \"./system.css\", \"./motion.css\", \"./motion.js\")",
+        "repoPath(rel: string): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/landing",
+        "expect": "PASS — `4 passed`."
+      },
+      "commit": "feat(landing): package, four kit files, render and truth libraries",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "landing:2",
+      "subsystem": "landing",
+      "title": "Featured snapshot for the landing (the first real verdict run)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-landing.md",
+      "depends_on": [
+        "landing:1",
+        "ship:2",
+        "spike:1"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "apps/landing/scripts/featured-snapshot.ts",
+          "apps/landing/src/featured-verdict.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json",
+        "apps/landing/src/featured-verdict.json (the page's only data source)"
+      ],
+      "requires": [
+        "docs/evidence/featured-run.json (featured run: the first real verdict from the Nov 12 rehearsal; schema basanos.featured/1)",
+        "interface FeaturedLike { runId: string; status: string; rule: string | null; rulebook: { label: string; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number }; start: { block: string; equity: string }; end: { block: string; equity: string }; breach: { block: string; equity: string } | null; closeTxs: { hash: string; url: string }[]; verdictTx: { hash: string; url: string } | null; oracle: { price: string; sources: number } | null; links: { verdict: string; certificate: string | null }; account: string; registry: string; trustLine: string; demoDisclosure: string; testnetNotice: string }",
+        "repoPath(rel: string): string"
+      ],
+      "gate": {
+        "run": "npx tsx apps/landing/scripts/featured-snapshot.ts",
+        "expect": "PASS — `wrote apps/landing/src/featured-verdict.json (run <id>)`."
+      },
+      "commit": "feat(landing): featured snapshot from the first real verdict run",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "landing:3",
+      "subsystem": "landing",
+      "title": "The page — hero, three steps, real verdict, replay, testnet notice, the name",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-landing.md",
+      "depends_on": [
+        "landing:1",
+        "landing:2",
+        "web:1",
+        "spike:1"
+      ],
+      "effort": "high",
+      "files": {
+        "create": [
+          "apps/landing/src/page.html",
+          "apps/landing/src/landing.css",
+          "apps/landing/scripts/build.ts"
+        ],
+        "modify": [],
+        "test": [
+          "apps/landing/test/page.test.ts"
+        ]
+      },
+      "provides": [
+        "apps/landing/src/page.html (the template)",
+        "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
+        "apps/landing/dist/index.html (+ assets/ and img/)"
+      ],
+      "requires": [
+        "renderPage(template: string, f: FeaturedLike): string",
+        "findUnbacked(html: string, f: FeaturedLike): string[]",
+        "apps/landing/src/featured-verdict.json (the page's only data source)",
+        "@basanos/design package (exports \"./tokens.css\", \"./system.css\", \"./motion.css\", \"./motion.js\")",
+        "apps/landing/vendor/manifest.json (four landing kit files with sha256)",
+        "repoPath(rel: string): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/landing -- test/page.test.ts",
+        "expect": "PASS — `4 passed`."
+      },
+      "commit": "feat(landing): collage hero, three steps, real verdict, replay, testnet notice and the name",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "landing:4",
+      "subsystem": "landing",
+      "title": "Screenshot of the real verdict page for the featured run",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-landing.md",
+      "depends_on": [
+        "landing:2",
+        "landing:3",
+        "web:2",
+        "web:7"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [
+          "apps/landing/scripts/shoot-verdict.mjs",
+          "apps/landing/src/img/verdict.png"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "apps/landing/src/img/verdict.png (1440x900 shoot.mjs screenshot of /app/#/run/<featured id>, real product UI)",
+        "CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>"
+      ],
+      "requires": [
+        "apps/landing/src/featured-verdict.json (the page's only data source)",
+        "CLI: npm run build -w @basanos/web (check-env, then vite build)",
+        "apps/web/dist (static build served at /app/)"
+      ],
+      "gate": {
+        "run": "node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>",
+        "expect": "PASS — the kit prints `saved …apps\\landing\\src\\img\\verdict.png (1440x900, …)` and the script ends with `saved …verdict.png`. Open the image and confirm it shows run `<runId>` with its real figures. A \"Reading run …\" placeholder means the page had no time to load: re-run with a longer `--wait` (edit the 6000)."
+      },
+      "commit": "feat(landing): real verdict page screenshot for the featured run",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "landing:5",
+      "subsystem": "landing",
+      "title": "The kit's checkers pass on the built landing (the gate)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-landing.md",
+      "depends_on": [
+        "landing:3",
+        "landing:4"
+      ],
+      "effort": "high",
+      "files": {
+        "create": [
+          "apps/landing/scripts/run-checkers.mjs"
+        ],
+        "modify": [
+          "apps/landing/src/page.html",
+          "apps/landing/src/landing.css"
+        ],
+        "test": []
+      },
+      "provides": [
+        "landing checkers PASS (consistency, check, perf, shoot at 1440/1024/820/768/390)",
+        "CLI: node apps/landing/scripts/run-checkers.mjs"
+      ],
+      "requires": [
+        "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
+        "apps/landing/src/img/verdict.png (1440x900 shoot.mjs screenshot of /app/#/run/<featured id>, real product UI)",
+        "apps/landing/src/page.html (the template)"
+      ],
+      "gate": {
+        "run": "node apps/landing/scripts/run-checkers.mjs",
+        "expect": "PASS — `PASS landing checkers`."
+      },
+      "commit": "feat(landing): the kit's consistency, layout, perf and screenshot checks pass",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "landing:6",
+      "subsystem": "landing",
+      "title": "List the third-party kit files in the submission draft",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-landing.md",
+      "depends_on": [
+        "landing:1",
+        "web:1"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [],
+        "modify": [
+          "docs/gates/submission-draft.md"
+        ],
+        "test": []
+      },
+      "provides": [
+        "docs/gates/submission-draft.md third-party assets list (seven kit files with paths and sha256)"
+      ],
+      "requires": [
+        "apps/landing/vendor/manifest.json (four landing kit files with sha256)",
+        "packages/design/vendor/manifest.json (kit path, tasteskill version, sha256 per vendored file)"
+      ],
+      "gate": {
+        "run": "node -e \"const t=require('fs').readFileSync('docs/gates/submission-draft.md','utf8'); const need=['packages/design/vendor/system.css','apps/landing/vendor/layout/demo.css','hero-collage.html']; const miss=need.filter(n=>!t.includes(n)); if(miss.length||t.includes('TBD-post-build:landing-third-party-asset-list')){console.log('FAIL', miss); process.exit(1)} console.log('PASS third-party list')\"",
+        "expect": "PASS — `PASS third-party list`."
+      },
+      "commit": "docs(gates): list the third-party frontend-kit files in the submission draft",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"

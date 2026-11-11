@@ -480,8 +480,10 @@ Required scope (user directive 2026-11-10). Static page built from the frontend 
 
 - **Content, in order:** what it is in one line + the trust line → three steps (published rulebook →
   referee → verdict + certificate) → a real verdict (the actual verdict card as live HTML inside one
-  `app-frame`, rendered from `featured-verdict.json`, plus a `shoot.mjs` screenshot of the real terminal
-  taken during the featured run's own session, so every figure in the image belongs to that run)
+  `app-frame`, rendered from `featured-verdict.json`, plus a `shoot.mjs` screenshot of the app's real
+  verdict page for the featured run (`/app/#/run/<id>`, read live from Hideki), so every figure in the
+  image belongs to that run; the terminal itself is not shot because it would need the account's key in
+  the browser)
   → "Replay any verdict" (links to that run's replay) → testnet notice ("Somnia Tokyo testnet, paper
   USDso, no real funds, no payouts, not a financial service") → the touchstone name story.
 - **CTAs:** primary → `/app/#/challenge`; second → `/app/#/run/<FEATURED_RUN_ID>`, a real run.
