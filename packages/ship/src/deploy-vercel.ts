@@ -1,9 +1,11 @@
 // Deploys the assembled site/basanos to Vercel production with VERCEL_TOKEN from the git-ignored .env, and
 // writes deployments/site.json. Runs from inside site/basanos so no argument holds a path with a space.
+// The token goes to the CLI in the child environment only, never on the command line (see vercel.ts).
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { loadDotEnv, repoPath } from "@basanos/core/node";
+import { argvLeaksToken, vercelDeployInvocation } from "./vercel";
 
 loadDotEnv();
 const token = process.env.VERCEL_TOKEN;
@@ -16,7 +18,12 @@ if (!existsSync(`${dir}/index.html`)) {
   console.error("site/basanos is not assembled (run assemble-site.ts first)");
   process.exit(1);
 }
-const r = spawnSync("npx", ["vercel@65.3.1", "deploy", ".", "--prod", "--yes", "--token", token], { cwd: dir, encoding: "utf8", shell: true });
+const inv = vercelDeployInvocation(token, process.env);
+if (argvLeaksToken(inv.args, token)) {
+  console.error("refusing to put the Vercel token on the command line");
+  process.exit(1);
+}
+const r = spawnSync(inv.command, inv.args, { cwd: dir, encoding: "utf8", shell: true, env: inv.env });
 const urls = `${r.stdout ?? ""}`.match(/https:\/\/[a-z0-9.-]+\.vercel\.app/g) ?? [];
 const url = urls.at(-1);
 if (r.status !== 0 || !url) {
