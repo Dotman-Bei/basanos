@@ -2,6 +2,9 @@
 // far bid; the referee cancels the resting order, closes the long with an IOC placeOrderFor (no reduce-only
 // flag exists), reads back flat. Follows the spec §8 close protocol: cancel first, fresh position read, IOC,
 // read-back, at most 3 attempts with widening slippage, final cancel sweep. --dry-run only reads.
+// Every write is signed locally by viem and sent to the standard RPC (rpcHttp()). Account A's grant, open and
+// rest carry ORDER_GAS and an explicit pending nonce; --sdk-send routes those three through the SDK's own send
+// path instead (fallback only). The evidence records which path ran as `sendPath`.
 import { zeroAddress, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -26,25 +29,57 @@ import {
 } from "@basanos/core";
 import { loadDotEnv, requirePrivateKey } from "@basanos/core/node";
 import { writeEvidence } from "./evidence";
-import { isFlat, sumCosts, txRecord, type TxRecord } from "./live-lib";
+import {
+  grantCall,
+  isFlat,
+  ownerOrderCall,
+  ownerTx,
+  parseSendPath,
+  sumCosts,
+  txRecord,
+  type SendPath,
+  type TxRecord,
+  type UnsignedCall,
+} from "./live-lib";
 import { marketsFor, publicClient, walletFor } from "./rpc";
 
 loadDotEnv();
 const dryRun = process.argv.includes("--dry-run");
+const sendPath: SendPath = parseSendPath(process.argv);
 const ownerPk = requirePrivateKey("ACCOUNT_A_PK");
 const refereePk = requirePrivateKey("REFEREE_PK");
 const owner: Address = privateKeyToAccount(ownerPk).address;
 const referee: Address = privateKeyToAccount(refereePk).address;
 const client = publicClient();
 const refWallet = walletFor(refereePk);
+const ownerWallet = walletFor(ownerPk);
 const ownerMarkets = marketsFor(ownerPk);
 const txs: TxRecord[] = [];
 const notes: string[] = [];
 
 function stop(reason: string, extra: Record<string, unknown> = {}): never {
   console.error(`skeleton-close: STOP — ${reason}`);
-  if (!dryRun) writeEvidence("g1a-close", { ok: false, reason, owner, referee, pool: BTC_POOL, txs, notes, ...extra });
+  if (!dryRun) writeEvidence("g1a-close", { ok: false, reason, sendPath, owner, referee, pool: BTC_POOL, txs, notes, ...extra });
   process.exit(1);
+}
+
+/** One of account A's own writes. viem path: sign `call` with ORDER_GAS and the pending nonce, send it to the
+ *  standard RPC and wait for the receipt there. sdk path (--sdk-send): the SDK's own send, kept as a fallback. */
+async function ownerWrite(
+  label: string,
+  call: UnsignedCall,
+  viaSdk: () => Promise<{ receipt: Parameters<typeof txRecord>[1] }>,
+): Promise<TxRecord> {
+  let rec: TxRecord;
+  if (sendPath === "sdk") {
+    rec = txRecord(label, (await viaSdk()).receipt);
+  } else {
+    const nonce = await client.getTransactionCount({ address: owner, blockTag: "pending" });
+    const hash = await ownerWallet.sendTransaction(ownerTx(call, nonce, ORDER_GAS));
+    rec = txRecord(label, await client.waitForTransactionReceipt({ hash }));
+  }
+  txs.push(rec);
+  return rec;
 }
 
 async function authorized(selector: Hex): Promise<boolean> {
@@ -93,23 +128,29 @@ if (!start.markOk) stop("BTC-PERP has no fresh mark price");
 const openQty = alignUp(book.minQuantity, book.lotSize);
 console.log(
   `preflight ok: owner ${owner}, referee ${referee}, voucher floor ${voucher?.floor}, voucher cap ${leverage.voucherLeverageCapX}x, ` +
-    `mark ${start.markPrice}, open qty ${openQty}`,
+    `mark ${start.markPrice}, open qty ${openQty}, send path ${sendPath}`,
 );
 if (dryRun) {
   console.log("dry-run: no transaction sent");
   process.exit(0);
 }
 
-// 2. Owner grants the referee place + cancel on the BTC pool only (the SDK writes the per-pool grant on the registry).
+// 2. Owner grants the referee place + cancel on the BTC pool only (a per-pool grant on the operator registry).
+const selectors: Hex[] = [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR];
 if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_ORDER_FOR_SELECTOR))) {
-  const grant = await ownerMarkets.trader.setOperatorApprovalForPool({
-    pool: BTC_POOL,
-    operator: referee,
-    selectors: [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR],
-    approved: true,
-    operatorRegistry: OPERATOR_REGISTRY,
-  });
-  txs.push(txRecord("grant", grant.receipt));
+  try {
+    await ownerWrite("grant", grantCall(OPERATOR_REGISTRY, BTC_POOL, referee, selectors), () =>
+      ownerMarkets.trader.setOperatorApprovalForPool({
+        pool: BTC_POOL,
+        operator: referee,
+        selectors,
+        approved: true,
+        operatorRegistry: OPERATOR_REGISTRY,
+      }),
+    );
+  } catch (e) {
+    stop(`the grant send failed before any order existed: ${(e as Error).message.slice(0, 200)}`);
+  }
 }
 if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_ORDER_FOR_SELECTOR))) stop("the grant did not take effect");
 
@@ -117,8 +158,12 @@ if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_O
 const preOpen = await readSnapshot(client, [owner], BTC_POOL);
 const open = planOpen(true, openQty, preOpen.markPrice, book, 20);
 try {
-  const opened = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: open.price, quantity: open.quantity, orderType: ORDER_TYPE_IOC });
-  txs.push(txRecord("open", opened.receipt));
+  const opened = await ownerWrite(
+    "open",
+    ownerOrderCall(BTC_POOL, true, open.price, open.quantity, ORDER_TYPE_IOC, farFutureNs()),
+    () => ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: open.price, quantity: open.quantity, orderType: ORDER_TYPE_IOC }),
+  );
+  if (opened.status === "reverted") stop("the opening IOC reverted, so no position was opened");
 } catch (e) {
   stop(`the opening IOC failed before any position existed: ${(e as Error).message.slice(0, 200)}`);
 }
@@ -136,8 +181,11 @@ const entry = {
 console.log(`entry: avg ${entry.avgEntryPrice} vs mark ${entry.markBefore} = ${entry.costBps} bps`);
 const restPrice = (start.markPrice * 9_000n) / 10_000n - ((start.markPrice * 9_000n) / 10_000n) % book.tickSize;
 try {
-  const rested = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: restPrice, quantity: openQty, orderType: ORDER_TYPE_LIMIT });
-  txs.push(txRecord("rest", rested.receipt));
+  await ownerWrite(
+    "rest",
+    ownerOrderCall(BTC_POOL, true, restPrice, openQty, ORDER_TYPE_LIMIT, farFutureNs()),
+    () => ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: restPrice, quantity: openQty, orderType: ORDER_TYPE_LIMIT }),
+  );
 } catch (e) {
   // A rejected resting order (e.g. outside the pool's price band) must not strand the open long: note it and close.
   notes.push(`resting order rejected: ${(e as Error).message.slice(0, 200)}; continuing to the referee close`);
@@ -180,6 +228,7 @@ const flat = endAccount ? isFlat(endAccount) : false;
 writeEvidence("g1a-close", {
   ok: flat && txs.some((t) => t.label === "close" && t.status === "success"),
   sdkVersion: "0.33.0",
+  sendPath,
   owner,
   referee,
   pool: BTC_POOL,
@@ -201,6 +250,6 @@ writeEvidence("g1a-close", {
   costs: { totalWei: sumCosts(txs), perTx: txs.map((t) => ({ label: t.label, gasUsed: t.gasUsed, costWei: t.costWei })) },
   notes,
 });
-console.log(`skeleton-close: ${flat ? "FLAT" : "NOT FLAT"} after ${attempts} close attempt(s); ${txs.length} txs`);
+console.log(`skeleton-close: ${flat ? "FLAT" : "NOT FLAT"} after ${attempts} close attempt(s); ${txs.length} txs (owner writes via ${sendPath})`);
 for (const t of txs) console.log(`  ${t.label} ${t.status} ${t.explorer}`);
 process.exit(flat ? 0 : 1);
