@@ -362,7 +362,64 @@ contract BasanosRegistry {
         emit Locked(tokenId);
     }
 
-    // [[fail-void]]
+    // ------------------------------------------------------------------ FAIL / VOID (referee-recorded, replayable)
+
+    function recordFail(
+        uint256 runId,
+        Rule rule,
+        Read calldata breach,
+        bytes32 evidenceHash,
+        bytes32[] calldata closeTxs
+    ) external payable onlyReferee {
+        Run storage run = _runs[runId];
+        if (run.status != Status.Active) revert NotActive();
+        if (rule == Rule.None) revert InvalidRule();
+        RulebookParams storage rb = _rulebooks[run.rulebookId];
+        if (rule == Rule.TimeLimit && block.timestamp <= uint256(run.startTime) + rb.timeLimitSec) {
+            revert TimeLimitNotReached();
+        }
+        (Read memory r,) = _readFull(run.account, rb.pool);
+        Read memory attested = breach;
+        run.rule = rule;
+        run.breach = attested;
+        run.end = r;
+        run.evidenceHash = evidenceHash;
+        run.status = Status.Failed;
+        for (uint256 i = 0; i < closeTxs.length; i++) {
+            _closeTxs[runId].push(closeTxs[i]);
+        }
+        address account = run.account;
+        _finish(runId, account);
+        emit RunFailed(runId, account, rule, breach.blockNumber, r.blockNumber);
+        _requestOracle(runId);
+    }
+
+    /// Flow and ForeignMarket only: GrantRevoked is set solely by voidRevoked after its on-chain check.
+    function recordVoid(uint256 runId, VoidReason reason, bytes32 txHash, bytes32 evidenceHash) external onlyReferee {
+        if (reason != VoidReason.Flow && reason != VoidReason.ForeignMarket) revert InvalidVoidReason();
+        _void(runId, reason, txHash, evidenceHash);
+    }
+
+    function voidRevoked(uint256 runId) external {
+        Run storage run = _runs[runId];
+        if (run.status != Status.Active) revert NotActive();
+        if (_granted(run.account, _rulebooks[run.rulebookId].pool)) revert GrantStillHeld();
+        _void(runId, VoidReason.GrantRevoked, bytes32(0), bytes32(0));
+    }
+
+    function _void(uint256 runId, VoidReason reason, bytes32 txHash, bytes32 evidenceHash) internal {
+        Run storage run = _runs[runId];
+        if (run.status != Status.Active) revert NotActive();
+        (Read memory r,) = _readFull(run.account, _rulebooks[run.rulebookId].pool);
+        run.end = r;
+        run.voidReason = reason;
+        run.voidTxHash = txHash;
+        run.evidenceHash = evidenceHash;
+        run.status = Status.Voided;
+        address account = run.account;
+        _finish(runId, account);
+        emit RunVoided(runId, account, reason, txHash);
+    }
 
     // [[metadata]]
 
