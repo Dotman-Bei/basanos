@@ -828,10 +828,10 @@ Message: `docs(feedback): reproducible dreamDEX/Somnia items met while building 
 - Create: `LICENSE`
 - Create: `scripts/check-readme.ps1`
 
-**Depends on:** Task 1, referee:Task 7, referee:Task 8, referee:Task 9, web:Task 2, web:Task 7, contracts:Task 9, landing:Task 5
+**Depends on:** Task 1, referee:Task 7, referee:Task 8, referee:Task 9, web:Task 2, web:Task 7, contracts:Task 9
 **Effort:** medium
 **Provides:** `README.md (R1-web-app v1 + event-overlay; TBD-post-build lines for live facts)`, `LICENSE (MIT, Basanos code; vendored kit files excluded)`
-**Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npx tsx contracts/script/deploy.ts [--dry-run] (REFEREE_PK deploys and owns; registers tokyo-sprint and tokyo-sprint-demo; writes deployments/hideki.json)`, `landing checkers PASS (consistency, check, perf, shoot at 1440/1024/820/768/390)`
+**Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npx tsx contracts/script/deploy.ts [--dry-run] (REFEREE_PK deploys and owns; registers tokyo-sprint and tokyo-sprint-demo; writes deployments/hideki.json)`
 
 Schema `R1-web-app v1` (`references/readme-schemas.md`): the UI is the demo, and contracts back it, so the optional Contract addresses section is included. Event overlay (pack `event.md` §3: "Your README explains what it does, who it is for and how to run it." / "Your README has an X posts section with links to 2 or 3 posts about your MVP that tag @DreamDEXSomnia.") adds `## Who it is for` and `## X posts` in the overlay slot. Stamp: `<!-- readme-schema: R1-web-app v1 + event-overlay -->`. Resolved headings, in order:
 `# Basanos` · `## Demo` · `## What it does` · `## Quickstart` · `## Built at dreamDEX Perps Builder Bounty` · `## How it works` · `## Tech stack` · `## Run locally` · `## Contract addresses` · `## Who it is for` · `## X posts` · `## Roadmap` · `## License`.
