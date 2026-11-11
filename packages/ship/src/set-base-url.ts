@@ -1,19 +1,33 @@
-// Owner-only (REFEREE_PK): points the certificates' external_url at the live site from deployments/site.json.
+// Owner-only (REFEREE_PK): points the certificates' external_url at the live site from deployments/site.json, then
+// reads baseUrl() back and refuses to finish unless it equals that route. On success deployments/hideki.json's
+// baseUrl (the constructor's placeholder) is replaced by the real value.
 import { readFileSync, writeFileSync } from "node:fs";
 import type { Address } from "viem";
 import { basanosRegistryAbi } from "@basanos/core";
 import { loadDotEnv, repoPath, requirePrivateKey, rpcHttp } from "@basanos/core/node";
 import { makePublicClient, makeRefereeWallet } from "@basanos/referee";
+import { baseUrlProblem, certBaseUrl } from "./base-url";
 
 loadDotEnv();
-const site = JSON.parse(readFileSync(repoPath("deployments/site.json"), "utf8")) as { url: string; deployedAt: string; baseUrlTx: string | null };
-const dep = JSON.parse(readFileSync(repoPath("deployments/hideki.json"), "utf8")) as { registry: Address };
+const sitePath = repoPath("deployments/site.json");
+const depPath = repoPath("deployments/hideki.json");
+const site = JSON.parse(readFileSync(sitePath, "utf8")) as { url: string; deployedAt: string; baseUrlTx: string | null; baseUrl?: string };
+const dep = JSON.parse(readFileSync(depPath, "utf8")) as Record<string, unknown> & { registry: Address; baseUrl?: string };
 const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
 const client = makePublicClient(rpcHttp());
-const url = `${site.url}/app/#/cert/`;
+const url = certBaseUrl(site.url);
 const hash = await wallet.writeContract({ address: dep.registry, abi: basanosRegistryAbi, functionName: "setBaseUrl", args: [url] });
 const receipt = await client.waitForTransactionReceipt({ hash });
+const onChain = String(await client.readContract({ address: dep.registry, abi: basanosRegistryAbi, functionName: "baseUrl" }));
+const problem = receipt.status === "success" ? baseUrlProblem(url, onChain) : `setBaseUrl reverted (${hash})`;
 site.baseUrlTx = hash;
-writeFileSync(repoPath("deployments/site.json"), `${JSON.stringify(site, null, 2)}\n`);
+site.baseUrl = onChain;
+writeFileSync(sitePath, `${JSON.stringify(site, null, 2)}\n`);
+if (!problem) {
+  dep.baseUrl = onChain;
+  writeFileSync(depPath, `${JSON.stringify(dep, null, 2)}\n`);
+}
 console.log(`setBaseUrl ${receipt.status} ${hash} -> ${url}`);
-process.exit(receipt.status === "success" ? 0 : 1);
+console.log(`baseUrl() read back: ${onChain}`);
+if (problem) console.log(`FAIL ${problem}`);
+process.exit(problem ? 1 : 0);
