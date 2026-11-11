@@ -2144,7 +2144,7 @@ Message: `feat(contracts): deploy, deployment check, live preview and bytecode v
 - Modify: `rulebooks/tokyo-sprint-demo.json`
 - Modify: `contracts/foundry.toml`
 
-**Depends on:** Task 1, Task 9, spike:Task 12, spike:Task 13
+**Depends on:** Task 1, Task 9, spike:Task 12
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `REGISTRY_ADDRESS in .env (set by the human)`
