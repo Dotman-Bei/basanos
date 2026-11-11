@@ -10,7 +10,8 @@
 - Tasks 11 and 12 are human-gated (`human_gate: true`): they sign real transactions with burner keys that the Step 3 preflight funded. **No task in this plan ever claims a voucher**; the preflight claimed one per challenge account.
 - **Task 11 is stop-and-escalate:** if the referee's close does not land (evidence `ok: false`), stop the build and escalate to the user. The product depends on it.
 - **SDK pin timebox:** if task 11 has not landed a real order on 0.33.0 within ~2 h of starting the skeleton, stop and route a plan fix to the architect: switch `@somnia-chain/markets-sdk` to `0.32.1` in `packages/core/package.json` and `packages/spike/package.json`.
-- Commands run from the repo root. **The repo path contains a space** (`C:UsersamigDocumentsVIBE CODE…`); a prior campaign lost hours to a Node tool that shells out unquoted. Task 1's gate (install + test) must pass from this path. Do not move the build to a no-space clone to make a gate pass; if install or test fails because of the space, stop and report it as an environment blocker.
+- The root `.npmrc` (`legacy-peer-deps=true`, Task 1) is required: without it `npm install` crashes in npm 10's resolver (`Cannot read properties of null (reading 'edgesOut')`) on Vite 8's optional peer graph, which vitest pulls in.
+- Commands run from the repo root. **The repo path contains a space** (`C:\Users\bamig\Documents\VIBE CODE…`); a prior campaign lost hours to a Node tool that shells out unquoted. Task 1's gate (install + test) must pass from this path. Do not move the build to a no-space clone to make a gate pass; if install or test fails because of the space, stop and report it as an environment blocker.
 
 ---
 
@@ -18,6 +19,7 @@
 
 **Files:**
 - Create: `package.json`
+- Create: `.npmrc`
 - Create: `tsconfig.base.json`
 - Create: `.env.example`
 - Modify: `.gitignore`
@@ -91,6 +93,13 @@ ORACLE_ENABLED=true
 FEATURED_RUN_ID=
 VERCEL_TOKEN=
 CHROME_PATH=
+```
+
+`.npmrc`:
+```ini
+# Vite 8's optional @vitejs/devtools peer graph (pulled in by vitest) crashes npm 10's resolver
+# ("Cannot read properties of null (reading 'edgesOut')"); skip optional-peer resolution.
+legacy-peer-deps=true
 ```
 
 Append these lines to the end of the existing `.gitignore` (keep every existing line):
@@ -251,7 +260,7 @@ describe("config", () => {
   });
   it("adds the operator registry the SDK constants omit", () => {
     expect(HIDEKI_ADDRESSES.operatorPermissionsRegistry).toBe(OPERATOR_REGISTRY);
-    expect(HIDEKI_ADDRESSES.marginBank.toLowerCase()).toBe(MARGIN_BANK.toLowerCase());
+    expect(HIDEKI_ADDRESSES.marginBank?.toLowerCase()).toBe(MARGIN_BANK.toLowerCase());
   });
   it("puts the far-future expiry fifty years out, in nanoseconds", () => {
     expect(farFutureNs(0)).toBe(50n * 365n * 86_400n * 1_000_000_000n);
@@ -297,7 +306,7 @@ export const VOUCHER_DISTRIBUTOR: Address = "0x2ACD9EFdA721450906bfE1bef3edE2696
 export const SOMNIA_AGENTS: Address = "0x7407cb35a17D511D1Bd32dD726ADb8D5344ECbE3";
 export const MULTICALL3: Address = "0xcA11bde05977b3631167028862bE2a173976CA11";
 export const PRICE_FEED_SCHEDULER: Address = "0x1998C88D54a240b8C671493f27f58eC416b81D7F";
-export const BTC_POOL: Address = "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0";
+export const BTC_POOL: Address = "0x4181dd08E73BbCdd1Ba3E615A18f6abD941b94C0"; // getAddress() checksum form: viem decodes addresses in this case
 export const BTC_BASE_DECIMALS = 8;
 export const QUOTE_DECIMALS = 18;
 
@@ -1482,10 +1491,10 @@ describe("checkEvidence", () => {
     expect(checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "TimedOut", symbols: [] })).toEqual([]);
     expect(checkEvidence("g1d-oracle", { requestId: "7" })).not.toEqual([]);
   });
-  it("needs three indexer reads, a watch with pushes and a tape with points", () => {
+  it("needs three indexer reads, a watch with pushes and a tape with more than 100 points", () => {
     expect(checkEvidence("r1-indexer", { reads: [{}, {}, {}] })).toEqual([]);
     expect(checkEvidence("g1b-watch", { pushes: 3, blockNumbers: ["1"], timestampUnit: "seconds", equityDecoded: true })).toEqual([]);
-    expect(checkEvidence("tape", { pool: "0x1", points: [{ block: "1", ts: "2", mark: "3" }] })).toEqual([]);
+    expect(checkEvidence("tape", { pool: "0x1", points: Array.from({ length: 101 }, (_, i) => ({ block: String(i + 1), ts: String(i + 2), mark: "3" })) })).toEqual([]);
     expect(checkEvidence("tape", { pool: "0x1", points: [] })).not.toEqual([]);
   });
 });
@@ -1553,7 +1562,7 @@ export function checkEvidence(name: EvidenceName, data: Record<string, unknown> 
     case "g1a-close": {
       need(data.ok === true, "ok is not true (STOP and escalate)");
       const txs = isArr(data.txs) ? (data.txs as Record<string, unknown>[]) : [];
-      need(txs.length >= 3, "fewer than 3 transactions recorded");
+      need(txs.length >= 2, "fewer than 2 transactions (open and close) recorded");
       need(
         txs.every((t) => typeof t.hash === "string" && typeof t.label === "string"),
         "every tx needs a label and a hash",
@@ -1591,7 +1600,7 @@ export function checkEvidence(name: EvidenceName, data: Record<string, unknown> 
       break;
     case "tape":
       need(typeof data.pool === "string", "pool missing");
-      need(isArr(data.points) && data.points.length > 0, "no tape points");
+      need(isArr(data.points) && data.points.length > 100, "fewer than 101 tape points (the tape-proof test needs more than 100)");
       break;
   }
   return p;
@@ -1942,7 +1951,7 @@ import { writeEvidence } from "./evidence";
 import { appendTapePoint, type TapePoint } from "./lib";
 
 loadDotEnv();
-const seconds = Number(process.argv[2] ?? "600");
+const seconds = Number(process.argv[2] ?? "540");
 const call = snapshotCall([], BTC_POOL);
 let points: TapePoint[] = [];
 const gaps: { atMs: number; reason: string }[] = [];
@@ -1997,9 +2006,9 @@ Expected: prints one line per depth and one per indexer read, then writes `docs/
 Run: `npx tsx packages/spike/src/watch-equity.ts 30`
 Expected: `watch-equity: <N> price pushes, <M> account pushes, unit seconds` with N > 0; writes `docs/evidence/g1b-watch.json`.
 
-- [ ] **Step 3: Record a 10-minute BTC mark tape**
-Run: `npx tsx packages/spike/src/tape.ts 600`
-Expected: `tape: <N> points over 600s` with N > 100; writes `packages/core/test/fixtures/btc-tape.json`.
+- [ ] **Step 3: Record a 9-minute (540 s) BTC mark tape**
+Run: `npx tsx packages/spike/src/tape.ts 540`
+Expected: `tape: <N> points over 540s` with N > 100; writes `packages/core/test/fixtures/btc-tape.json`. The run lasts 540 s, under a 600 s command limit; start it in the background if your runner caps foreground commands lower.
 
 - [ ] **Step 4: Check the evidence (the gate)**
 Run: `npx tsx packages/spike/src/check-evidence.ts g1b-watch g1c-history r1-indexer tape`
@@ -2199,15 +2208,19 @@ async function openOrderIds(): Promise<readonly bigint[]> {
 }
 
 async function refereeCancelAll(label: string): Promise<void> {
-  for (const id of await openOrderIds()) {
-    const hash = await refWallet.writeContract({
-      address: BTC_POOL,
-      abi: perpPoolAbi,
-      functionName: "cancelOrderFor",
-      args: [owner, id],
-      gas: ORDER_GAS,
-    });
-    txs.push(txRecord(label, await client.waitForTransactionReceipt({ hash })));
+  try {
+    for (const id of await openOrderIds()) {
+      const hash = await refWallet.writeContract({
+        address: BTC_POOL,
+        abi: perpPoolAbi,
+        functionName: "cancelOrderFor",
+        args: [owner, id],
+        gas: ORDER_GAS,
+      });
+      txs.push(txRecord(label, await client.waitForTransactionReceipt({ hash })));
+    }
+  } catch (e) {
+    notes.push(`${label} failed: ${(e as Error).message.slice(0, 200)}`);
   }
 }
 
@@ -2254,8 +2267,12 @@ if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_O
 // 3. Owner opens the minimum long (IOC) and rests one far bid (GTC) for the referee to cancel.
 const preOpen = await readSnapshot(client, [owner], BTC_POOL);
 const open = planOpen(true, openQty, preOpen.markPrice, book, 20);
-const opened = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: open.price, quantity: open.quantity, orderType: ORDER_TYPE_IOC });
-txs.push(txRecord("open", opened.receipt));
+try {
+  const opened = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: open.price, quantity: open.quantity, orderType: ORDER_TYPE_IOC });
+  txs.push(txRecord("open", opened.receipt));
+} catch (e) {
+  stop(`the opening IOC failed before any position existed: ${(e as Error).message.slice(0, 200)}`);
+}
 // Real entry fill vs mark (the demo's +0.5% target is only trusted once this cost is known; spec §5).
 const openedPos = await client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getPosition", args: [owner, BTC_POOL] });
 const entry = {
@@ -2269,8 +2286,13 @@ const entry = {
 };
 console.log(`entry: avg ${entry.avgEntryPrice} vs mark ${entry.markBefore} = ${entry.costBps} bps`);
 const restPrice = (start.markPrice * 9_000n) / 10_000n - ((start.markPrice * 9_000n) / 10_000n) % book.tickSize;
-const rested = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: restPrice, quantity: openQty, orderType: ORDER_TYPE_LIMIT });
-txs.push(txRecord("rest", rested.receipt));
+try {
+  const rested = await ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: restPrice, quantity: openQty, orderType: ORDER_TYPE_LIMIT });
+  txs.push(txRecord("rest", rested.receipt));
+} catch (e) {
+  // A rejected resting order (e.g. outside the pool's price band) must not strand the open long: note it and close.
+  notes.push(`resting order rejected: ${(e as Error).message.slice(0, 200)}; continuing to the referee close`);
+}
 
 // 4. Referee: cancel first, fresh read, IOC close, read back; at most 3 attempts.
 await refereeCancelAll("cancel");
@@ -2285,16 +2307,20 @@ for (const slippage of CLOSE_SLIPPAGE_STEPS_BPS) {
     break;
   }
   attempts += 1;
-  const hash = await refWallet.writeContract({
-    address: BTC_POOL,
-    abi: perpPoolAbi,
-    functionName: "placeOrderFor",
-    args: [owner, plan.isBid, 0n, plan.price, plan.quantity, farFutureNs(), ORDER_TYPE_IOC, 0, zeroAddress, 0n],
-    gas: ORDER_GAS,
-  });
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  txs.push(txRecord("close", receipt));
-  if (receipt.status === "reverted") notes.push(`close attempt ${attempts} at ${slippage} bps reverted (replay with eth_call at the parent block)`);
+  try {
+    const hash = await refWallet.writeContract({
+      address: BTC_POOL,
+      abi: perpPoolAbi,
+      functionName: "placeOrderFor",
+      args: [owner, plan.isBid, 0n, plan.price, plan.quantity, farFutureNs(), ORDER_TYPE_IOC, 0, zeroAddress, 0n],
+      gas: ORDER_GAS,
+    });
+    const receipt = await client.waitForTransactionReceipt({ hash });
+    txs.push(txRecord("close", receipt));
+    if (receipt.status === "reverted") notes.push(`close attempt ${attempts} at ${slippage} bps reverted (replay with eth_call at the parent block)`);
+  } catch (e) {
+    notes.push(`close attempt ${attempts} at ${slippage} bps failed to send: ${(e as Error).message.slice(0, 200)}`);
+  }
 }
 await refereeCancelAll("sweep");
 
@@ -2447,7 +2473,7 @@ Expected: `preflight ok: owner 0x…, referee 0x…, voucher floor …, voucher 
 
 - [ ] **Step 2: Run live**
 Run: `npx tsx packages/spike/src/skeleton-close.ts`
-Expected: an `entry: avg … vs mark … = <x> bps` line, then `skeleton-close: FLAT after 1 close attempt(s); <N> txs`, then one explorer link per transaction (grant, open, rest, cancel, close).
+Expected: an `entry: avg … vs mark … = <x> bps` line, then `skeleton-close: FLAT after 1 close attempt(s); <N> txs`, then one explorer link per transaction (grant, open, rest, cancel, close; the rest and cancel lines are absent if the pool rejected the resting order, which the evidence notes).
 **If the output says NOT FLAT, or no close succeeded: STOP the build and escalate to the user** with the evidence file and the explorer links. If the failure is a reproducible SDK, docs or contract defect, it also becomes a `feedback/` item later. If no real order has landed on SDK 0.33.0 within ~2 h of starting this task, stop and route a plan fix to the architect (switch to 0.32.1).
 
 - [ ] **Step 3: Check the evidence (the gate)**

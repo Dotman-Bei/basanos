@@ -147,6 +147,7 @@
       "files": {
         "create": [
           "package.json",
+          ".npmrc",
           "tsconfig.base.json",
           ".env.example",
           "packages/core/package.json",

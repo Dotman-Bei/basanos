@@ -231,7 +231,7 @@ PASS still needs real movement; if the market is still, `bot.ts breach` adds bot
 FAIL on demand while the PASS waits. The wait is bounded: if no account has a verdict 10 minutes after
 the positions open, the runner reports "market still — take aborted", applies the exposure breach to the
 bot (FAIL) and leaves the human run to resolve or hit `TimeLimit` at 900 s; the next take starts after a
-faucet top-up. The skeleton proves the math: the spike records a live 10-minute BTC mark tape and the
+faucet top-up. The skeleton proves the math: the spike records a live 9-minute (540 s) BTC mark tape and the
 real entry fill against the mark (`docs/evidence/g1a-close.json` → `entry.costBps`), and an evaluator
 test replays the tape at 12× **with that measured entry cost (and the same cost again for the lock's
 close) charged against equity** and asserts the demo rulebook resolves; the +0.5% demo target is trusted
