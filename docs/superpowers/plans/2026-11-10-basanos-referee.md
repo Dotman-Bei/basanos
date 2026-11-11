@@ -2525,7 +2525,7 @@ Message: `feat(referee): demo-cost check, rulebook registration and rehearsal ch
 **Provides:** `docs/evidence/rehearsal.json (first real verdict runs: firstVerdictRunId, runs with statusName, ruleName, closeTxs)`, `docs/evidence/runs.json (per-run evidence bundles + evidenceHash + verdictTx)`, `docs/evidence/demo-takes.json (demo takes with run ids and tx hashes)`
 **Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]`, `CLI: npx tsx packages/bot/src/demo-check.ts -> PASS demo-check, or FAIL with a recommended demo target`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)`, `CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`
 
-**Human-gated.** This signs real transactions with `REFEREE_PK` (closes, verdicts, about 0.0309 STT per verdict for the oracle), `ACCOUNT_A_PK` and `ACCOUNT_B_PK` (grant, `startRun`, orders). Needed first:
+**Human-gated.** This signs real transactions with `REFEREE_PK` (closes and verdicts; no oracle deposit, because `ORACLE_ENABLED=false` for this build), `ACCOUNT_A_PK` and `ACCOUNT_B_PK` (grant, `startRun`, orders). Needed first:
 - all three burners topped up to about 1 STT from the Tokyo faucet;
 - `REGISTRY_ADDRESS` and `REFEREE_ADDRESS` set in `.env`;
 - both accounts flat with their claimed vouchers.

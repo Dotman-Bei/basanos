@@ -398,6 +398,7 @@ describe("landing page", () => {
     expect(html).toContain(f.demoDisclosure);
     expect(html.toLowerCase()).not.toContain("verifies every verdict");
     expect(html.toLowerCase()).not.toContain("trusted by");
+    expect(html).not.toMatch(/Somnia Agents|Price Oracle/); // the oracle cross-check is cut (2026-11-11)
   });
   it("shows nothing the snapshot does not hold", () => {
     expect(findUnbacked(html, f)).toEqual([]);
@@ -473,7 +474,6 @@ Expected: FAIL — `ENOENT … src/page.html`.
                 <div class="d-row"><span class="d-thumb"></span><div><b>End equity</b><small>read by the registry · block {{endBlock}}</small></div><span class="num">{{endEquity}}</span><span class="d-chip">Chain-checked</span></div>
                 <div class="d-row"><span class="d-thumb"></span><div><b>Profit target</b><small>contract-checked at mint</small></div><span class="num">{{targetPct}}</span><span class="d-chip">Rule</span></div>
                 <div class="d-row"><span class="d-thumb"></span><div><b>Daily-loss floor</b><small>referee-enforced, replayable</small></div><span class="num">{{dailyPct}}</span><span class="d-chip">Rule</span></div>
-                <div class="d-row"><span class="d-thumb"></span><div><b>Price Oracle at the verdict</b><small>Somnia Agents</small></div><span class="num">{{oracleLine}}</span><span class="d-chip">Cross-check</span></div>
               </div>
             </div>
           </div>
@@ -638,7 +638,7 @@ Message: `feat(landing): collage hero, three steps, real verdict, replay, testne
 - Create: `apps/landing/scripts/shoot-verdict.mjs`
 - Create: `apps/landing/src/img/verdict.png`
 
-**Depends on:** Task 2, Task 3, web:Task 2, web:Task 7
+**Depends on:** Task 2, Task 3, web:Task 2, web:Task 7, web:Task 8
 **Effort:** medium
 **Provides:** `apps/landing/src/img/verdict.png (1440x900 shoot.mjs screenshot of /app/#/run/<featured id>, real product UI)`, `CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>`
 **Requires:** `apps/landing/src/featured-verdict.json (the page's only data source)`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `apps/web/dist (static build served at /app/)`

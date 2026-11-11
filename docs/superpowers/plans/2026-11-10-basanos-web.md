@@ -2107,3 +2107,110 @@ Expected: PASS — `check-env: no VITE_*_PK variables`, then Vite's `✓ built i
 
 - [ ] **Step 6: Commit (kernel-performed — no agent runs this)**
 Message: `feat(web): recent-verdicts home, router and the static /app build`
+
+---
+
+### Task 8: Oracle cut — the verdict page says the Price Oracle cross-check is off; `.env.example` defaults `ORACLE_ENABLED=false`
+
+**Files:**
+- Modify: `apps/web/src/components/VerdictView.tsx`
+- Modify: `.env.example`
+- Test: `apps/web/test/oracle-off.test.tsx`
+
+**Depends on:** Task 6, spike:Task 1
+**Effort:** low
+**Provides:** `ORACLE_OFF_LINE: string (the verdict page's Price Oracle line while the cross-check is cut)`, `.env.example with ORACLE_ENABLED=false (the cross-check is off by default)`
+**Requires:** `TRUST_LINE = "Every certificate is chain-checked at mint; every verdict is replayable."`, `interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }`, `VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void })`
+
+Why (guide decision, 2026-11-11): spike:12's Price Oracle request finalized Failed, so the cross-check is first in the cut order and `ORACLE_ENABLED=false` is the default everywhere. The registry keeps the code and its tests. No surface may claim that the oracle works or that Somnia Agents are used.
+- **The page today:** Task 6's verdict page heads its oracle panel "Somnia Price Oracle at the verdict". Task 6 is done, so this task changes the copy.
+- **`.env.example` today:** Task 1 ships `ORACLE_ENABLED=true`.
+- **The code default is already off:** `flag()` is false when the variable is unset.
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/web/test/oracle-off.test.tsx`:
+```tsx
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { ORACLE_OFF_LINE, VerdictView, type VerdictData } from "../src/components/VerdictView";
+
+const E18 = 10n ** 18n;
+const read = (equity: bigint, block: bigint) => ({ blockNumber: block, equityOk: true, equity, lockedCollateral: 0n, positionSize: 0n, markOk: true, markPrice: 74_500n * E18 });
+const data: VerdictData = {
+  runId: 4n,
+  account: "0x00000000000000000000000000000000000000a1",
+  status: 3,
+  rule: 1,
+  voidReason: 0,
+  rulebookLabel: "Tokyo Sprint · Demo",
+  rulebookId: `0x${"11".repeat(32)}`,
+  rulebookJson: null,
+  start: read(1_000n * E18, 100n),
+  breach: read(994n * E18, 160n),
+  end: read(993n * E18, 165n),
+  closeTxs: [`0x${"aa".repeat(32)}`],
+  oraclePrice: 0n,
+  oracleSources: 0,
+  oracleDone: false,
+};
+
+describe("Price Oracle cross-check copy (cut 2026-11-11)", () => {
+  it("says the cross-check is off and names neither Somnia Agents nor a Somnia Price Oracle reading", () => {
+    const { container } = render(<VerdictView data={data} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />);
+    expect(ORACLE_OFF_LINE).toBe(
+      "Off for this build: the registry can request a Price Oracle reading at each verdict, but our test request on Tokyo testnet finalized Failed with no prices, so verdicts do not request one.",
+    );
+    expect(screen.getByText(ORACLE_OFF_LINE)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Price Oracle cross-check" })).toBeTruthy();
+    expect(container.textContent ?? "").not.toMatch(/Somnia Price Oracle|Somnia Agents/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/web -- test/oracle-off.test.tsx`
+Expected: FAIL — `AssertionError: expected undefined to be 'Off for this build: the registry can …'` (`ORACLE_OFF_LINE` is not exported yet).
+
+- [ ] **Step 3: Change the verdict page's oracle copy**
+
+In `apps/web/src/components/VerdictView.tsx`, directly after the `TRUST_LINE` line, add:
+```tsx
+
+/** The Price Oracle cross-check is cut for this build (ORACLE_ENABLED=false): spike:12's request finalized Failed. */
+export const ORACLE_OFF_LINE =
+  "Off for this build: the registry can request a Price Oracle reading at each verdict, but our test request on Tokyo testnet finalized Failed with no prices, so verdicts do not request one.";
+```
+Then replace
+```tsx
+            <h2 className="label">Somnia Price Oracle at the verdict</h2>
+            <p className="mono">
+              {d.oracleDone && d.oracleSources > 0 ? `${formatUsdso(d.oraclePrice)} (${d.oracleSources} sources) vs mark ${formatUsdso(d.end.markPrice)}` : "no reading recorded"}
+            </p>
+```
+with
+```tsx
+            <h2 className="label">Price Oracle cross-check</h2>
+            <p className="mono">
+              {d.oracleDone && d.oracleSources > 0
+                ? `${formatUsdso(d.oraclePrice)} (${d.oracleSources} sources) vs mark ${formatUsdso(d.end.markPrice)}`
+                : ORACLE_OFF_LINE}
+            </p>
+```
+Change nothing else in the file.
+
+- [ ] **Step 4: Default the switch to off**
+In `.env.example`, replace the line `ORACLE_ENABLED=true` with `ORACLE_ENABLED=false`. Change nothing else.
+
+- [ ] **Step 5: Run the test and the build**
+Run: `npm test -w @basanos/web -- test/oracle-off.test.tsx`
+Expected: `1 passed`.
+Run: `npm run build -w @basanos/web`
+Expected: `check-env: no VITE_*_PK variables`, then Vite's `✓ built in …`.
+
+- [ ] **Step 6: Run the package tests (the gate)**
+Run: `npm test -w @basanos/web`
+Expected: PASS — `28 passed`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `fix(web): verdict page states the Price Oracle cross-check is off; ORACLE_ENABLED=false by default`

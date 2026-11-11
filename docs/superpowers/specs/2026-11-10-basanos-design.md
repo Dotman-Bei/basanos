@@ -65,7 +65,7 @@ rulebook and fund the accounts that pass.
 
 **In scope (ships):**
 1. Day-1 de-risk spike + walking skeleton (G1).
-2. `BasanosRegistry` (Solidity) with the soulbound certificate and the Price Oracle reading.
+2. `BasanosRegistry` (Solidity) with the soulbound certificate. It also holds a Price Oracle cross-check. That check is implemented and tested, but switched off for this build (`ORACLE_ENABLED=false`; see the cut order below and §3a G1(d)).
 3. The referee daemon + CLI (TypeScript) and a scripted bot that takes the same rulebook.
 4. The web app: challenge terminal, verdict page with replay, certificate page.
 5. **A marketing landing page for Basanos — required scope, not a stretch** (user directive
@@ -76,7 +76,7 @@ rulebook and fund the accounts that pass.
 `tokyo-sprint` (standard) and `tokyo-sprint-demo` (demo mode, §5). No other rulebooks or levels.
 
 **Cut order (amended by the user directive, first to go):** landing scenes / shader moments → Price
-Oracle cross-check → X card / share polish → certificate polish → extra rulebooks / levels.
+Oracle cross-check (**CUT 2026-11-11**: our test request on Tokyo testnet (request 7773100, 2026-11-11) finalized Failed with no prices. `ORACLE_ENABLED=false` is the default everywhere. The registry keeps the code, called inside `try`, and its tests.) → X card / share polish → certificate polish → extra rulebooks / levels.
 **Never cut:** the referee's close with tx hashes, the registry verdict record, the verdict page with
 replay, README + X posts, and — once built — the landing's hero + CTAs + three steps + the link to a
 real verdict page.
@@ -154,10 +154,9 @@ happens after 2026-11-15 and the results date is unpublished, hence the stored r
   `MainFundedChild`, `IsolatedModeSet`, `MaxLeverageSet`, `BuilderFeeCharged`; voucher events
   (`AccountCredited` / `CreditReclaimed`) are not in the SDK's ABI.
 
-**Open until the spike runs:** G1(a) the referee's close on a voucher account, G1(d) Price Oracle
-coverage of `BTC/USDC:PERP` on Tokyo testnet, the per-account `getPerpLeverage` read for (e), the
+**Open until the spike runs:** G1(a) the referee's close on a voucher account, the per-account `getPerpLeverage` read for (e), the
 equity-view history depth (c), and R1's three indexer reads. Task `spike:13` writes each answer, with
-its evidence file, into §3a below.
+its evidence file, into §3a below. G1(d) is answered (2026-11-11): the Price Oracle request finalized Failed, so the cross-check is cut (§1).
 
 ### 3a. Spike evidence (written by task `spike:13`)
 
@@ -166,7 +165,7 @@ its evidence file, into §3a below.
 | G1(a) referee close on a voucher account | `docs/evidence/g1a-close.json` | written by `spike:13` |
 | G1(b) watch with attached equity multicall | `docs/evidence/g1b-watch.json` | written by `spike:13` |
 | G1(c) equity history depth | `docs/evidence/g1c-history.json` | written by `spike:13` |
-| G1(d) Price Oracle `BTC/USDC:PERP` | `docs/evidence/g1d-oracle.json` | written by `spike:13` |
+| G1(d) Price Oracle `BTC/USDC:PERP` | `docs/evidence/g1d-oracle.json` | **Failed.** Request 7773100 (createRequest tx `0xdf795f1f…a30d`, block 47437497) finalized Failed one block later (`RequestFinalized` status 3, tx `0x851aaa04…2301`). The three validators answered with empty results, so there are no prices. The cross-check is cut (§1): `ORACLE_ENABLED=false`. |
 | G1(e) voucher leverage cap (per account) | `docs/evidence/g1a-close.json` (`leverage` field) | written by `spike:13` |
 | R1 indexer reads | `docs/evidence/r1-indexer.json` | written by `spike:13` |
 | Live mark tape for G4 | `packages/core/test/fixtures/btc-tape.json` | written by `spike:13` |
@@ -196,7 +195,7 @@ deployments/hideki.json      registry address, deploy block, rulebook ids (writt
 
 Data flow: trader/bot → (grant + `startRun`) → registry; referee ← `somnia_watch` (price writes +
 account logs, each with the snapshot multicall) → evaluator → close protocol (`cancelOrderFor`,
-`placeOrderFor` IOC) → `recordFail` / `recordPass` (+ oracle request) → registry → web verdict page
+`placeOrderFor` IOC) → `recordFail` / `recordPass` (+ an oracle request only when `ORACLE_ENABLED=true`, which is off for this build) → registry → web verdict page
 (reads registry, replays at pinned blocks).
 
 ## 5. The Tokyo Sprint rulebook
@@ -393,7 +392,7 @@ grants held; `equityOk`; `(equity + locked) × 10000 ≥ startTotal × (10000 + 
 `recordFail` — run active; for `TimeLimit`, `block.timestamp > startTime + timeLimitSec`; stores the
 attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash. Each verdict call with
 `msg.value ≥ oracleDeposit` asks the Price Oracle inside `try`; a failed request emits
-`OracleRequestFailed` and never reverts the verdict; the callback stores the first consensus price.
+`OracleRequestFailed` and never reverts the verdict; the callback stores the first consensus price. For this build the referee sends no deposit (`ORACLE_ENABLED=false`), so no verdict asks the oracle. The code path and its tests stay.
 
 ## 7. `@basanos/core`
 
@@ -436,7 +435,7 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
   Every tx hash, gasUsed and revert goes into the evidence bundle. The run's verdict does not depend on
   the close succeeding; a close that still leaves a position after 3 attempts is recorded as such.
 - **Verdict writes:** `recordFail(runId, rule, breachRead, evidenceHash, closeTxs)` and, after a lock,
-  `recordPass(runId)`, both with `value = ORACLE_DEPOSIT` when `ORACLE_ENABLED=true`; `recordVoid` for
+  `recordPass(runId)`, both with `value = ORACLE_DEPOSIT` when `ORACLE_ENABLED=true` (false for this build, so `value = 0`); `recordVoid` for
   flows and foreign markets. **A VOID is recorded only: the referee does not cancel or close on a VOID**
   (no rule was breached; the run is simply not judged). It closes only on a FAIL and on a PASS lock. `evidenceHash = keccak256(canonicalJson(bundle))`; bundles are written to
   `docs/evidence/runs.json`, keyed by run id (one fixed file, so verdict tasks can declare it).
@@ -470,7 +469,7 @@ Routes (hash router): `#/challenge` (terminal), `#/run/:id` (verdict + replay), 
   (start, target, daily floor, trailing high-water line), run status, event log with explorer links.
   Cut (cut order, recorded 2026-11-11): the limit-order ticket and the exposure rail.
 - **Verdict page:** status, rule, rulebook (name, variant, JSON, id), the start / breach / end reads,
-  close tx hashes, oracle reading vs the mark at the verdict, and **Replay**: re-run each stored call at
+  close tx hashes, the Price Oracle cross-check line (it states that the cross-check is off for this build; a reading, if one existed, would show beside the mark), and **Replay**: re-run each stored call at
   its block and show "chain: X — registry: X" or the stored-value fallback (R2); the X share card is
   cuttable polish.
 
@@ -527,7 +526,7 @@ MarginBank (read-only, zero STT), one referee rehearsal, the demo money shot, th
 
 **STT budget** (pessimistic, from the probed 6 gwei; the spike replaces the per-tx figure with the
 measured one): perp tx ≈ 0.02–0.05 STT (docs say 0.0003–0.003); registry deploy ≈ 0.2 STT (measured at
-deploy); per run, referee ≈ 0.15 STT (cancels, closes, verdict, + 0.0309 oracle) and per account ≈ 0.2
+deploy); per run, referee ≈ 0.15 STT (cancels, closes, verdict; the 0.0309 oracle deposit is not sent while `ORACLE_ENABLED=false`) and per account ≈ 0.2
 STT (grant, `startRun`, orders). Each write needs 0.6 STT of headroom. Faucet: 1 STT per address per hour
 while the balance is under 1 STT. Plan: top every burner to ~1 STT before each live session; ≈ 6 runs
 total (spike, rehearsal, demo takes).
@@ -541,7 +540,7 @@ total (spike, rehearsal, demo takes).
 | `ACCOUNT_B_PK`, `ACCOUNT_B_ADDRESS` | bot challenge account | bot, demo |
 | `REGISTRY_ADDRESS` | written after deploy (also in `deployments/hideki.json`) | referee, bot, web, landing |
 | `HIDEKI_RPC_HTTP`, `HIDEKI_RPC_WSS` | optional overrides (defaults in §0) | all |
-| `ORACLE_ENABLED` | `true` / `false` (cut-order switch) | referee |
+| `ORACLE_ENABLED` | `false` by default (the cross-check is cut for this build); `true` / `false` cut-order switch | referee |
 | `FEATURED_RUN_ID` | the real run the landing shows | landing build |
 | `VERCEL_TOKEN` | Vercel deploy token (closing, human gate) | ship deploy |
 | `CHROME_PATH` | optional, for the kit's checkers | landing gate |

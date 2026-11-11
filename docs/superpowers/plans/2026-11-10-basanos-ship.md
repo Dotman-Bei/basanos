@@ -882,12 +882,12 @@ Built for the dreamDEX Perps Builder Bounty (Somnia × dreamDEX, DoraHacks), MVP
 - **Start (chain-checked).** `startRun` reads MarginBank in the transaction: the account must be flat and must have granted the referee place and cancel on BTC-PERP; the start equity is stored with its block.
 - **Referee.** Off-chain Somnia Reactivity: `somnia_watch` on price writes and on the account's MarginBank logs, each push carrying a Multicall3 snapshot of block, time, mark and equity. A watch gap pauses judging; the referee re-reads at head before it resumes. Money flows void a run; liquidations fail it.
 - **Close protocol.** Cancel resting orders, read the position fresh, close with an opposite-side IOC `placeOrderFor`, read back, retry at most three times, sweep. Every transaction is recorded.
-- **Verdicts.** FAIL and VOID are recorded by the referee with the raw reads (block, equity, locked collateral, size, mark) and an evidence hash of the bundle in `docs/evidence/runs.json`. PASS is checked by the registry at mint: flat, equity at or above the target, minimum time, time limit, grant still held. Each verdict asks Somnia's Price Oracle agent for the BTC perp-composite median as a cross-check.
+- **Verdicts.** FAIL and VOID are recorded by the referee with the raw reads (block, equity, locked collateral, size, mark) and an evidence hash of the bundle in `docs/evidence/runs.json`. PASS is checked by the registry at mint: flat, equity at or above the target, minimum time, time limit, grant still held. A Price Oracle cross-check is implemented in the registry but switched off for this build (`ORACLE_ENABLED=false`): our test request on Tokyo testnet (request 7773100, 2026-11-11) finalized Failed with no prices.
 - **Replay.** The verdict page re-runs every stored read at its block; past the public RPC's history it shows the values stored on-chain.
 
 ## Tech stack
 
-TypeScript on Node 22 (strict ESM), `@somnia-chain/markets-sdk` 0.33.0, viem 2.57.12, Solidity 0.8.28 with Foundry 1.7.1 (`evm_version = cancun`), React 19 + Vite 8, vitest 4. Chain: Somnia Tokyo testnet (Hideki, chain 50383). Somnia primitives: off-chain Reactivity (`somnia_watch`) and Somnia Agents (Price Oracle).
+TypeScript on Node 22 (strict ESM), `@somnia-chain/markets-sdk` 0.33.0, viem 2.57.12, Solidity 0.8.28 with Foundry 1.7.1 (`evm_version = cancun`), React 19 + Vite 8, vitest 4. Chain: Somnia Tokyo testnet (Hideki, chain 50383). Somnia primitive: off-chain Reactivity (`somnia_watch`). The Somnia Agents Price Oracle path is implemented but switched off for this build (see Verdicts).
 
 ## Run locally
 
@@ -907,7 +907,7 @@ npx tsx packages/referee/src/cli.ts status # active runs in the registry
 | `ACCOUNT_B_PK`, `ACCOUNT_B_ADDRESS` | the scripted bot's account |
 | `REGISTRY_ADDRESS` | the deployed BasanosRegistry |
 | `HIDEKI_RPC_HTTP`, `HIDEKI_RPC_WSS` | optional RPC overrides |
-| `ORACLE_ENABLED` | `true` to pay 0.0309 STT per verdict for the Price Oracle reading |
+| `ORACLE_ENABLED` | `false` by default (the cross-check is off for this build); `true` would send 0.0309 STT per verdict for a Price Oracle reading |
 | `FEATURED_RUN_ID` | the run the landing page shows |
 | `VITE_REGISTRY_ADDRESS`, `VITE_REFEREE_ADDRESS` | public values baked into the app build |
 
@@ -921,7 +921,7 @@ Keys stay in the git-ignored `.env`; the app build refuses any `VITE_*_PK` varia
 | Somnia Tokyo testnet: dreamDEX MarginBank | `0x478769E1177C0773c43A593DCCc4Ad15F15F1394` | https://explorer.testnet.somnia.network/tokyo/address/0x478769E1177C0773c43A593DCCc4Ad15F15F1394 |
 | Somnia Tokyo testnet: BTC-PERP pool | `0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0` | https://explorer.testnet.somnia.network/tokyo/address/0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0 |
 | Somnia Tokyo testnet: OperatorPermissionsRegistry | `0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a` | https://explorer.testnet.somnia.network/tokyo/address/0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a |
-| Somnia Tokyo testnet: SomniaAgents | `0x7407cb35a17D511D1Bd32dD726ADb8D5344ECbE3` | https://explorer.testnet.somnia.network/tokyo/address/0x7407cb35a17D511D1Bd32dD726ADb8D5344ECbE3 |
+| Somnia Tokyo testnet: SomniaAgents (oracle path, off for this build) | `0x7407cb35a17D511D1Bd32dD726ADb8D5344ECbE3` | https://explorer.testnet.somnia.network/tokyo/address/0x7407cb35a17D511D1Bd32dD726ADb8D5344ECbE3 |
 
 ## Who it is for
 
@@ -1007,7 +1007,7 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 **Files:**
 - Create: `deployments/site.json`
 
-**Depends on:** Task 1, Task 3, Task 5, web:Task 2, web:Task 7, landing:Task 3, landing:Task 5, contracts:Task 10
+**Depends on:** Task 1, Task 3, Task 5, web:Task 2, web:Task 7, web:Task 8, landing:Task 3, landing:Task 5, contracts:Task 10
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`

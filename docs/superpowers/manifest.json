@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it.",
   "subsystems": [
     "spike",
     "contracts",
@@ -2546,6 +2546,44 @@
       "status": "pending"
     },
     {
+      "id": "web:8",
+      "subsystem": "web",
+      "title": "Oracle cut — the verdict page says the Price Oracle cross-check is off; `.env.example` defaults `ORACLE_ENABLED=false`",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:6",
+        "spike:1"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [],
+        "modify": [
+          "apps/web/src/components/VerdictView.tsx",
+          ".env.example"
+        ],
+        "test": [
+          "apps/web/test/oracle-off.test.tsx"
+        ]
+      },
+      "provides": [
+        "ORACLE_OFF_LINE: string (the verdict page's Price Oracle line while the cross-check is cut)",
+        ".env.example with ORACLE_ENABLED=false (the cross-check is off by default)"
+      ],
+      "requires": [
+        "TRUST_LINE = \"Every certificate is chain-checked at mint; every verdict is replayable.\"",
+        "interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }",
+        "VerdictView(props: { data: VerdictData; replay: Record<\"start\" | \"breach\" | \"end\", ReplayRow[] | null>; onReplay: () => void })"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web",
+        "expect": "PASS — `28 passed`."
+      },
+      "commit": "fix(web): verdict page states the Price Oracle cross-check is off; ORACLE_ENABLED=false by default",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
       "id": "ship:1",
       "subsystem": "ship",
       "title": "`@basanos/ship` — featured snapshot, X posts, checks, site assembly, evidence index",
@@ -2814,6 +2852,7 @@
         "ship:5",
         "web:2",
         "web:7",
+        "web:8",
         "landing:3",
         "landing:5",
         "contracts:10"
@@ -3029,7 +3068,8 @@
         "landing:2",
         "landing:3",
         "web:2",
-        "web:7"
+        "web:7",
+        "web:8"
       ],
       "effort": "medium",
       "files": {
