@@ -1,0 +1,15 @@
+{
+  "name": "@basanos/spike",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@basanos/core": "*",
+    "@somnia-chain/markets-sdk": "0.33.0",
+    "viem": "2.57.12"
+  }
+}
