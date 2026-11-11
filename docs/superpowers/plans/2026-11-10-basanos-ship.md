@@ -917,9 +917,9 @@ Keys stay in the git-ignored `.env`; the app build refuses any `VITE_*_PK` varia
 
 | network | address | explorer |
 |---|---|---|
-| Somnia Tokyo testnet (Hideki, 50383): BasanosRegistry | TBD-post-build:registry-address | TBD-post-build:registry-explorer-url |
+| Somnia Tokyo testnet (Hideki, 50383): BasanosRegistry | `0xf5D8099239200DF961E0910A42C105214D1E9370` | https://explorer.testnet.somnia.network/tokyo/address/0xf5D8099239200DF961E0910A42C105214D1E9370 |
 | Somnia Tokyo testnet: dreamDEX MarginBank | `0x478769E1177C0773c43A593DCCc4Ad15F15F1394` | https://explorer.testnet.somnia.network/tokyo/address/0x478769E1177C0773c43A593DCCc4Ad15F15F1394 |
-| Somnia Tokyo testnet: BTC-PERP pool | `0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0` | https://explorer.testnet.somnia.network/tokyo/address/0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0 |
+| Somnia Tokyo testnet: BTC-PERP pool | `0x4181dd08E73BbCdd1Ba3E615A18f6abD941b94C0` | https://explorer.testnet.somnia.network/tokyo/address/0x4181dd08E73BbCdd1Ba3E615A18f6abD941b94C0 |
 | Somnia Tokyo testnet: OperatorPermissionsRegistry | `0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a` | https://explorer.testnet.somnia.network/tokyo/address/0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a |
 | Somnia Tokyo testnet: SomniaAgents (Price Oracle requests) | `0x7407cb35a17D511D1Bd32dD726ADb8D5344ECbE3` | https://explorer.testnet.somnia.network/tokyo/address/0x7407cb35a17D511D1Bd32dD726ADb8D5344ECbE3 |
 
