@@ -525,8 +525,16 @@ MarginBank (read-only, zero STT), one referee rehearsal, the demo money shot, th
 **Burners (3):** the referee (also deployer and registry owner), account A (human), account B (bot).
 
 **STT budget** (pessimistic, from the probed 6 gwei; the spike replaces the per-tx figure with the
-measured one): perp tx ≈ 0.02–0.05 STT (docs say 0.0003–0.003); registry deploy ≈ 0.2 STT (measured at
-deploy); per run, referee ≈ 0.15 STT (cancels, closes, verdict; the 0.0309 oracle deposit is not sent while `ORACLE_ENABLED=false`) and per account ≈ 0.2
+measured one): perp tx ≈ 0.02–0.05 STT (docs say 0.0003–0.003); registry deploy: **measured 2026-11-11** (ledger `810c356`, read-only `eth_estimateGas`): **77,007,457 gas for
+15,949 bytes of runtime code, ≈ 0.462 STT at 6 gwei**. That is the gas limit the referee must cover; the earlier
+≈ 0.2 STT guess was wrong.
+- **Why:** Somnia charges 3,125 gas per byte of deployed bytecode (Ethereum charges 200) and 160 gas per calldata byte, and its `eth_estimateGas` returns 1.5 times the executed gas (docs: "Somnia Gas Differences To Ethereum").
+- **So:** the ≈ 4,800 gas per byte in the estimate is 3,125 × 1.5. A read-only check measured a 4,688 gas per byte marginal.
+- **Expected charge** (if unused gas is refunded as on Ethereum): about two-thirds of the limit, ≈ 51M gas ≈ 0.31 STT, plus the two `registerRulebook` transactions.
+- **Actual spend:** TBD, recorded when the concierge reports the deploy.
+- **Balance:** the referee needs ≥ 0.47 STT before contracts:10, so top it up to ≈ 1 STT first.
+
+The rest of the budget: per run, referee ≈ 0.15 STT (cancels, closes, verdict; the 0.0309 oracle deposit is not sent while `ORACLE_ENABLED=false`) and per account ≈ 0.2
 STT (grant, `startRun`, orders). Each write needs 0.6 STT of headroom. Faucet: 1 STT per address per hour
 while the balance is under 1 STT. Plan: top every burner to ~1 STT before each live session; ≈ 6 runs
 total (spike, rehearsal, demo takes).
