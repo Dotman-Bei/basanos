@@ -1,0 +1,22 @@
+{
+  "kit": "C:\\Users\\bamig\\Documents\\VIBE CODE\\Hackathons\\.claude\\skills\\design-taste-frontend",
+  "version": "tasteskill 2.5.0",
+  "licence": "none shipped with the kit; review before the public flip",
+  "files": [
+    {
+      "from": "assets/system.css",
+      "to": "vendor/system.css",
+      "sha256": "743c0177749b02602417f9f3e6b021fdaaee8f345473a475c7eb73618201541e"
+    },
+    {
+      "from": "assets/motion/motion.css",
+      "to": "vendor/motion/motion.css",
+      "sha256": "b7bef2c49ad613c10d5b528992fac4e8696eee98337ba2d9e2d7e962e32c070d"
+    },
+    {
+      "from": "assets/motion/motion.js",
+      "to": "vendor/motion/motion.js",
+      "sha256": "ddc7eb5e372979fe5412a26a138c149322119fe7ec41b5bd279c228c537f710e"
+    }
+  ]
+}

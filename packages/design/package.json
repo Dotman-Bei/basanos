@@ -1,0 +1,16 @@
+{
+  "name": "@basanos/design",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./system.css": "./vendor/system.css",
+    "./motion.css": "./vendor/motion/motion.css",
+    "./motion.js": "./vendor/motion/motion.js"
+  },
+  "scripts": {
+    "sync": "node scripts/sync-kit.mjs",
+    "test": "node scripts/check-kit.mjs"
+  }
+}
