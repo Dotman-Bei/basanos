@@ -2184,12 +2184,14 @@ Message: `chore(deploy): BasanosRegistry on Hideki with Tokyo Sprint rulebooks`
 **Files:**
 - Create: `docs/evidence/r5-preview.json`
 
-**Depends on:** Task 9, Task 10
+**Depends on:** Task 9, Task 10, spike:Task 11
 **Effort:** low
 **Provides:** `docs/evidence/r5-preview.json (code 0 for account A, registry reads == SDK getAccountEquity at the same block)`
 **Requires:** `CLI: npx tsx contracts/script/preview-live.ts -> writes docs/evidence/r5-preview.json, prints PASS r5-preview`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`
 
-Read-only: no key, no STT. It needs `ACCOUNT_A_ADDRESS` in `.env`, and account A must be flat with the referee grant from spike task 11. Code `3` (grant missing) or `4` (not flat) means account A's state changed; fix the state, not the script.
+Read-only: no key, no STT. It needs `ACCOUNT_A_ADDRESS` in `.env`, and account A must be flat with the referee grant from spike task 11.
+
+**Runs after spike:11 (plan-bug, 2026-11-11).** The gate needs preview code 0. That means account A holds the referee grant, is flat, and has **positive equity**: code 6 is `non-positive equity`. So account A must hold paper USDso, which B14 blocks until dreamDEX acts. A run before spike:11 printed `FAIL r5-preview (code 3 grant missing; registry 0 vs sdk 0)`. That shows the registry's MarginBank read matches the SDK's, but it does not pass the gate. Code `3` (grant missing) or `4` (not flat) means account A's state changed; fix the state, not the script.
 
 - [ ] **Step 1: Run the live preview (the gate)**
 Run: `npx tsx contracts/script/preview-live.ts`
