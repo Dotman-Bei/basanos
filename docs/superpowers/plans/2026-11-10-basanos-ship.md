@@ -1006,12 +1006,13 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 
 **Files:**
 - Create: `deployments/site.json`
+- Modify: `deployments/hideki.json`
 
-**Depends on:** Task 1, Task 3, Task 5, Task 8, web:Task 2, web:Task 7, web:Task 8, web:Task 9, landing:Task 3, landing:Task 5, contracts:Task 10
+**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, web:Task 2, web:Task 7, web:Task 8, web:Task 9, landing:Task 3, landing:Task 5, contracts:Task 10
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`
-**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, records baseUrlTx`
+**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, and the registry's baseUrl() is the live certificate route)`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json`
 
 **Human-gated (deploy).**
 - **Needs:** a Vercel account and `VERCEL_TOKEN` in `.env`, both from the concierge signup gate. `setBaseUrl` signs with `REFEREE_PK`, the registry owner.
@@ -1032,8 +1033,11 @@ Expected: `deployed https://<project>.vercel.app`; it writes `deployments/site.j
 
 - [ ] **Step 3: Point the certificates at the live site**
 Run: `npx tsx packages/ship/src/set-base-url.ts`
-Expected: `setBaseUrl success 0x… -> https://<project>.vercel.app/app/#/cert/`.
+Expected: `setBaseUrl success 0x… -> https://<project>.vercel.app/app/#/cert/`, then `baseUrl() read back: https://<project>.vercel.app/app/#/cert/`.
+- This replaces the constructor's placeholder `https://basanos.vercel.app/app/#/cert/` in the registry and in `deployments/hideki.json`.
+- A `FAIL registry baseUrl() …` line means the read-back differs: stop, and fix it before Step 4.
 - [ ] **Step 4: Check the live site (the gate)**
+This also reads the registry's `baseUrl()` and fails unless it is the live certificate route.
 Run: `npx tsx packages/ship/src/check-deploy.ts`
 Expected: PASS — `PASS deploy (https://<project>.vercel.app)`.
 
@@ -1198,3 +1202,151 @@ Expected: PASS — `2 passed`.
 
 - [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
 Message: `fix(ship): Vercel token only in the child environment, never on the command line`
+
+---
+
+### Task 9: Certificates' base URL — `setBaseUrl` reads `baseUrl()` back; the deploy check verifies it
+
+**Files:**
+- Create: `packages/ship/src/base-url.ts`
+- Modify: `packages/ship/src/set-base-url.ts`
+- Modify: `packages/ship/src/check-deploy.ts`
+- Test: `packages/ship/test/base-url.test.ts`
+
+**Depends on:** Task 1, contracts:Task 8, spike:Task 3, spike:Task 1, referee:Task 6
+**Effort:** low
+**Model tier:** top
+**Provides:** `PLACEHOLDER_BASE_URL = "https://basanos.vercel.app/app/#/cert/"`, `certBaseUrl(siteUrl: string): string`, `baseUrlProblem(expected: string, onChain: string): string | null`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, and the registry's baseUrl() is the live certificate route)`
+**Requires:** `basanosRegistryAbi (as const, generated from the forge artifact)`, `loadDotEnv(path?: string): boolean`, `repoPath(rel: string): string`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `makePublicClient(url: string): PublicClient`, `makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)`
+
+Why (guide, 2026-11-11): `deployments/hideki.json` and the live registry still hold the constructor's placeholder base URL. A read-only check on the registry `0xf5D8…9370` returned `baseUrl()` = `https://basanos.vercel.app/app/#/cert/`.
+- **The gap:** Task 1's `set-base-url.ts` sends `setBaseUrl` but never reads it back, and `check-deploy.ts` does not look at it.
+- **What changes:** `set-base-url.ts` sets `<deployed site>/app/#/cert/`, reads `baseUrl()` back, and fails unless the two are equal. On success it writes the real value into `deployments/site.json` and `deployments/hideki.json`.
+- **The gate (Task 6 Step 4):** `check-deploy.ts` also fails unless the registry's `baseUrl()` is the live certificate route.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/ship/test/base-url.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { PLACEHOLDER_BASE_URL, baseUrlProblem, certBaseUrl } from "../src/base-url";
+
+describe("certificate base URL", () => {
+  it("points at the deployed site's certificate route", () => {
+    expect(certBaseUrl("https://basanos-k3x9.vercel.app")).toBe("https://basanos-k3x9.vercel.app/app/#/cert/");
+    expect(certBaseUrl("https://basanos-k3x9.vercel.app/")).toBe("https://basanos-k3x9.vercel.app/app/#/cert/");
+    expect(() => certBaseUrl("http://basanos-k3x9.vercel.app")).toThrow(/https/);
+  });
+  it("accepts only an on-chain value equal to the deployed route, and names the placeholder", () => {
+    const route = "https://basanos-k3x9.vercel.app/app/#/cert/";
+    expect(baseUrlProblem(route, route)).toBeNull();
+    expect(baseUrlProblem(route, PLACEHOLDER_BASE_URL)).toMatch(/placeholder/);
+    expect(baseUrlProblem(route, "https://other.vercel.app/app/#/cert/")).toMatch(/expected/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/ship -- test/base-url.test.ts`
+Expected: FAIL — `Cannot find module '../src/base-url'`.
+
+- [ ] **Step 3: Write the helper**
+
+`packages/ship/src/base-url.ts`:
+```ts
+// The certificates' base URL: the live site's certificate route. deployments/hideki.json starts with the
+// constructor's placeholder; ship:6 sets the real one with setBaseUrl and reads baseUrl() back.
+export const PLACEHOLDER_BASE_URL = "https://basanos.vercel.app/app/#/cert/";
+
+/** The certificate route on the deployed site (https only; any path on the site URL is dropped). */
+export function certBaseUrl(siteUrl: string): string {
+  const u = new URL(siteUrl);
+  if (u.protocol !== "https:") throw new Error(`the site URL must be https: ${siteUrl}`);
+  return `${u.origin}/app/#/cert/`;
+}
+
+/** null when the registry's baseUrl() equals the deployed route; otherwise what is wrong. */
+export function baseUrlProblem(expected: string, onChain: string): string | null {
+  if (onChain === expected) return null;
+  const why = onChain === PLACEHOLDER_BASE_URL ? " (still the constructor's placeholder)" : "";
+  return `registry baseUrl() is ${onChain}${why}; expected ${expected}`;
+}
+```
+
+- [ ] **Step 4: Read the base URL back after setting it**
+
+Replace `packages/ship/src/set-base-url.ts` with:
+```ts
+// Owner-only (REFEREE_PK): points the certificates' external_url at the live site from deployments/site.json, then
+// reads baseUrl() back and refuses to finish unless it equals that route. On success deployments/hideki.json's
+// baseUrl (the constructor's placeholder) is replaced by the real value.
+import { readFileSync, writeFileSync } from "node:fs";
+import type { Address } from "viem";
+import { basanosRegistryAbi } from "@basanos/core";
+import { loadDotEnv, repoPath, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { makePublicClient, makeRefereeWallet } from "@basanos/referee";
+import { baseUrlProblem, certBaseUrl } from "./base-url";
+
+loadDotEnv();
+const sitePath = repoPath("deployments/site.json");
+const depPath = repoPath("deployments/hideki.json");
+const site = JSON.parse(readFileSync(sitePath, "utf8")) as { url: string; deployedAt: string; baseUrlTx: string | null; baseUrl?: string };
+const dep = JSON.parse(readFileSync(depPath, "utf8")) as Record<string, unknown> & { registry: Address; baseUrl?: string };
+const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
+const client = makePublicClient(rpcHttp());
+const url = certBaseUrl(site.url);
+const hash = await wallet.writeContract({ address: dep.registry, abi: basanosRegistryAbi, functionName: "setBaseUrl", args: [url] });
+const receipt = await client.waitForTransactionReceipt({ hash });
+const onChain = String(await client.readContract({ address: dep.registry, abi: basanosRegistryAbi, functionName: "baseUrl" }));
+const problem = receipt.status === "success" ? baseUrlProblem(url, onChain) : `setBaseUrl reverted (${hash})`;
+site.baseUrlTx = hash;
+site.baseUrl = onChain;
+writeFileSync(sitePath, `${JSON.stringify(site, null, 2)}\n`);
+if (!problem) {
+  dep.baseUrl = onChain;
+  writeFileSync(depPath, `${JSON.stringify(dep, null, 2)}\n`);
+}
+console.log(`setBaseUrl ${receipt.status} ${hash} -> ${url}`);
+console.log(`baseUrl() read back: ${onChain}`);
+if (problem) console.log(`FAIL ${problem}`);
+process.exit(problem ? 1 : 0);
+```
+
+Replace `packages/ship/src/check-deploy.ts` with:
+```ts
+// The live site answers at / and /app/, and the registry's baseUrl() points the certificates at this site.
+import { readFileSync } from "node:fs";
+import type { Address } from "viem";
+import { basanosRegistryAbi } from "@basanos/core";
+import { loadDotEnv, repoPath, rpcHttp } from "@basanos/core/node";
+import { makePublicClient } from "@basanos/referee";
+import { baseUrlProblem, certBaseUrl } from "./base-url";
+
+loadDotEnv();
+const { url } = JSON.parse(readFileSync(repoPath("deployments/site.json"), "utf8")) as { url: string };
+const { registry } = JSON.parse(readFileSync(repoPath("deployments/hideki.json"), "utf8")) as { registry: Address };
+const problems: string[] = [];
+for (const path of ["/", "/app/"]) {
+  const res = await fetch(`${url}${path}`);
+  const body = await res.text();
+  if (res.status !== 200) problems.push(`${path} returned ${res.status}`);
+  if (!body.includes("Basanos")) problems.push(`${path} does not mention Basanos`);
+}
+const onChain = String(await makePublicClient(rpcHttp()).readContract({ address: registry, abi: basanosRegistryAbi, functionName: "baseUrl" }));
+const wrong = baseUrlProblem(certBaseUrl(url), onChain);
+if (wrong) problems.push(wrong);
+for (const p of problems) console.log(`FAIL ${p}`);
+console.log(problems.length === 0 ? `PASS deploy (${url})` : "FAIL deploy");
+process.exit(problems.length === 0 ? 0 : 1);
+```
+
+- [ ] **Step 5: Type-check (Task 6 runs both scripts)**
+Run: `npm run typecheck -w @basanos/ship`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 6: Run the test (the gate)**
+Run: `npm test -w @basanos/ship -- test/base-url.test.ts`
+Expected: PASS — `2 passed`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `fix(ship): setBaseUrl reads baseUrl() back; the deploy check verifies the certificates' base URL`

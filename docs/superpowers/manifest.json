@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json.",
   "subsystems": [
     "spike",
     "contracts",
@@ -2980,6 +2980,7 @@
         "ship:3",
         "ship:5",
         "ship:8",
+        "ship:9",
         "web:2",
         "web:7",
         "web:8",
@@ -2994,7 +2995,9 @@
         "create": [
           "deployments/site.json"
         ],
-        "modify": [],
+        "modify": [
+          "deployments/hideki.json"
+        ],
         "test": []
       },
       "provides": [
@@ -3003,12 +3006,12 @@
       ],
       "requires": [
         "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)",
-        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy",
+        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, and the registry's baseUrl() is the live certificate route)",
         "CLI: npm run build -w @basanos/web (check-env, then vite build)",
         "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
         "deployments/hideki.json (registry address, deploy block, rulebook ids)",
         "CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json",
-        "CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, records baseUrlTx"
+        "CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json"
       ],
       "gate": {
         "run": "npx tsx packages/ship/src/check-deploy.ts",
@@ -3095,6 +3098,57 @@
         "expect": "PASS — `2 passed`."
       },
       "commit": "fix(ship): Vercel token only in the child environment, never on the command line",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:9",
+      "subsystem": "ship",
+      "title": "Certificates' base URL — `setBaseUrl` reads `baseUrl()` back; the deploy check verifies it",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "contracts:8",
+        "spike:3",
+        "spike:1",
+        "referee:6"
+      ],
+      "effort": "low",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/ship/src/base-url.ts"
+        ],
+        "modify": [
+          "packages/ship/src/set-base-url.ts",
+          "packages/ship/src/check-deploy.ts"
+        ],
+        "test": [
+          "packages/ship/test/base-url.test.ts"
+        ]
+      },
+      "provides": [
+        "PLACEHOLDER_BASE_URL = \"https://basanos.vercel.app/app/#/cert/\"",
+        "certBaseUrl(siteUrl: string): string",
+        "baseUrlProblem(expected: string, onChain: string): string | null",
+        "CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json",
+        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, and the registry's baseUrl() is the live certificate route)"
+      ],
+      "requires": [
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "loadDotEnv(path?: string): boolean",
+        "repoPath(rel: string): string",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "makePublicClient(url: string): PublicClient",
+        "makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/ship -- test/base-url.test.ts",
+        "expect": "PASS — `2 passed`."
+      },
+      "commit": "fix(ship): setBaseUrl reads baseUrl() back; the deploy check verifies the certificates' base URL",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"
