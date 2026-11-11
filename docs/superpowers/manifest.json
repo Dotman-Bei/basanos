@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded).",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it.",
   "subsystems": [
     "spike",
     "contracts",
@@ -2979,6 +2979,7 @@
         "ship:1",
         "ship:3",
         "ship:5",
+        "ship:8",
         "web:2",
         "web:7",
         "web:8",
@@ -3006,7 +3007,7 @@
         "CLI: npm run build -w @basanos/web (check-env, then vite build)",
         "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
         "deployments/hideki.json (registry address, deploy block, rulebook ids)",
-        "CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production, writes deployments/site.json",
+        "CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json",
         "CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, records baseUrlTx"
       ],
       "gate": {
@@ -3052,6 +3053,48 @@
         "expect": "PASS — `wrote docs/evidence/INDEX.md (<n> files)`."
       },
       "commit": "docs: X-post drafts and the evidence index from the final run",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:8",
+      "subsystem": "ship",
+      "title": "Vercel deploy — `VERCEL_TOKEN` only in the child environment, never on the command line",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "spike:1",
+        "spike:3"
+      ],
+      "effort": "low",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/ship/src/vercel.ts"
+        ],
+        "modify": [
+          "packages/ship/src/deploy-vercel.ts"
+        ],
+        "test": [
+          "packages/ship/test/vercel.test.ts"
+        ]
+      },
+      "provides": [
+        "VERCEL_CLI = \"vercel@65.3.1\"",
+        "vercelDeployInvocation(token: string, baseEnv: NodeJS.ProcessEnv): { command: string; args: string[]; env: NodeJS.ProcessEnv }",
+        "argvLeaksToken(args: readonly string[], token: string): boolean",
+        "CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json"
+      ],
+      "requires": [
+        "repoPath(rel: string): string",
+        "loadDotEnv(path?: string): boolean"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/ship -- test/vercel.test.ts",
+        "expect": "PASS — `2 passed`."
+      },
+      "commit": "fix(ship): Vercel token only in the child environment, never on the command line",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"

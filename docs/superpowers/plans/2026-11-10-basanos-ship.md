@@ -1007,11 +1007,11 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 **Files:**
 - Create: `deployments/site.json`
 
-**Depends on:** Task 1, Task 3, Task 5, web:Task 2, web:Task 7, web:Task 8, web:Task 9, landing:Task 3, landing:Task 5, contracts:Task 10
+**Depends on:** Task 1, Task 3, Task 5, Task 8, web:Task 2, web:Task 7, web:Task 8, web:Task 9, landing:Task 3, landing:Task 5, contracts:Task 10
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`
-**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production, writes deployments/site.json`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, records baseUrlTx`
+**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, records baseUrlTx`
 
 **Human-gated (deploy).**
 - **Needs:** a Vercel account and `VERCEL_TOKEN` in `.env`, both from the concierge signup gate. `setBaseUrl` signs with `REFEREE_PK`, the registry owner.
@@ -1065,3 +1065,136 @@ Expected: PASS — `wrote docs/evidence/INDEX.md (<n> files)`.
 
 - [ ] **Step 3: Commit (kernel-performed — no agent runs this)**
 Message: `docs: X-post drafts and the evidence index from the final run`
+
+---
+
+### Task 8: Vercel deploy — `VERCEL_TOKEN` only in the child environment, never on the command line
+
+**Files:**
+- Create: `packages/ship/src/vercel.ts`
+- Modify: `packages/ship/src/deploy-vercel.ts`
+- Test: `packages/ship/test/vercel.test.ts`
+
+**Depends on:** Task 1, spike:Task 1, spike:Task 3
+**Effort:** low
+**Model tier:** top
+**Provides:** `VERCEL_CLI = "vercel@65.3.1"`, `vercelDeployInvocation(token: string, baseEnv: NodeJS.ProcessEnv): { command: string; args: string[]; env: NodeJS.ProcessEnv }`, `argvLeaksToken(args: readonly string[], token: string): boolean`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json`
+**Requires:** `repoPath(rel: string): string`, `loadDotEnv(path?: string): boolean`
+
+Why (guide, 2026-11-11):
+- **The problem:** Task 1's `deploy-vercel.ts` passes `--token <token>` on the command line, through `spawnSync(…, { shell: true })`. The process list and a shell echo could expose it.
+- **The fix:** this task passes `VERCEL_TOKEN` in the child process's environment only. The checked-in `vercel@65.3.1` bundle reads `process.env.VERCEL_TOKEN` when no `--token` flag is given (its code records `tokenSource = "env"`).
+- **The guard:** a test pins that the arguments never carry the token, and the script refuses to run if they ever do.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/ship/test/vercel.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { argvLeaksToken, vercelDeployInvocation } from "../src/vercel";
+
+describe("Vercel deploy invocation", () => {
+  it("passes the token in the child env and never on the command line", () => {
+    const token = "vc_test_7d3f9a1e";
+    const base: NodeJS.ProcessEnv = { PATH: "/usr/bin" };
+    const inv = vercelDeployInvocation(token, base);
+    expect(inv.command).toBe("npx");
+    expect(inv.args).toEqual(["vercel@65.3.1", "deploy", ".", "--prod", "--yes"]);
+    expect(inv.args.join(" ")).not.toContain(token);
+    expect(inv.args).not.toContain("--token");
+    expect(argvLeaksToken(inv.args, token)).toBe(false);
+    expect(inv.env.VERCEL_TOKEN).toBe(token);
+    expect(inv.env.PATH).toBe("/usr/bin");
+    expect(base).toEqual({ PATH: "/usr/bin" });
+  });
+  it("flags any argv that would carry the token, and refuses an empty token", () => {
+    expect(argvLeaksToken(["deploy", "--token", "x"], "zz")).toBe(true);
+    expect(argvLeaksToken(["deploy", "--token=x"], "zz")).toBe(true);
+    expect(argvLeaksToken(["deploy", "abczzdef"], "zz")).toBe(true);
+    expect(() => vercelDeployInvocation("", {})).toThrow(/VERCEL_TOKEN/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/ship -- test/vercel.test.ts`
+Expected: FAIL — `Cannot find module '../src/vercel'`.
+
+- [ ] **Step 3: Write the invocation helper**
+
+`packages/ship/src/vercel.ts`:
+```ts
+// How deploy-vercel.ts calls the Vercel CLI. The token travels in the child's environment as VERCEL_TOKEN, which
+// vercel@65.3.1 reads when no --token flag is given. It never goes on the command line, where the process list and
+// the shell (spawnSync with shell: true) could expose it.
+export const VERCEL_CLI = "vercel@65.3.1";
+
+export interface VercelInvocation {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+}
+
+export function vercelDeployInvocation(token: string, baseEnv: NodeJS.ProcessEnv): VercelInvocation {
+  if (!token) throw new Error("VERCEL_TOKEN is empty");
+  return { command: "npx", args: [VERCEL_CLI, "deploy", ".", "--prod", "--yes"], env: { ...baseEnv, VERCEL_TOKEN: token } };
+}
+
+/** True when a --token flag, or the token itself, appears anywhere in the arguments. */
+export function argvLeaksToken(args: readonly string[], token: string): boolean {
+  return args.some((a) => a === "--token" || a.startsWith("--token=") || (token.length > 0 && a.includes(token)));
+}
+```
+
+- [ ] **Step 4: Use it in the deploy script**
+
+Replace `packages/ship/src/deploy-vercel.ts` with:
+```ts
+// Deploys the assembled site/basanos to Vercel production with VERCEL_TOKEN from the git-ignored .env, and
+// writes deployments/site.json. Runs from inside site/basanos so no argument holds a path with a space.
+// The token goes to the CLI in the child environment only, never on the command line (see vercel.ts).
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { loadDotEnv, repoPath } from "@basanos/core/node";
+import { argvLeaksToken, vercelDeployInvocation } from "./vercel";
+
+loadDotEnv();
+const token = process.env.VERCEL_TOKEN;
+if (!token) {
+  console.error("VERCEL_TOKEN is not set (it comes from the concierge signup gate)");
+  process.exit(1);
+}
+const dir = repoPath("site/basanos");
+if (!existsSync(`${dir}/index.html`)) {
+  console.error("site/basanos is not assembled (run assemble-site.ts first)");
+  process.exit(1);
+}
+const inv = vercelDeployInvocation(token, process.env);
+if (argvLeaksToken(inv.args, token)) {
+  console.error("refusing to put the Vercel token on the command line");
+  process.exit(1);
+}
+const r = spawnSync(inv.command, inv.args, { cwd: dir, encoding: "utf8", shell: true, env: inv.env });
+const urls = `${r.stdout ?? ""}`.match(/https:\/\/[a-z0-9.-]+\.vercel\.app/g) ?? [];
+const url = urls.at(-1);
+if (r.status !== 0 || !url) {
+  console.error(`vercel deploy failed (exit ${r.status}): ${`${r.stderr ?? ""}`.slice(-600)}`);
+  process.exit(1);
+}
+mkdirSync(dirname(repoPath("deployments/site.json")), { recursive: true });
+writeFileSync(repoPath("deployments/site.json"), `${JSON.stringify({ url, deployedAt: new Date().toISOString(), baseUrlTx: null }, null, 2)}\n`);
+console.log(`deployed ${url}`);
+process.exit(0);
+```
+
+- [ ] **Step 5: Type-check (Task 6 runs the deploy)**
+Run: `npm run typecheck -w @basanos/ship`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 6: Run the test (the gate)**
+Run: `npm test -w @basanos/ship -- test/vercel.test.ts`
+Expected: PASS — `2 passed`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `fix(ship): Vercel token only in the child environment, never on the command line`
