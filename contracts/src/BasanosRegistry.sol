@@ -421,7 +421,71 @@ contract BasanosRegistry {
         emit RunVoided(runId, account, reason, txHash);
     }
 
-    // [[metadata]]
+    // ------------------------------------------------------------------ certificate metadata
+
+    function supportsInterface(bytes4 id) external pure returns (bool) {
+        return id == 0x01ffc9a7 || id == 0x80ac58cd || id == 0x5b5e139f || id == 0xb45a3c0e;
+    }
+
+    /// base64, because the external_url holds a '#' that would end a plain data: URI.
+    function tokenURI(uint256 tokenId) external view returns (string memory) {
+        if (_owners[tokenId] == address(0)) revert NonexistentToken();
+        Run storage run = _runs[tokenId];
+        string memory head = string.concat(
+            '{"name":"Basanos Certificate #',
+            _u(tokenId),
+            '","description":"Every certificate is chain-checked at mint; every verdict is replayable.","external_url":"',
+            baseUrl,
+            _u(tokenId),
+            '","attributes":['
+        );
+        string memory body = string.concat(
+            '{"trait_type":"rulebook","value":"',
+            _hex32(run.rulebookId),
+            '"},{"trait_type":"startBlock","value":',
+            _u(run.start.blockNumber),
+            '},{"trait_type":"endBlock","value":',
+            _u(run.end.blockNumber),
+            "},"
+        );
+        string memory tail = string.concat(
+            '{"trait_type":"startEquity","value":"',
+            _i(run.start.equity + int256(run.start.lockedCollateral)),
+            '"},{"trait_type":"endEquity","value":"',
+            _i(run.end.equity + int256(run.end.lockedCollateral)),
+            '"}]}'
+        );
+        return string.concat("data:application/json;base64,", Base64.encode(bytes(string.concat(head, body, tail))));
+    }
+
+    function _u(uint256 v) internal pure returns (string memory) {
+        if (v == 0) return "0";
+        uint256 len;
+        for (uint256 t = v; t != 0; t /= 10) len++;
+        bytes memory b = new bytes(len);
+        while (v != 0) {
+            len--;
+            b[len] = bytes1(uint8(48 + (v % 10)));
+            v /= 10;
+        }
+        return string(b);
+    }
+
+    function _i(int256 v) internal pure returns (string memory) {
+        return v < 0 ? string.concat("-", _u(uint256(-v))) : _u(uint256(v));
+    }
+
+    function _hex32(bytes32 v) internal pure returns (string memory) {
+        bytes16 digits = "0123456789abcdef";
+        bytes memory b = new bytes(66);
+        b[0] = "0";
+        b[1] = "x";
+        for (uint256 i = 0; i < 32; i++) {
+            b[2 + i * 2] = digits[uint8(v[i]) >> 4];
+            b[3 + i * 2] = digits[uint8(v[i]) & 0x0f];
+        }
+        return string(b);
+    }
 
     // ------------------------------------------------------------------ internals
 
