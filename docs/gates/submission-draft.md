@@ -38,7 +38,7 @@ exposure cap, time limit) it cancels resting orders and closes the position with
 profit target is reached after the minimum time, the referee locks the gain by flattening, and the registry checks
 the end state itself (flat, equity at or above the target, minimum time, referee grant still held) before it
 records **PASSED** and mints a non-transferable certificate. A Price Oracle cross-check is implemented in the
-registry but switched off for this build: our test request on Tokyo testnet (request 7773100, 2026-11-11) finalized Failed with no prices.
+registry but switched off for this build: our test request on Tokyo testnet (request 7773100, 2026-11-11) finalized Failed, because its three validators' price answers differed and the default Majority consensus needs identical answers.
 
 Trust model, stated exactly: every certificate is chain-checked at mint; every verdict is replayable. Path rules
 (daily loss, trailing drawdown, exposure) are enforced by the referee and shown by replay; they are not checked by

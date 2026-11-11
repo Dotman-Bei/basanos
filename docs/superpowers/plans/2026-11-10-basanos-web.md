@@ -2159,7 +2159,7 @@ describe("Price Oracle cross-check copy (cut 2026-11-11)", () => {
   it("says the cross-check is off and names neither Somnia Agents nor a Somnia Price Oracle reading", () => {
     const { container } = render(<VerdictView data={data} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />);
     expect(ORACLE_OFF_LINE).toBe(
-      "Off for this build: the registry can request a Price Oracle reading at each verdict, but our test request on Tokyo testnet finalized Failed with no prices, so verdicts do not request one.",
+      "Off for this build: the registry can request a Price Oracle reading at each verdict, but our test request on Tokyo testnet finalized Failed because the validators' answers differed and the default Majority consensus needs identical answers. Verdicts do not request one.",
     );
     expect(screen.getByText(ORACLE_OFF_LINE)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Price Oracle cross-check" })).toBeTruthy();
@@ -2179,7 +2179,7 @@ In `apps/web/src/components/VerdictView.tsx`, directly after the `TRUST_LINE` li
 
 /** The Price Oracle cross-check is cut for this build (ORACLE_ENABLED=false): spike:12's request finalized Failed. */
 export const ORACLE_OFF_LINE =
-  "Off for this build: the registry can request a Price Oracle reading at each verdict, but our test request on Tokyo testnet finalized Failed with no prices, so verdicts do not request one.";
+  "Off for this build: the registry can request a Price Oracle reading at each verdict, but our test request on Tokyo testnet finalized Failed because the validators' answers differed and the default Majority consensus needs identical answers. Verdicts do not request one.";
 ```
 Then replace
 ```tsx

@@ -76,7 +76,7 @@ rulebook and fund the accounts that pass.
 `tokyo-sprint` (standard) and `tokyo-sprint-demo` (demo mode, §5). No other rulebooks or levels.
 
 **Cut order (amended by the user directive, first to go):** landing scenes / shader moments → Price
-Oracle cross-check (**CUT 2026-11-11**: our test request on Tokyo testnet (request 7773100, 2026-11-11) finalized Failed with no prices. `ORACLE_ENABLED=false` is the default everywhere. The registry keeps the code, called inside `try`, and its tests.) → X card / share polish → certificate polish → extra rulebooks / levels.
+Oracle cross-check (**CUT 2026-11-11**: our test request on Tokyo testnet (request 7773100, 2026-11-11) finalized Failed, because its three validators' price answers differed and the default Majority consensus needs identical answers. `ORACLE_ENABLED=false` is the default everywhere. The registry keeps the code, called inside `try`, and its tests.) → X card / share polish → certificate polish → extra rulebooks / levels.
 **Never cut:** the referee's close with tx hashes, the registry verdict record, the verdict page with
 replay, README + X posts, and — once built — the landing's hero + CTAs + three steps + the link to a
 real verdict page.
@@ -165,7 +165,7 @@ its evidence file, into §3a below. G1(d) is answered (2026-11-11): the Price Or
 | G1(a) referee close on a voucher account | `docs/evidence/g1a-close.json` | written by `spike:13` |
 | G1(b) watch with attached equity multicall | `docs/evidence/g1b-watch.json` | written by `spike:13` |
 | G1(c) equity history depth | `docs/evidence/g1c-history.json` | written by `spike:13` |
-| G1(d) Price Oracle `BTC/USDC:PERP` | `docs/evidence/g1d-oracle.json` | **Failed.** Request 7773100 (createRequest tx `0xdf795f1f…a30d`, block 47437497) finalized Failed one block later (`RequestFinalized` status 3, tx `0x851aaa04…2301`). The three validators answered with empty results, so there are no prices. The cross-check is cut (§1): `ORACLE_ENABLED=false`. |
+| G1(d) Price Oracle `BTC/USDC:PERP` | `docs/evidence/g1d-oracle.json` | **Failed.** Request 7773100 (createRequest tx `0xdf795f1f…a30d`, block 47437497) finalized Failed one block later (`RequestFinalized` status 3, tx `0x851aaa04…2301`). All three validators answered Success with prices: `BTC/USDC:PERP` 73,976.65 from 7 sources, identical across the three; `BTC/USDC` 74,008.55–74,011.48 from 6–7 sources, differing. The 4-argument `createRequest` uses Majority consensus, which needs byte-identical answers, so the request failed and no consensus price reached the callback. dreamDEX's PriceFeedScheduler uses `createAdvancedRequest` with Threshold consensus (3 validators, threshold 2, 30 s, 0.06 STT) and succeeds every 5 blocks. The cross-check is cut (§1): `ORACLE_ENABLED=false`. |
 | G1(e) voucher leverage cap (per account) | `docs/evidence/g1a-close.json` (`leverage` field) | written by `spike:13` |
 | R1 indexer reads | `docs/evidence/r1-indexer.json` | written by `spike:13` |
 | Live mark tape for G4 | `packages/core/test/fixtures/btc-tape.json` | written by `spike:13` |
