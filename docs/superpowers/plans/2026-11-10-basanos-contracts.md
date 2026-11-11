@@ -2152,6 +2152,11 @@ Message: `feat(contracts): deploy, deployment check, live preview and bytecode v
 
 **Human-gated (deploy).** Spends STT from the referee burner (`REFEREE_PK`); top it up to about 1 STT first. The two rulebook files and `foundry.toml` are declared because two fallbacks may edit them; if neither applies, they stay unchanged.
 
+**Hold for the oracle probe (guide, 2026-11-11): do not deploy until the guide gives the deploy GO.**
+- That GO waits for the result of oracle probe P1 (spike:16's `oracle-probe.ts --symbols BTC/USDC:PERP`, run by the gate-concierge on the user's GO).
+- If P1 fails and the guide approves it, the GO also waits for P2 (`--advanced`). A P2 result can change the registry's oracle call (`createAdvancedRequest`, Threshold) before deploy.
+- This is an ordering rule the guide holds, not a manifest dependency on a human result.
+
 - [ ] **Step 1: Apply the oracle-symbol fallback if the spike calls for it**
 Open `docs/evidence/g1d-oracle.json`. If `BTC/USDC:PERP` has `numSources: 0` and `BTC/USDC` has `numSources > 0`, set `"oracleSymbol": "BTC/USDC"` in both `rulebooks/tokyo-sprint.json` and `rulebooks/tokyo-sprint-demo.json`. Otherwise leave both files unchanged.
 

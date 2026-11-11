@@ -12,6 +12,7 @@
 - **SDK pin timebox:** if task 11 has not landed a real order on 0.33.0 within ~2 h of starting the skeleton, stop and route a plan fix to the architect: switch `@somnia-chain/markets-sdk` to `0.32.1` in `packages/core/package.json` and `packages/spike/package.json`.
 - **Task 14 (added 2026-11-11, after Task 10 landed):** account A's own writes in `skeleton-close` (grant, open, rest) move off the SDK's send path, which returned `TransactionOutcomeUnknownError` in the Step 3 preflight, onto viem: signed locally, sent to the standard RPC with `ORDER_GAS` and an explicit nonce. It runs after Task 10 and before Task 11 (Task 11 depends on it). `--sdk-send` keeps the SDK path as an opt-in fallback; the evidence records `sendPath`.
 - **Task 15 (added 2026-11-11, after Task 12's first run):** `oracle-probe` reads the outcome from SomniaAgents logs. SomniaAgents deletes a request once it finalizes, so `getRequest` reverts `RequestNotFound` and the first run recorded "Pending" for a request that finalized Failed. Task 15 also adds `--from-tx <hash>`, which rebuilds the evidence without a key or a send, and makes the `g1d-oracle` check strict. Task 12 depends on it and rebuilds its evidence from the request already sent.
+- **Task 16 (added 2026-11-11, guide GO):** adds the oracle probes P1 (`--symbols BTC/USDC:PERP`: one symbol, the registry's exact 4-argument Majority path) and P2 (`--advanced`: Threshold 2 of 3) to `oracle-probe`. The task is code and unit tests only. The gate-concierge runs P1 on the user's GO, and P2 only if P1 fails and the guide approves it. contracts:10 waits for the result; see its hold note.
 - The root `.npmrc` (`legacy-peer-deps=true`, Task 1) is required: without it `npm install` crashes in npm 10's resolver (`Cannot read properties of null (reading 'edgesOut')`) on Vite 8's optional peer graph, which vitest pulls in.
 - Commands run from the repo root. **The repo path contains a space** (`C:\Users\bamig\Documents\VIBE CODE…`); a prior campaign lost hours to a Node tool that shells out unquoted. Task 1's gate (install + test) must pass from this path. Do not move the build to a no-space clone to make a gate pass; if install or test fails because of the space, stop and report it as an environment blocker.
 
@@ -3996,3 +3997,956 @@ Expected: PASS — `21 passed`.
 
 - [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
 Message: `fix(spike): oracle probe reads RequestFinalized from the logs, rebuilds from a tx; strict g1d check`
+
+---
+
+### Task 16: Oracle probes P1 (one symbol, the registry's Majority path) and P2 (Threshold), each with its own evidence and a dry-run
+
+**Files:**
+- Modify: `packages/spike/src/oracle-probe.ts`
+- Modify: `packages/spike/src/live-lib.ts`
+- Test: `packages/spike/test/live-lib.test.ts`
+
+**Depends on:** Task 1, Task 2, Task 3, Task 4, Task 7, Task 10, Task 14, Task 15
+**Effort:** medium
+**Model tier:** top
+**Provides:** `agentsAdvancedAbi (createAdvancedRequest, selector 0x9256632b)`, `ADVANCED_REQUEST = { subcommitteeSize: 3n, threshold: 2n, consensusType: 1, timeoutSec: 30n, perAgentBudgetWei: 10_000_000_000_000_000n }`, `PROBE_MAX_WEI = 100_000_000_000_000_000n`, `type OracleEvidence = "g1d-oracle" | "g1d-probe-p1" | "g1d-probe-p2"`, `parseProbeArgs(argv: readonly string[]): ProbeArgs`, `probeDeposit(floorWei: bigint, advanced: boolean): bigint`, `findCallTo(node: TraceCall, to: Address): TraceCall | null`, `ORACLE_CALLBACK_PARAMS (requestId, responses, status, details)`, `decodeOracleCallback(input: Hex): OracleCallback`, `symbolsFromCallback(cb: OracleCallback | null, symbols: readonly string[]): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[]`, `CLI: npx tsx packages/spike/src/oracle-probe.ts --symbols BTC/USDC:PERP [--dry-run] (P1 -> docs/evidence/g1d-probe-p1.json)`, `CLI: npx tsx packages/spike/src/oracle-probe.ts --advanced [--dry-run] (P2 -> docs/evidence/g1d-probe-p2.json)`
+**Requires:** `repoPath(rel: string): string`, `BTC_POOL`, `OPERATOR_REGISTRY`, `SOMNIA_AGENTS`, `PLACE_ORDER_FOR_SELECTOR`, `CANCEL_ORDER_FOR_SELECTOR`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_LIMIT = 0`, `ORACLE_AGENT_ID = 9911223344556677889n`, `ORACLE_DEPOSIT = 30_900_000_000_000_000n`, `explorerTx(hash: Hex): string`, `operatorRegistryAbi`, `somniaAgentsAbi`, `priceOracleAbi`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }`, `toJsonSafe(value: unknown): unknown`, `writeEvidence(name: EvidenceName, data: Record<string, unknown>): string`, `publicClient(): PublicClient`, `walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account`, `interface TxRecord { label: string; hash: Hex; status: "success" | "reverted"; gasUsed: bigint; costWei: bigint; explorer: string }`, `txRecord(label: string, receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord`, `sumCosts(txs: readonly TxRecord[]): bigint`, `isFlat(s: AccountSnapshot): boolean`, `ORACLE_STATUS: readonly ["None", "Pending", "Success", "Failed", "TimedOut"]`, `decodeOraclePrices(result: Hex, symbols: readonly string[]): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[]`, `type SendPath = "viem" | "sdk"`, `parseSendPath(argv: readonly string[]): SendPath`, `interface UnsignedCall { to: Address; data: Hex; value: bigint }`, `ownerPoolAbi (owner-side placeOrder, selector 0x4e978373)`, `ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall`, `grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall`, `ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }`, `REQUEST_FINALIZED_TOPIC: Hex`, `AGENT_RESPONSE_TOPIC: Hex (SomniaAgents per-validator response event, not in the published ABI)`, `interface AgentLog { topics: readonly Hex[]; data: Hex; transactionHash: Hex | null; blockNumber: bigint | null }`, `interface ValidatorResponse { validator: Address; executionCostWei: bigint; words: bigint[]; tx: Hex | null; block: bigint | null }`, `interface OracleOutcome { finalStatus: string; finalStatusCode: number | null; finalizeTx: Hex | null; finalizeBlock: bigint | null; validatorResponses: ValidatorResponse[] }`, `oracleOutcomeFromLogs(logs: readonly AgentLog[], requestId: bigint): OracleOutcome`, `checkEvidence g1d-oracle: finalStatus must be Success, Failed or TimedOut; Success needs a symbol with numSources > 0`
+
+Why: request 7773100 did not fail for lack of prices. Its three validators all answered Success: `BTC/USDC:PERP` was byte-identical across them, and `BTC/USDC` spot differed. The 4-argument `createRequest` uses Majority consensus, which needs byte-identical answers, so the request finalized Failed. The guide approved two probes:
+- **P1** asks one symbol, `BTC/USDC:PERP`, through the 4-argument `createRequest`. That is the registry's exact path: `BasanosRegistry` builds `getPrices([oracleSymbol], 18)` and calls the 4-argument `createRequest`. If P1 succeeds, the registry works unchanged.
+- **P2** asks the same symbol through `createAdvancedRequest` with Threshold consensus: 2 of 3, 30 s, 0.01 STT per validator, 0.06 STT sent. dreamDEX's PriceFeedScheduler makes this call every 5 blocks, and it succeeds.
+
+Both modes:
+- read the outcome from `RequestFinalized` and the validator events, using Task 15's mechanism;
+- decode each validator's answer from the callback in the finalize transaction (`debug_traceTransaction`), so the evidence shows what came back and whether the answers were identical;
+- write their own file (`docs/evidence/g1d-probe-p1.json` or `g1d-probe-p2.json`), never `g1d-oracle.json`;
+- check that file with the strict G1(d) rule;
+- have a `--dry-run`, and refuse to send more than 0.1 STT.
+
+Verified read-only on Hideki on 2026-11-11:
+- **Simulated with `eth_call` from the referee's address:** P1 `createRequest` and P2 `createAdvancedRequest` both simulate OK and return the next request id (about 1.34M and 1.37M gas).
+- **Dry-runs:** they print `consensus Majority (4-argument createRequest) … sending 30900000000000000 wei` and `consensus Threshold 2 of 3, 30 s (createAdvancedRequest) … sending 60000000000000000 wei`.
+- **Rebuild of request 7773100:** it prints `answers: 3 decoded, identical: false` and records each validator's prices.
+
+**Runbook for the gate-concierge.** This is outside the manifest: each live probe needs the user's GO. It uses the referee burner and costs about 0.002 STT net; the floor and the unused budget are rebated.
+- **P1:**
+  1. Run `npx tsx packages/spike/src/oracle-probe.ts --symbols BTC/USDC:PERP --dry-run`. It should print `consensus Majority (4-argument createRequest)` and `sending 30900000000000000 wei`, then `dry-run: no transaction sent`.
+  2. Then run `npx tsx packages/spike/src/oracle-probe.ts --symbols BTC/USDC:PERP`. It prints `oracle-probe: request <id> -> <Success | Failed> (…)`, then `answers: 3 decoded, identical: <true | false>`, then `PASS g1d-probe-p1` (or the FAIL reason).
+  3. Commit `docs/evidence/g1d-probe-p1.json` by explicit path and report the result to the guide.
+- **P2** (only if P1 finalized Failed, and only on the guide's approval): run the same two steps with `--advanced` in place of `--symbols BTC/USDC:PERP`. The dry-run should show `sending 60000000000000000 wei`. The evidence goes to `docs/evidence/g1d-probe-p2.json`.
+
+Key safety is as in Task 10. This task writes code and runs unit tests; it sends nothing.
+
+- [ ] **Step 1: Write the failing tests**
+
+Replace `packages/spike/test/live-lib.test.ts` with:
+```ts
+import { describe, expect, it } from "vitest";
+import {
+  decodeFunctionData,
+  encodeAbiParameters,
+  getAbiItem,
+  toFunctionSelector,
+  encodeEventTopics,
+  encodeFunctionData,
+  encodeFunctionResult,
+  getAddress,
+  pad,
+  toHex,
+  zeroAddress,
+  type Hex,
+} from "viem";
+import { perpPoolWriteAbi } from "@somnia-chain/markets-sdk";
+import {
+  BTC_POOL,
+  CANCEL_ORDER_FOR_SELECTOR,
+  OPERATOR_REGISTRY,
+  ORDER_GAS,
+  ORACLE_DEPOSIT,
+  ORDER_TYPE_LIMIT,
+  PLACE_ORDER_FOR_SELECTOR,
+  operatorRegistryAbi,
+  priceOracleAbi,
+  somniaAgentsAbi,
+} from "@basanos/core";
+import {
+  AGENT_RESPONSE_TOPIC,
+  ORACLE_CALLBACK_PARAMS,
+  ORACLE_STATUS,
+  PROBE_MAX_WEI,
+  agentsAdvancedAbi,
+  decodeOracleCallback,
+  findCallTo,
+  parseProbeArgs,
+  probeDeposit,
+  symbolsFromCallback,
+  decodeOraclePrices,
+  oracleOutcomeFromLogs,
+  type AgentLog,
+  grantCall,
+  isFlat,
+  ownerOrderCall,
+  ownerTx,
+  parseSendPath,
+  sumCosts,
+  txRecord,
+} from "../src/live-lib";
+
+describe("txRecord", () => {
+  it("records cost as gasUsed x effectiveGasPrice with an explorer link", () => {
+    const r = txRecord("close", { transactionHash: "0xab", status: "success", gasUsed: 3_000_000n, effectiveGasPrice: 6_000_000_000n });
+    expect(r.costWei).toBe(18_000_000_000_000_000n);
+    expect(r.explorer).toBe("https://explorer.testnet.somnia.network/tokyo/tx/0xab");
+    expect(sumCosts([r, r])).toBe(36_000_000_000_000_000n);
+  });
+});
+
+describe("isFlat", () => {
+  it("needs no position, no locked collateral and no active pools", () => {
+    const base = { account: "0x1" as const, equityOk: true, equity: 1n, lockedCollateral: 0n, totalEquity: 1n, activePools: [], size: 0n };
+    expect(isFlat(base)).toBe(true);
+    expect(isFlat({ ...base, size: 1n })).toBe(false);
+    expect(isFlat({ ...base, lockedCollateral: 1n })).toBe(false);
+    expect(isFlat({ ...base, activePools: ["0x2"] })).toBe(false);
+  });
+});
+
+describe("oracle decoding", () => {
+  it("names statuses in the SomniaAgents enum order", () => {
+    expect(ORACLE_STATUS[2]).toBe("Success");
+    expect(ORACLE_STATUS[4]).toBe("TimedOut");
+  });
+  it("pairs each symbol with its median, sources and update time", () => {
+    const data = encodeFunctionResult({
+      abi: priceOracleAbi,
+      functionName: "getPrices",
+      result: [[74_500n * 10n ** 18n, 0n], [3, 0], [1_794_326_598_000n, 0n]],
+    });
+    expect(decodeOraclePrices(data, ["BTC/USDC:PERP", "BTC/USDC"])).toEqual([
+      { symbol: "BTC/USDC:PERP", price: 74_500n * 10n ** 18n, numSources: 3, lastUpdated: 1_794_326_598_000n },
+      { symbol: "BTC/USDC", price: 0n, numSources: 0, lastUpdated: 0n },
+    ]);
+  });
+});
+
+describe("owner-side writes on the viem path", () => {
+  it("encodes the raw placeOrder exactly as the SDK's perpPoolWriteAbi does", () => {
+    const price = 66_000n * 10n ** 18n;
+    const expiry = 3_371_163_205_000_000_000n;
+    const c = ownerOrderCall(BTC_POOL, true, price, 13_000n, ORDER_TYPE_LIMIT, expiry);
+    expect(c.to).toBe(BTC_POOL);
+    expect(c.value).toBe(0n);
+    expect(c.data.slice(0, 10)).toBe("0x4e978373");
+    expect(c.data).toBe(
+      encodeFunctionData({
+        abi: perpPoolWriteAbi,
+        functionName: "placeOrder",
+        args: [true, 0n, price, 13_000n, expiry, ORDER_TYPE_LIMIT, 0, zeroAddress, 0n],
+      }),
+    );
+  });
+  it("grants the referee place and cancel on one pool through the registry", () => {
+    const referee = "0xE358D82209ea9360F411A041C0200adc385877eb";
+    const c = grantCall(OPERATOR_REGISTRY, BTC_POOL, referee, [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR]);
+    expect(c.to).toBe(OPERATOR_REGISTRY);
+    expect(c.data.slice(0, 10)).toBe("0x7bbc67e6");
+    const d = decodeFunctionData({ abi: operatorRegistryAbi, data: c.data });
+    expect(d.functionName).toBe("setOperatorApprovalForPool");
+    expect(d.args).toEqual([BTC_POOL, referee, [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR], true]);
+  });
+  it("signs with ORDER_GAS and an explicit nonce, and keeps the SDK send opt-in", () => {
+    expect(ownerTx({ to: BTC_POOL, data: "0x4e978373", value: 0n }, 7, ORDER_GAS)).toEqual({
+      to: BTC_POOL,
+      data: "0x4e978373",
+      value: 0n,
+      gas: 10_000_000n,
+      nonce: 7,
+    });
+    expect(parseSendPath(["node", "skeleton-close.ts"])).toBe("viem");
+    expect(parseSendPath(["node", "skeleton-close.ts", "--dry-run"])).toBe("viem");
+    expect(parseSendPath(["node", "skeleton-close.ts", "--sdk-send"])).toBe("sdk");
+  });
+});
+
+describe("oracle outcome from SomniaAgents logs", () => {
+  const id = 7_773_100n;
+  const finalized = (requestId: bigint, status: number): AgentLog => ({
+    topics: encodeEventTopics({ abi: somniaAgentsAbi, eventName: "RequestFinalized", args: { requestId } }) as Hex[],
+    data: encodeAbiParameters([{ type: "uint8" }], [status]),
+    transactionHash: "0x851a",
+    blockNumber: 47_437_498n,
+  });
+  const response = (requestId: bigint, validator: Hex, cost: bigint): AgentLog => ({
+    topics: [AGENT_RESPONSE_TOPIC, pad(toHex(requestId), { size: 32 }), pad(validator, { size: 32 })],
+    data: encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }, { type: "uint256" }, { type: "uint256" }], [1n, 0n, 0n, cost]),
+    transactionHash: "0x4789",
+    blockNumber: 47_437_498n,
+  });
+  const validator: Hex = "0x92d237dea7eb9d37e1b303da586f4b83956df6ad";
+  it("reads one request's final status and each validator's cost, ignoring other requests", () => {
+    const out = oracleOutcomeFromLogs(
+      [response(id, validator, 166_000_000_000_000n), response(id + 1n, validator, 1n), finalized(id + 1n, 2), finalized(id, 3)],
+      id,
+    );
+    expect(out.finalStatus).toBe("Failed");
+    expect(out.finalStatusCode).toBe(3);
+    expect(out.finalizeTx).toBe("0x851a");
+    expect(out.finalizeBlock).toBe(47_437_498n);
+    expect(out.validatorResponses).toHaveLength(1);
+    expect(out.validatorResponses[0]?.validator).toBe(getAddress(validator));
+    expect(out.validatorResponses[0]?.executionCostWei).toBe(166_000_000_000_000n);
+  });
+  it("reports NotFinalized until the request's RequestFinalized log appears", () => {
+    const out = oracleOutcomeFromLogs([response(id, validator, 5n), finalized(id + 1n, 2)], id);
+    expect(out.finalStatus).toBe("NotFinalized");
+    expect(out.finalizeTx).toBeNull();
+    expect(out.validatorResponses).toHaveLength(1);
+  });
+});
+
+describe("oracle probes P1 / P2", () => {
+  const E18 = 10n ** 18n;
+  it("picks the request and the evidence file from the flags", () => {
+    expect(parseProbeArgs(["node", "oracle-probe.ts"])).toEqual({ dryRun: false, fromTx: null, symbols: ["BTC/USDC:PERP", "BTC/USDC"], advanced: false, evidence: "g1d-oracle" });
+    expect(parseProbeArgs(["node", "oracle-probe.ts", "--symbols", "BTC/USDC:PERP", "--dry-run"])).toEqual({ dryRun: true, fromTx: null, symbols: ["BTC/USDC:PERP"], advanced: false, evidence: "g1d-probe-p1" });
+    expect(parseProbeArgs(["node", "oracle-probe.ts", "--advanced"])).toEqual({ dryRun: false, fromTx: null, symbols: ["BTC/USDC:PERP"], advanced: true, evidence: "g1d-probe-p2" });
+    expect(() => parseProbeArgs(["node", "oracle-probe.ts", "--symbols", "btc"])).toThrow(/--symbols/);
+    expect(() => parseProbeArgs(["node", "oracle-probe.ts", "--from-tx", "0x12"])).toThrow(/--from-tx/);
+  });
+  it("funds Majority with the practical deposit and Threshold with 0.01 STT per validator, under a 0.1 STT cap", () => {
+    expect(probeDeposit(30_000_000_000_000_000n, false)).toBe(ORACLE_DEPOSIT);
+    expect(probeDeposit(30_000_000_000_000_000n, true)).toBe(60_000_000_000_000_000n);
+    expect(probeDeposit(30_000_000_000_000_000n, true) <= PROBE_MAX_WEI).toBe(true);
+    expect(toFunctionSelector(getAbiItem({ abi: agentsAdvancedAbi, name: "createAdvancedRequest" }))).toBe("0x9256632b");
+  });
+  const answer = (validator: Hex, prices: bigint[], sources: number[], updated: bigint[], status = 2) => ({
+    validator,
+    result: encodeFunctionResult({ abi: priceOracleAbi, functionName: "getPrices", result: [prices, sources, updated] }),
+    status,
+    receipt: 0n,
+    timestamp: 0n,
+    executionCost: 0n,
+  });
+  const callbackInput = (status: number, consensusType: number, responses: ReturnType<typeof answer>[]): Hex =>
+    `0x00000000${encodeAbiParameters(ORACLE_CALLBACK_PARAMS, [
+      7_773_100n,
+      responses,
+      status,
+      {
+        id: 7_773_100n,
+        requester: "0xE358D82209ea9360F411A041C0200adc385877eb",
+        callbackAddress: "0xE358D82209ea9360F411A041C0200adc385877eb",
+        callbackSelector: "0x00000000",
+        subcommittee: responses.map((r) => r.validator),
+        responses,
+        responseCount: BigInt(responses.length),
+        failureCount: 0n,
+        threshold: 2n,
+        createdAt: 1n,
+        deadline: 901n,
+        status,
+        consensusType,
+        remainingBudget: 0n,
+        perAgentBudget: 300_000_000_000_000n,
+      },
+    ]).slice(2)}`;
+  const v1: Hex = "0x92d237DEa7eb9d37E1B303DA586f4B83956df6AD";
+  const v2: Hex = "0xc400f086fDB3AA5b0A565DFc8988FB6Fe2511850";
+  const v3: Hex = "0xd47dAa55Bd8f40fFf358Ad139Dd8549704DC842E";
+  it("decodes every validator's answer and shows why Majority failed on request 7773100", () => {
+    const input = callbackInput(3, 0, [
+      answer(v1, [73_976n * E18, 74_010n * E18], [7, 6], [1_794_397_884_091n, 1_794_397_884_077n]),
+      answer(v2, [73_976n * E18, 74_008n * E18], [7, 7], [1_794_397_884_091n, 1_794_397_884_059n]),
+      answer(v3, [73_976n * E18, 74_011n * E18], [7, 6], [1_794_397_884_091n, 1_794_397_884_006n]),
+    ]);
+    const trace = { type: "CALL", to: "0x7407cb35a17d511d1bd32dd726adb8d5344ecbe3", calls: [{ type: "CALL", to: v1.toLowerCase() }, { type: "CALL", to: "0xe358d82209ea9360f411a041c0200adc385877eb", input }] };
+    const call = findCallTo(trace, "0xE358D82209ea9360F411A041C0200adc385877eb");
+    expect(call?.input).toBe(input);
+    const cb = decodeOracleCallback(input);
+    expect(cb.statusName).toBe("Failed");
+    expect(cb.consensusType).toBe(0);
+    expect(cb.answers).toHaveLength(3);
+    expect(cb.answers[0]?.prices?.[0]).toEqual({ price: 73_976n * E18, numSources: 7, lastUpdated: 1_794_397_884_091n });
+    expect(cb.answersIdentical).toBe(false);
+    expect(symbolsFromCallback(cb, ["BTC/USDC:PERP", "BTC/USDC"])).toEqual([]);
+  });
+  it("reports the consensus reading only when the callback status is Success", () => {
+    const same = answer(v1, [73_976n * E18], [7], [1_794_397_884_091n]);
+    const cb = decodeOracleCallback(callbackInput(2, 0, [same, { ...same, validator: v2 }, { ...same, validator: v3 }]));
+    expect(cb.answersIdentical).toBe(true);
+    expect(symbolsFromCallback(cb, ["BTC/USDC:PERP"])).toEqual([{ symbol: "BTC/USDC:PERP", price: 73_976n * E18, numSources: 7, lastUpdated: 1_794_397_884_091n }]);
+    expect(symbolsFromCallback(null, ["BTC/USDC:PERP"])).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm the new tests fail**
+Run: `npm test -w @basanos/spike -- test/live-lib.test.ts`
+Expected: FAIL — `4 failed | 9 passed (13)` (`parseProbeArgs`, `probeDeposit`, `decodeOracleCallback` and `symbolsFromCallback` do not exist yet).
+
+- [ ] **Step 3: Add the probe helpers**
+
+Replace `packages/spike/src/live-lib.ts` with:
+```ts
+import {
+  decodeAbiParameters,
+  decodeFunctionResult,
+  encodeFunctionData,
+  getAbiItem,
+  getAddress,
+  parseAbi,
+  parseAbiParameters,
+  toEventSelector,
+  zeroAddress,
+  type Address,
+  type Hex,
+} from "viem";
+import { ORACLE_DEPOSIT, explorerTx, operatorRegistryAbi, priceOracleAbi, somniaAgentsAbi, type AccountSnapshot } from "@basanos/core";
+
+export interface TxRecord {
+  label: string;
+  hash: Hex;
+  status: "success" | "reverted";
+  gasUsed: bigint;
+  costWei: bigint;
+  explorer: string;
+}
+
+export function txRecord(
+  label: string,
+  receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint },
+): TxRecord {
+  return {
+    label,
+    hash: receipt.transactionHash,
+    status: receipt.status,
+    gasUsed: receipt.gasUsed,
+    costWei: receipt.gasUsed * receipt.effectiveGasPrice,
+    explorer: explorerTx(receipt.transactionHash),
+  };
+}
+
+export function sumCosts(txs: readonly TxRecord[]): bigint {
+  return txs.reduce((acc, t) => acc + t.costWei, 0n);
+}
+
+export function isFlat(s: AccountSnapshot): boolean {
+  return s.size === 0n && s.lockedCollateral === 0n && s.activePools.length === 0;
+}
+
+/** SomniaAgents ResponseStatus, in declaration order. */
+export const ORACLE_STATUS = ["None", "Pending", "Success", "Failed", "TimedOut"] as const;
+
+export function decodeOraclePrices(
+  result: Hex,
+  symbols: readonly string[],
+): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[] {
+  const [prices, numSources, lastUpdated] = decodeFunctionResult({ abi: priceOracleAbi, functionName: "getPrices", data: result });
+  return symbols.map((symbol, i) => ({
+    symbol,
+    price: prices[i] ?? 0n,
+    numSources: numSources[i] ?? 0,
+    lastUpdated: lastUpdated[i] ?? 0n,
+  }));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Owner-side writes (account A). The default path signs locally with viem and sends eth_sendRawTransaction to the
+// standard RPC (rpcHttp(), api.hideki…), with ORDER_GAS and an explicit nonce. The SDK's own send path
+// (eth_sendRawTransactionSync on send.hideki…, which surfaced TransactionOutcomeUnknownError in the Step 3
+// preflight) is an opt-in fallback behind --sdk-send. The SDK stays in use for reads.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** How account A's own writes reach the chain; recorded in the evidence as `sendPath`. */
+export type SendPath = "viem" | "sdk";
+
+export function parseSendPath(argv: readonly string[]): SendPath {
+  return argv.includes("--sdk-send") ? "sdk" : "viem";
+}
+
+/** An unsigned call: the same shape as the SDK's build verbs return (to, data, value). */
+export interface UnsignedCall {
+  to: Address;
+  data: Hex;
+  value: bigint;
+}
+
+/** Owner-side PerpPool order: the SDK 0.33.0 perpPoolWriteAbi signature, selector 0x4e978373 (present in the BTC
+ *  pool's beacon implementation; a far resting bid simulates OK from an active account). */
+export const ownerPoolAbi = parseAbi([
+  "function placeOrder(bool isBid, uint64 userData, uint256 price, uint256 quantity, uint64 expireTimestampNs, uint8 orderType, uint8 selfMatchingOption, address builder, uint96 builderFeeBpsTimes1k)",
+]);
+
+/** Raw placeOrder on the pool, with the arguments the SDK's placePerpOrder fills in (userData 0, no self-match option, no builder). */
+export function ownerOrderCall(
+  pool: Address,
+  isBid: boolean,
+  price: bigint,
+  quantity: bigint,
+  orderType: number,
+  expireTimestampNs: bigint,
+): UnsignedCall {
+  return {
+    to: pool,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: ownerPoolAbi,
+      functionName: "placeOrder",
+      args: [isBid, 0n, price, quantity, expireTimestampNs, orderType, 0, zeroAddress, 0n],
+    }),
+  };
+}
+
+/** The per-pool operator grant on the OperatorPermissionsRegistry (the SDK has no build verb for it). */
+export function grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall {
+  return {
+    to: registry,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: operatorRegistryAbi,
+      functionName: "setOperatorApprovalForPool",
+      args: [pool, operator, [...selectors], true],
+    }),
+  };
+}
+
+/** The exact transaction account A signs on the viem path: a fixed gas limit and an explicit nonce. */
+export function ownerTx(
+  call: UnsignedCall,
+  nonce: number,
+  gas: bigint,
+): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number } {
+  return { to: call.to, data: call.data, value: call.value, gas, nonce };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Price Oracle outcome from SomniaAgents logs. getRequest cannot report it: the platform deletes a request once it
+// finalizes, and getRequest then reverts RequestNotFound (0x4ec726c7). Request 7773100 (2026-11-11) finalized one
+// block after creation, so a getRequest poll only ever saw the revert.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** topic0 of RequestFinalized(uint256 indexed requestId, uint8 status). */
+export const REQUEST_FINALIZED_TOPIC: Hex = toEventSelector(getAbiItem({ abi: somniaAgentsAbi, name: "RequestFinalized" }));
+
+/** topic0 of SomniaAgents' per-validator response event. It is not in the published ABI. Its topics are
+ *  [topic0, requestId, validator] and its data is four words, the last being the validator's execution cost in wei
+ *  (seen on requests 7773100 and 7773101). It carries no result bytes: prices reach only the callback. */
+export const AGENT_RESPONSE_TOPIC: Hex = "0x1b44ed537f0ae64cca44e5a71b06bc838a30bbc5454ffdc2aee3844926264dfd";
+
+export interface AgentLog {
+  topics: readonly Hex[];
+  data: Hex;
+  transactionHash: Hex | null;
+  blockNumber: bigint | null;
+}
+
+export interface ValidatorResponse {
+  validator: Address;
+  executionCostWei: bigint;
+  words: bigint[];
+  tx: Hex | null;
+  block: bigint | null;
+}
+
+export interface OracleOutcome {
+  /** An ORACLE_STATUS name, or "NotFinalized" while no RequestFinalized log for the request has been seen. */
+  finalStatus: string;
+  finalStatusCode: number | null;
+  finalizeTx: Hex | null;
+  finalizeBlock: bigint | null;
+  validatorResponses: ValidatorResponse[];
+}
+
+export function oracleOutcomeFromLogs(logs: readonly AgentLog[], requestId: bigint): OracleOutcome {
+  const out: OracleOutcome = { finalStatus: "NotFinalized", finalStatusCode: null, finalizeTx: null, finalizeBlock: null, validatorResponses: [] };
+  for (const log of logs) {
+    const [t0, t1, t2] = log.topics;
+    if (!t0 || !t1 || BigInt(t1) !== requestId) continue;
+    if (t0.toLowerCase() === REQUEST_FINALIZED_TOPIC.toLowerCase()) {
+      const code = Number(BigInt(log.data));
+      out.finalStatusCode = code;
+      out.finalStatus = ORACLE_STATUS[code] ?? `status ${code}`;
+      out.finalizeTx = log.transactionHash;
+      out.finalizeBlock = log.blockNumber;
+    } else if (t0.toLowerCase() === AGENT_RESPONSE_TOPIC && t2) {
+      const words = (log.data.slice(2).match(/.{64}/g) ?? []).map((w) => BigInt(`0x${w}`));
+      out.validatorResponses.push({
+        validator: getAddress(`0x${t2.slice(26)}`),
+        executionCostWei: words[words.length - 1] ?? 0n,
+        words,
+        tx: log.transactionHash,
+        block: log.blockNumber,
+      });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Oracle probes P1 / P2 (guide GO, 2026-11-11). P1 asks one symbol through the 4-argument createRequest (Majority
+// consensus): the registry's exact path. P2 asks it through createAdvancedRequest with Threshold consensus (2 of 3,
+// 30 s, 0.01 STT per validator): the call dreamDEX's PriceFeedScheduler makes every 5 blocks.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** createAdvancedRequest, selector 0x9256632b. The types are confirmed by that selector and by the scheduler's call
+ *  arguments (3, 2, 1, 30); it returns the request id (eth_call). The parameter names are ours. */
+export const agentsAdvancedAbi = parseAbi([
+  "function createAdvancedRequest(uint256 agentId, address callbackAddress, bytes4 callbackSelector, bytes payload, uint256 subcommitteeSize, uint256 threshold, uint8 consensusType, uint256 timeout) payable returns (uint256 requestId)",
+]);
+
+/** Threshold consensus as the PriceFeedScheduler uses it. consensusType 1 = Threshold (0 = Majority, the default). */
+export const ADVANCED_REQUEST = {
+  subcommitteeSize: 3n,
+  threshold: 2n,
+  consensusType: 1,
+  timeoutSec: 30n,
+  perAgentBudgetWei: 10_000_000_000_000_000n,
+} as const;
+
+/** Hard cap on what one probe may send: 0.1 STT. */
+export const PROBE_MAX_WEI = 100_000_000_000_000_000n;
+
+export type OracleEvidence = "g1d-oracle" | "g1d-probe-p1" | "g1d-probe-p2";
+
+export interface ProbeArgs {
+  dryRun: boolean;
+  fromTx: Hex | null;
+  symbols: string[];
+  advanced: boolean;
+  evidence: OracleEvidence;
+}
+
+/** No flags: the original G1(d) request (two symbols) into g1d-oracle. --symbols: P1 into g1d-probe-p1.
+ *  --advanced: P2 into g1d-probe-p2 (one symbol, BTC/USDC:PERP, unless --symbols says otherwise). */
+export function parseProbeArgs(argv: readonly string[]): ProbeArgs {
+  const valueOf = (flag: string): string | null => {
+    const i = argv.indexOf(flag);
+    if (i < 0) return null;
+    const v = argv[i + 1];
+    if (!v || v.startsWith("--")) throw new Error(`${flag} needs a value`);
+    return v;
+  };
+  const fromTx = valueOf("--from-tx");
+  if (fromTx !== null && !/^0x[0-9a-fA-F]{64}$/.test(fromTx)) throw new Error("--from-tx needs a 32-byte transaction hash");
+  const list = valueOf("--symbols");
+  const advanced = argv.includes("--advanced");
+  const symbols =
+    list !== null ? list.split(",").map((s) => s.trim()).filter((s) => s.length > 0) : advanced ? ["BTC/USDC:PERP"] : ["BTC/USDC:PERP", "BTC/USDC"];
+  if (symbols.length === 0 || symbols.some((s) => !/^[A-Z0-9]+\/[A-Z0-9]+(:PERP)?$/.test(s))) {
+    throw new Error(`--symbols must list symbols such as BTC/USDC:PERP (got ${list ?? "nothing"})`);
+  }
+  const evidence: OracleEvidence = advanced ? "g1d-probe-p2" : list !== null ? "g1d-probe-p1" : "g1d-oracle";
+  return { dryRun: argv.includes("--dry-run"), fromTx: fromTx === null ? null : (fromTx as Hex), symbols, advanced, evidence };
+}
+
+/** What a request sends: Majority keeps the practical 0.0309 STT; Threshold funds 0.01 STT per validator over the floor. */
+export function probeDeposit(floorWei: bigint, advanced: boolean): bigint {
+  if (advanced) return floorWei + ADVANCED_REQUEST.perAgentBudgetWei * ADVANCED_REQUEST.subcommitteeSize;
+  return floorWei >= ORACLE_DEPOSIT ? floorWei + 900_000_000_000_000n : ORACLE_DEPOSIT;
+}
+
+/** One node of a debug_traceTransaction callTracer result. */
+export interface TraceCall {
+  type?: string;
+  to?: string;
+  input?: Hex;
+  calls?: TraceCall[];
+}
+
+/** The first call to `to` that carries data: SomniaAgents' callback inside the finalize transaction. */
+export function findCallTo(node: TraceCall, to: Address): TraceCall | null {
+  if ((node.to ?? "").toLowerCase() === to.toLowerCase() && (node.input ?? "0x").length > 10) return node;
+  for (const k of node.calls ?? []) {
+    const hit = findCallTo(k, to);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+const RESPONSE_T = "(address validator, bytes result, uint8 status, uint256 receipt, uint256 timestamp, uint256 executionCost)";
+const REQUEST_T =
+  "(uint256 id, address requester, address callbackAddress, bytes4 callbackSelector, address[] subcommittee, " +
+  RESPONSE_T +
+  "[] responses, uint256 responseCount, uint256 failureCount, uint256 threshold, uint256 createdAt, uint256 deadline, uint8 status, uint8 consensusType, uint256 remainingBudget, uint256 perAgentBudget)";
+
+/** The callback's arguments as SomniaAgents sends them: (requestId, responses, status, details). */
+export const ORACLE_CALLBACK_PARAMS = parseAbiParameters(`uint256 requestId, ${RESPONSE_T}[] responses, uint8 status, ${REQUEST_T} details`);
+
+export interface OracleAnswer {
+  validator: Address;
+  status: number;
+  result: Hex;
+  prices: { price: bigint; numSources: number; lastUpdated: bigint }[] | null;
+}
+
+export interface OracleCallback {
+  requestId: bigint;
+  status: number;
+  statusName: string;
+  consensusType: number;
+  threshold: bigint;
+  failureCount: bigint;
+  answers: OracleAnswer[];
+  answersIdentical: boolean;
+}
+
+/** Decodes the callback input (selector + arguments), including each validator's getPrices answer. */
+export function decodeOracleCallback(input: Hex): OracleCallback {
+  const [requestId, responses, status, details] = decodeAbiParameters(ORACLE_CALLBACK_PARAMS, `0x${input.slice(10)}`);
+  const answers: OracleAnswer[] = responses.map((r) => {
+    let prices: OracleAnswer["prices"] = null;
+    try {
+      const [p, n, u] = decodeFunctionResult({ abi: priceOracleAbi, functionName: "getPrices", data: r.result });
+      prices = p.map((price, i) => ({ price, numSources: n[i] ?? 0, lastUpdated: u[i] ?? 0n }));
+    } catch {
+      prices = null;
+    }
+    return { validator: r.validator, status: r.status, result: r.result, prices };
+  });
+  const first = answers[0]?.result;
+  return {
+    requestId,
+    status,
+    statusName: ORACLE_STATUS[status] ?? `status ${status}`,
+    consensusType: details.consensusType,
+    threshold: details.threshold,
+    failureCount: details.failureCount,
+    answers,
+    answersIdentical: first !== undefined && answers.every((a) => a.result === first),
+  };
+}
+
+/** The consensus reading per symbol: only a Success callback yields one (taken from its first successful answer). */
+export function symbolsFromCallback(
+  cb: OracleCallback | null,
+  symbols: readonly string[],
+): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[] {
+  if (!cb || cb.status !== 2) return [];
+  const first = cb.answers.find((a) => a.status === 2 && a.prices !== null);
+  if (!first?.prices) return [];
+  const prices = first.prices;
+  return symbols.map((symbol, i) => ({
+    symbol,
+    price: prices[i]?.price ?? 0n,
+    numSources: prices[i]?.numSources ?? 0,
+    lastUpdated: prices[i]?.lastUpdated ?? 0n,
+  }));
+}
+```
+
+- [ ] **Step 4: Run to confirm they pass**
+Run: `npm test -w @basanos/spike -- test/live-lib.test.ts`
+Expected: PASS — `13 passed`.
+
+- [ ] **Step 5: Add the P1 / P2 modes to the probe**
+
+Replace `packages/spike/src/oracle-probe.ts` with:
+```ts
+// G1(d) and the oracle probes P1 / P2, all from the referee EOA (callback = the EOA itself).
+//   no flags                  the original G1(d) request: BTC/USDC:PERP + BTC/USDC, 4-argument createRequest -> g1d-oracle
+//   --symbols BTC/USDC:PERP   P1: one symbol, 4-argument createRequest (Majority), the registry's exact path -> g1d-probe-p1
+//   --advanced                P2: createAdvancedRequest, Threshold 2 of 3, 30 s, 0.06 STT (BTC/USDC:PERP) -> g1d-probe-p2
+//   --dry-run                 reads only and prints what would be sent
+//   --from-tx <hash>          rebuilds the evidence from an earlier request (no key, no send); the flags pick the file
+// The outcome comes from SomniaAgents logs (RequestFinalized and the per-validator response events), never from
+// getRequest: the platform deletes a request once it finalizes. Each validator's answer is decoded from the callback
+// SomniaAgents makes inside the finalize transaction (debug_traceTransaction), so the evidence shows what was
+// returned and whether the answers were identical (Majority needs byte-identical answers).
+import { writeFileSync } from "node:fs";
+import { decodeEventLog, decodeFunctionData, encodeFunctionData, pad, toHex, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { ORACLE_AGENT_ID, SOMNIA_AGENTS, priceOracleAbi, somniaAgentsAbi } from "@basanos/core";
+import { loadDotEnv, repoPath, requirePrivateKey } from "@basanos/core/node";
+import { checkEvidence, toJsonSafe, writeEvidence } from "./evidence";
+import {
+  ADVANCED_REQUEST,
+  AGENT_RESPONSE_TOPIC,
+  PROBE_MAX_WEI,
+  REQUEST_FINALIZED_TOPIC,
+  agentsAdvancedAbi,
+  decodeOracleCallback,
+  findCallTo,
+  oracleOutcomeFromLogs,
+  parseProbeArgs,
+  probeDeposit,
+  symbolsFromCallback,
+  txRecord,
+  type AgentLog,
+  type OracleCallback,
+  type OracleOutcome,
+  type ProbeArgs,
+  type TraceCall,
+} from "./live-lib";
+import { publicClient, walletFor } from "./rpc";
+
+loadDotEnv();
+let args: ProbeArgs;
+try {
+  args = parseProbeArgs(process.argv);
+} catch (e) {
+  console.error(`oracle-probe: ${(e as Error).message}`);
+  process.exit(1);
+}
+const client = publicClient();
+const LOG_WINDOW = 1_000n; // eth_getLogs answers at most 1,000 blocks per call on Hideki
+const REBUILD_SPAN = 3_000n; // a rebuild scans this many blocks after the request (it finalizes within a few)
+const agentsAbi = [...somniaAgentsAbi, ...agentsAdvancedAbi] as const;
+const consensusLabel = args.advanced
+  ? `Threshold ${ADVANCED_REQUEST.threshold} of ${ADVANCED_REQUEST.subcommitteeSize}, ${ADVANCED_REQUEST.timeoutSec} s (createAdvancedRequest)`
+  : "Majority (4-argument createRequest)";
+
+type Receipt = Awaited<ReturnType<typeof client.waitForTransactionReceipt>>;
+
+/** SomniaAgents logs for one request (RequestFinalized or a validator response), in 1,000-block windows. */
+async function agentLogs(requestId: bigint, fromBlock: bigint, toBlock: bigint): Promise<AgentLog[]> {
+  const out: AgentLog[] = [];
+  for (let from = fromBlock; from <= toBlock; from += LOG_WINDOW) {
+    const to = from + LOG_WINDOW - 1n < toBlock ? from + LOG_WINDOW - 1n : toBlock;
+    const raw = await client.request({
+      method: "eth_getLogs",
+      params: [
+        {
+          address: SOMNIA_AGENTS,
+          fromBlock: toHex(from),
+          toBlock: toHex(to),
+          topics: [[REQUEST_FINALIZED_TOPIC, AGENT_RESPONSE_TOPIC], pad(toHex(requestId), { size: 32 })],
+        },
+      ],
+    });
+    for (const l of raw) {
+      out.push({ topics: l.topics, data: l.data, transactionHash: l.transactionHash, blockNumber: l.blockNumber === null ? null : BigInt(l.blockNumber) });
+    }
+  }
+  return out;
+}
+
+/** Polls the logs from the request's block until it finalizes or the deadline passes. */
+async function waitForOutcome(requestId: bigint, fromBlock: bigint, untilMs: number): Promise<OracleOutcome> {
+  const logs: AgentLog[] = [];
+  let scanned = fromBlock - 1n;
+  for (;;) {
+    const head = await client.getBlockNumber();
+    if (head > scanned) {
+      logs.push(...(await agentLogs(requestId, scanned + 1n, head)));
+      scanned = head;
+    }
+    const outcome = oracleOutcomeFromLogs(logs, requestId);
+    if (outcome.finalizeTx !== null || Date.now() > untilMs) return outcome;
+    await new Promise((r) => setTimeout(r, 3_000));
+  }
+}
+
+/** The validators' answers, from the callback inside the finalize transaction; null if the trace is not served. */
+async function callbackOf(finalizeTx: Hex | null, callback: Address): Promise<OracleCallback | null> {
+  if (finalizeTx === null) return null;
+  try {
+    const trace = (await client.request({ method: "debug_traceTransaction", params: [finalizeTx, { tracer: "callTracer" }] } as never)) as TraceCall;
+    const call = findCallTo(trace, callback);
+    return call?.input ? decodeOracleCallback(call.input) : null;
+  } catch {
+    return null;
+  }
+}
+
+function createdFrom(receipt: Receipt): { requestId: bigint; perAgentBudget: bigint; subcommittee: readonly Address[] } | null {
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== SOMNIA_AGENTS.toLowerCase()) continue;
+    try {
+      const ev = decodeEventLog({ abi: somniaAgentsAbi, data: log.data, topics: log.topics });
+      if (ev.eventName === "RequestCreated") {
+        return { requestId: ev.args.requestId, perAgentBudget: ev.args.perAgentBudget, subcommittee: ev.args.subcommittee };
+      }
+    } catch {
+      // another SomniaAgents event
+    }
+  }
+  return null;
+}
+
+function payloadOf(payload: Hex): { selector: Hex; symbols: readonly string[] | null; decimals: number | null } {
+  try {
+    const d = decodeFunctionData({ abi: priceOracleAbi, data: payload });
+    return { selector: payload.slice(0, 10) as Hex, symbols: d.args[0], decimals: d.args[1] };
+  } catch {
+    return { selector: payload.slice(0, 10) as Hex, symbols: null, decimals: null };
+  }
+}
+
+async function record(
+  mode: "live" | "from-tx",
+  receipt: Receipt,
+  sent: { requester: Address; agentId: bigint; callback: Address; callbackSelector: Hex; payload: Hex; value: bigint; floor: bigint | null; call: string },
+  created: { requestId: bigint; perAgentBudget: bigint; subcommittee: readonly Address[] },
+  outcome: OracleOutcome,
+): Promise<never> {
+  const cb = await callbackOf(outcome.finalizeTx, sent.callback);
+  const symbolsAsked = payloadOf(sent.payload).symbols ?? args.symbols;
+  const data = {
+    mode,
+    probe: args.evidence === "g1d-oracle" ? null : args.evidence === "g1d-probe-p1" ? "P1" : "P2",
+    request: sent.call,
+    consensus: cb ? (cb.consensusType === 1 ? "Threshold" : cb.consensusType === 0 ? "Majority" : `type ${cb.consensusType}`) : consensusLabel,
+    requestId: created.requestId,
+    agentId: sent.agentId,
+    requester: sent.requester,
+    callback: sent.callback.toLowerCase() === sent.requester.toLowerCase() ? "referee EOA" : sent.callback,
+    callbackSelector: sent.callbackSelector,
+    payload: payloadOf(sent.payload),
+    depositFloorWei: sent.floor,
+    sentWei: sent.value,
+    perAgentBudget: created.perAgentBudget,
+    subcommittee: created.subcommittee,
+    finalStatus: outcome.finalStatus,
+    finalStatusCode: outcome.finalStatusCode,
+    finalizeTx: outcome.finalizeTx,
+    finalizeBlock: outcome.finalizeBlock,
+    responses: outcome.validatorResponses.length,
+    validatorResponses: outcome.validatorResponses,
+    validatorCostWei: outcome.validatorResponses.reduce((a, r) => a + r.executionCostWei, 0n),
+    outcomeSource: "SomniaAgents logs: RequestFinalized and the per-validator response events",
+    answers: cb ? cb.answers.map((a) => ({ validator: a.validator, status: a.status, prices: a.prices })) : null,
+    answersIdentical: cb ? cb.answersIdentical : null,
+    answersSource: cb ? "the callback in the finalize transaction (debug_traceTransaction)" : "trace not served",
+    // The consensus reading: only a Success callback yields one.
+    symbols: symbolsFromCallback(cb, symbolsAsked),
+    tx: txRecord("createRequest", receipt),
+  };
+  if (args.evidence === "g1d-oracle") {
+    writeEvidence("g1d-oracle", data);
+  } else {
+    const body = { evidence: args.evidence, writtenAt: new Date().toISOString(), ...data };
+    writeFileSync(repoPath(`docs/evidence/${args.evidence}.json`), `${JSON.stringify(toJsonSafe(body), null, 2)}\n`);
+  }
+  console.log(
+    `oracle-probe: request ${created.requestId} -> ${outcome.finalStatus} (${outcome.validatorResponses.length} validator responses` +
+      `${outcome.finalizeTx ? `; finalized in ${outcome.finalizeTx}` : ""})`,
+  );
+  console.log(cb ? `answers: ${cb.answers.length} decoded, identical: ${cb.answersIdentical}` : "answers: trace not served");
+  for (const s of data.symbols) console.log(`  ${s.symbol}: ${s.price} (${s.numSources} sources)`);
+  if (args.evidence !== "g1d-oracle") {
+    // The probe's own gate: the strict G1(d) rule applied to this file.
+    const problems = checkEvidence("g1d-oracle", toJsonSafe(data) as Record<string, unknown>).map((p) => p.replace(/^g1d-oracle/, args.evidence));
+    for (const p of problems) console.log(`FAIL ${p}`);
+    if (problems.length === 0) console.log(`PASS ${args.evidence}`);
+    process.exit(problems.length === 0 ? 0 : 1);
+  }
+  process.exit(outcome.finalizeTx === null ? 1 : 0);
+}
+
+if (args.fromTx) {
+  // Rebuild from an earlier createRequest / createAdvancedRequest transaction: reads only, no key.
+  const hash = args.fromTx;
+  const [tx, receipt] = await Promise.all([client.getTransaction({ hash }), client.getTransactionReceipt({ hash })]);
+  if (tx.to?.toLowerCase() !== SOMNIA_AGENTS.toLowerCase()) {
+    console.error(`oracle-probe: ${hash} is not a SomniaAgents transaction`);
+    process.exit(1);
+  }
+  const call = decodeFunctionData({ abi: agentsAbi, data: tx.input });
+  if (call.functionName !== "createRequest" && call.functionName !== "createAdvancedRequest") {
+    console.error(`oracle-probe: ${hash} calls ${call.functionName}, not a request`);
+    process.exit(1);
+  }
+  const [agentId, callback, callbackSelector, payload] = call.args as unknown as [bigint, Address, Hex, Hex];
+  const created = createdFrom(receipt);
+  if (!created) {
+    console.error(`oracle-probe: ${hash} emitted no RequestCreated`);
+    process.exit(1);
+  }
+  let floor: bigint | null = null;
+  try {
+    floor = await client.readContract({ address: SOMNIA_AGENTS, abi: somniaAgentsAbi, functionName: "getRequestDeposit", blockNumber: receipt.blockNumber - 1n });
+  } catch {
+    floor = null; // that block's state is no longer served
+  }
+  const head = await client.getBlockNumber();
+  const last = receipt.blockNumber + REBUILD_SPAN < head ? receipt.blockNumber + REBUILD_SPAN : head;
+  const outcome = oracleOutcomeFromLogs(await agentLogs(created.requestId, receipt.blockNumber, last), created.requestId);
+  await record(
+    "from-tx",
+    receipt,
+    { requester: tx.from, agentId, callback, callbackSelector, payload, value: tx.value, floor, call: call.functionName },
+    created,
+    outcome,
+  );
+}
+
+const refereePk = requirePrivateKey("REFEREE_PK");
+const referee: Address = privateKeyToAccount(refereePk).address;
+const wallet = walletFor(refereePk);
+const payload = encodeFunctionData({ abi: priceOracleAbi, functionName: "getPrices", args: [args.symbols, 18] });
+const floor = await client.readContract({ address: SOMNIA_AGENTS, abi: somniaAgentsAbi, functionName: "getRequestDeposit" });
+const value = probeDeposit(floor, args.advanced);
+console.log(
+  `oracle-probe: ${args.evidence}, symbols ${args.symbols.join(", ")}, consensus ${consensusLabel}; floor ${floor} wei, sending ${value} wei from ${referee}`,
+);
+if (value > PROBE_MAX_WEI) {
+  console.error(`oracle-probe: STOP — ${value} wei is above the ${PROBE_MAX_WEI} wei probe cap`);
+  process.exit(1);
+}
+if (args.dryRun) {
+  console.log("dry-run: no transaction sent");
+  process.exit(0);
+}
+const hash = args.advanced
+  ? await wallet.writeContract({
+      address: SOMNIA_AGENTS,
+      abi: agentsAdvancedAbi,
+      functionName: "createAdvancedRequest",
+      args: [
+        ORACLE_AGENT_ID,
+        referee,
+        "0x00000000",
+        payload,
+        ADVANCED_REQUEST.subcommitteeSize,
+        ADVANCED_REQUEST.threshold,
+        ADVANCED_REQUEST.consensusType,
+        ADVANCED_REQUEST.timeoutSec,
+      ],
+      value,
+    })
+  : await wallet.writeContract({
+      address: SOMNIA_AGENTS,
+      abi: somniaAgentsAbi,
+      functionName: "createRequest",
+      args: [ORACLE_AGENT_ID, referee, "0x00000000", payload],
+      value,
+    });
+const receipt = await client.waitForTransactionReceipt({ hash });
+const created = createdFrom(receipt);
+if (!created) {
+  const failed = { mode: "live", requestId: "none", finalStatus: "NoRequestCreated", symbols: [], tx: txRecord("createRequest", receipt) };
+  if (args.evidence === "g1d-oracle") writeEvidence("g1d-oracle", failed);
+  else writeFileSync(repoPath(`docs/evidence/${args.evidence}.json`), `${JSON.stringify(toJsonSafe({ evidence: args.evidence, ...failed }), null, 2)}\n`);
+  console.log(`oracle-probe: no RequestCreated in ${hash}`);
+  process.exit(1);
+}
+const outcome = await waitForOutcome(created.requestId, receipt.blockNumber, Date.now() + 180_000);
+await record(
+  "live",
+  receipt,
+  {
+    requester: referee,
+    agentId: ORACLE_AGENT_ID,
+    callback: referee,
+    callbackSelector: "0x00000000",
+    payload,
+    value,
+    floor,
+    call: args.advanced ? "createAdvancedRequest" : "createRequest",
+  },
+  created,
+  outcome,
+);
+```
+
+- [ ] **Step 6: Type-check (the gate-concierge runs the probes)**
+Run: `npm run typecheck -w @basanos/spike`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 7: Run the package tests (the gate)**
+Run: `npm test -w @basanos/spike`
+Expected: PASS — `25 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `feat(spike): oracle probes P1 (one symbol, Majority) and P2 (Threshold) with callback decoding and dry-runs`

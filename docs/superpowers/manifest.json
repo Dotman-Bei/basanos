@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result).",
   "subsystems": [
     "spike",
     "contracts",
@@ -951,6 +951,99 @@
         "expect": "PASS — `21 passed`."
       },
       "commit": "fix(spike): oracle probe reads RequestFinalized from the logs, rebuilds from a tx; strict g1d check",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:16",
+      "subsystem": "spike",
+      "title": "Oracle probes P1 (one symbol, the registry's Majority path) and P2 (Threshold), each with its own evidence and a dry-run",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:7",
+        "spike:10",
+        "spike:14",
+        "spike:15"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "packages/spike/src/oracle-probe.ts",
+          "packages/spike/src/live-lib.ts"
+        ],
+        "test": [
+          "packages/spike/test/live-lib.test.ts"
+        ]
+      },
+      "provides": [
+        "agentsAdvancedAbi (createAdvancedRequest, selector 0x9256632b)",
+        "ADVANCED_REQUEST = { subcommitteeSize: 3n, threshold: 2n, consensusType: 1, timeoutSec: 30n, perAgentBudgetWei: 10_000_000_000_000_000n }",
+        "PROBE_MAX_WEI = 100_000_000_000_000_000n",
+        "type OracleEvidence = \"g1d-oracle\" | \"g1d-probe-p1\" | \"g1d-probe-p2\"",
+        "parseProbeArgs(argv: readonly string[]): ProbeArgs",
+        "probeDeposit(floorWei: bigint, advanced: boolean): bigint",
+        "findCallTo(node: TraceCall, to: Address): TraceCall | null",
+        "ORACLE_CALLBACK_PARAMS (requestId, responses, status, details)",
+        "decodeOracleCallback(input: Hex): OracleCallback",
+        "symbolsFromCallback(cb: OracleCallback | null, symbols: readonly string[]): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[]",
+        "CLI: npx tsx packages/spike/src/oracle-probe.ts --symbols BTC/USDC:PERP [--dry-run] (P1 -> docs/evidence/g1d-probe-p1.json)",
+        "CLI: npx tsx packages/spike/src/oracle-probe.ts --advanced [--dry-run] (P2 -> docs/evidence/g1d-probe-p2.json)"
+      ],
+      "requires": [
+        "repoPath(rel: string): string",
+        "BTC_POOL",
+        "OPERATOR_REGISTRY",
+        "SOMNIA_AGENTS",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_LIMIT = 0",
+        "ORACLE_AGENT_ID = 9911223344556677889n",
+        "ORACLE_DEPOSIT = 30_900_000_000_000_000n",
+        "explorerTx(hash: Hex): string",
+        "operatorRegistryAbi",
+        "somniaAgentsAbi",
+        "priceOracleAbi",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }",
+        "toJsonSafe(value: unknown): unknown",
+        "writeEvidence(name: EvidenceName, data: Record<string, unknown>): string",
+        "publicClient(): PublicClient",
+        "walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account",
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "sumCosts(txs: readonly TxRecord[]): bigint",
+        "isFlat(s: AccountSnapshot): boolean",
+        "ORACLE_STATUS: readonly [\"None\", \"Pending\", \"Success\", \"Failed\", \"TimedOut\"]",
+        "decodeOraclePrices(result: Hex, symbols: readonly string[]): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[]",
+        "type SendPath = \"viem\" | \"sdk\"",
+        "parseSendPath(argv: readonly string[]): SendPath",
+        "interface UnsignedCall { to: Address; data: Hex; value: bigint }",
+        "ownerPoolAbi (owner-side placeOrder, selector 0x4e978373)",
+        "ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall",
+        "grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall",
+        "ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }",
+        "REQUEST_FINALIZED_TOPIC: Hex",
+        "AGENT_RESPONSE_TOPIC: Hex (SomniaAgents per-validator response event, not in the published ABI)",
+        "interface AgentLog { topics: readonly Hex[]; data: Hex; transactionHash: Hex | null; blockNumber: bigint | null }",
+        "interface ValidatorResponse { validator: Address; executionCostWei: bigint; words: bigint[]; tx: Hex | null; block: bigint | null }",
+        "interface OracleOutcome { finalStatus: string; finalStatusCode: number | null; finalizeTx: Hex | null; finalizeBlock: bigint | null; validatorResponses: ValidatorResponse[] }",
+        "oracleOutcomeFromLogs(logs: readonly AgentLog[], requestId: bigint): OracleOutcome",
+        "checkEvidence g1d-oracle: finalStatus must be Success, Failed or TimedOut; Success needs a symbol with numSources > 0"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/spike",
+        "expect": "PASS — `25 passed`."
+      },
+      "commit": "feat(spike): oracle probes P1 (one symbol, Majority) and P2 (Threshold) with callback decoding and dry-runs",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"
