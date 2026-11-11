@@ -1,15 +1,17 @@
 import {
+  decodeAbiParameters,
   decodeFunctionResult,
   encodeFunctionData,
   getAbiItem,
   getAddress,
   parseAbi,
+  parseAbiParameters,
   toEventSelector,
   zeroAddress,
   type Address,
   type Hex,
 } from "viem";
-import { explorerTx, operatorRegistryAbi, priceOracleAbi, somniaAgentsAbi, type AccountSnapshot } from "@basanos/core";
+import { ORACLE_DEPOSIT, explorerTx, operatorRegistryAbi, priceOracleAbi, somniaAgentsAbi, type AccountSnapshot } from "@basanos/core";
 
 export interface TxRecord {
   label: string;
@@ -188,4 +190,155 @@ export function oracleOutcomeFromLogs(logs: readonly AgentLog[], requestId: bigi
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Oracle probes P1 / P2 (guide GO, 2026-11-11). P1 asks one symbol through the 4-argument createRequest (Majority
+// consensus): the registry's exact path. P2 asks it through createAdvancedRequest with Threshold consensus (2 of 3,
+// 30 s, 0.01 STT per validator): the call dreamDEX's PriceFeedScheduler makes every 5 blocks.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** createAdvancedRequest, selector 0x9256632b. The types are confirmed by that selector and by the scheduler's call
+ *  arguments (3, 2, 1, 30); it returns the request id (eth_call). The parameter names are ours. */
+export const agentsAdvancedAbi = parseAbi([
+  "function createAdvancedRequest(uint256 agentId, address callbackAddress, bytes4 callbackSelector, bytes payload, uint256 subcommitteeSize, uint256 threshold, uint8 consensusType, uint256 timeout) payable returns (uint256 requestId)",
+]);
+
+/** Threshold consensus as the PriceFeedScheduler uses it. consensusType 1 = Threshold (0 = Majority, the default). */
+export const ADVANCED_REQUEST = {
+  subcommitteeSize: 3n,
+  threshold: 2n,
+  consensusType: 1,
+  timeoutSec: 30n,
+  perAgentBudgetWei: 10_000_000_000_000_000n,
+} as const;
+
+/** Hard cap on what one probe may send: 0.1 STT. */
+export const PROBE_MAX_WEI = 100_000_000_000_000_000n;
+
+export type OracleEvidence = "g1d-oracle" | "g1d-probe-p1" | "g1d-probe-p2";
+
+export interface ProbeArgs {
+  dryRun: boolean;
+  fromTx: Hex | null;
+  symbols: string[];
+  advanced: boolean;
+  evidence: OracleEvidence;
+}
+
+/** No flags: the original G1(d) request (two symbols) into g1d-oracle. --symbols: P1 into g1d-probe-p1.
+ *  --advanced: P2 into g1d-probe-p2 (one symbol, BTC/USDC:PERP, unless --symbols says otherwise). */
+export function parseProbeArgs(argv: readonly string[]): ProbeArgs {
+  const valueOf = (flag: string): string | null => {
+    const i = argv.indexOf(flag);
+    if (i < 0) return null;
+    const v = argv[i + 1];
+    if (!v || v.startsWith("--")) throw new Error(`${flag} needs a value`);
+    return v;
+  };
+  const fromTx = valueOf("--from-tx");
+  if (fromTx !== null && !/^0x[0-9a-fA-F]{64}$/.test(fromTx)) throw new Error("--from-tx needs a 32-byte transaction hash");
+  const list = valueOf("--symbols");
+  const advanced = argv.includes("--advanced");
+  const symbols =
+    list !== null ? list.split(",").map((s) => s.trim()).filter((s) => s.length > 0) : advanced ? ["BTC/USDC:PERP"] : ["BTC/USDC:PERP", "BTC/USDC"];
+  if (symbols.length === 0 || symbols.some((s) => !/^[A-Z0-9]+\/[A-Z0-9]+(:PERP)?$/.test(s))) {
+    throw new Error(`--symbols must list symbols such as BTC/USDC:PERP (got ${list ?? "nothing"})`);
+  }
+  const evidence: OracleEvidence = advanced ? "g1d-probe-p2" : list !== null ? "g1d-probe-p1" : "g1d-oracle";
+  return { dryRun: argv.includes("--dry-run"), fromTx: fromTx === null ? null : (fromTx as Hex), symbols, advanced, evidence };
+}
+
+/** What a request sends: Majority keeps the practical 0.0309 STT; Threshold funds 0.01 STT per validator over the floor. */
+export function probeDeposit(floorWei: bigint, advanced: boolean): bigint {
+  if (advanced) return floorWei + ADVANCED_REQUEST.perAgentBudgetWei * ADVANCED_REQUEST.subcommitteeSize;
+  return floorWei >= ORACLE_DEPOSIT ? floorWei + 900_000_000_000_000n : ORACLE_DEPOSIT;
+}
+
+/** One node of a debug_traceTransaction callTracer result. */
+export interface TraceCall {
+  type?: string;
+  to?: string;
+  input?: Hex;
+  calls?: TraceCall[];
+}
+
+/** The first call to `to` that carries data: SomniaAgents' callback inside the finalize transaction. */
+export function findCallTo(node: TraceCall, to: Address): TraceCall | null {
+  if ((node.to ?? "").toLowerCase() === to.toLowerCase() && (node.input ?? "0x").length > 10) return node;
+  for (const k of node.calls ?? []) {
+    const hit = findCallTo(k, to);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+const RESPONSE_T = "(address validator, bytes result, uint8 status, uint256 receipt, uint256 timestamp, uint256 executionCost)";
+const REQUEST_T =
+  "(uint256 id, address requester, address callbackAddress, bytes4 callbackSelector, address[] subcommittee, " +
+  RESPONSE_T +
+  "[] responses, uint256 responseCount, uint256 failureCount, uint256 threshold, uint256 createdAt, uint256 deadline, uint8 status, uint8 consensusType, uint256 remainingBudget, uint256 perAgentBudget)";
+
+/** The callback's arguments as SomniaAgents sends them: (requestId, responses, status, details). */
+export const ORACLE_CALLBACK_PARAMS = parseAbiParameters(`uint256 requestId, ${RESPONSE_T}[] responses, uint8 status, ${REQUEST_T} details`);
+
+export interface OracleAnswer {
+  validator: Address;
+  status: number;
+  result: Hex;
+  prices: { price: bigint; numSources: number; lastUpdated: bigint }[] | null;
+}
+
+export interface OracleCallback {
+  requestId: bigint;
+  status: number;
+  statusName: string;
+  consensusType: number;
+  threshold: bigint;
+  failureCount: bigint;
+  answers: OracleAnswer[];
+  answersIdentical: boolean;
+}
+
+/** Decodes the callback input (selector + arguments), including each validator's getPrices answer. */
+export function decodeOracleCallback(input: Hex): OracleCallback {
+  const [requestId, responses, status, details] = decodeAbiParameters(ORACLE_CALLBACK_PARAMS, `0x${input.slice(10)}`);
+  const answers: OracleAnswer[] = responses.map((r) => {
+    let prices: OracleAnswer["prices"] = null;
+    try {
+      const [p, n, u] = decodeFunctionResult({ abi: priceOracleAbi, functionName: "getPrices", data: r.result });
+      prices = p.map((price, i) => ({ price, numSources: n[i] ?? 0, lastUpdated: u[i] ?? 0n }));
+    } catch {
+      prices = null;
+    }
+    return { validator: r.validator, status: r.status, result: r.result, prices };
+  });
+  const first = answers[0]?.result;
+  return {
+    requestId,
+    status,
+    statusName: ORACLE_STATUS[status] ?? `status ${status}`,
+    consensusType: details.consensusType,
+    threshold: details.threshold,
+    failureCount: details.failureCount,
+    answers,
+    answersIdentical: first !== undefined && answers.every((a) => a.result === first),
+  };
+}
+
+/** The consensus reading per symbol: only a Success callback yields one (taken from its first successful answer). */
+export function symbolsFromCallback(
+  cb: OracleCallback | null,
+  symbols: readonly string[],
+): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[] {
+  if (!cb || cb.status !== 2) return [];
+  const first = cb.answers.find((a) => a.status === 2 && a.prices !== null);
+  if (!first?.prices) return [];
+  const prices = first.prices;
+  return symbols.map((symbol, i) => ({
+    symbol,
+    price: prices[i]?.price ?? 0n,
+    numSources: prices[i]?.numSources ?? 0,
+    lastUpdated: prices[i]?.lastUpdated ?? 0n,
+  }));
 }
