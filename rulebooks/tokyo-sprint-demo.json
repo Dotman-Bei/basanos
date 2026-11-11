@@ -1,0 +1,16 @@
+{
+  "schema": "basanos.rulebook/1",
+  "name": "Tokyo Sprint",
+  "variant": "demo",
+  "label": "Tokyo Sprint · Demo",
+  "chainId": 50383,
+  "market": { "symbol": "BTC-PERP", "pool": "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0", "baseDecimals": 8 },
+  "profitTargetBps": 50,
+  "dailyLossBps": 50,
+  "trailingDrawdownBps": 75,
+  "maxExposureX": 15,
+  "minDurationSec": 60,
+  "timeLimitSec": 900,
+  "oracleSymbol": "BTC/USDC:PERP",
+  "voidOn": ["flow", "foreignMarket", "grantRevoked"]
+}
