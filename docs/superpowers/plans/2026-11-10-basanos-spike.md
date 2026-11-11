@@ -11,6 +11,7 @@
 - **Task 11 is stop-and-escalate:** if the referee's close does not land (evidence `ok: false`), stop the build and escalate to the user. The product depends on it.
 - **SDK pin timebox:** if task 11 has not landed a real order on 0.33.0 within ~2 h of starting the skeleton, stop and route a plan fix to the architect: switch `@somnia-chain/markets-sdk` to `0.32.1` in `packages/core/package.json` and `packages/spike/package.json`.
 - **Task 14 (added 2026-11-11, after Task 10 landed):** account A's own writes in `skeleton-close` (grant, open, rest) move off the SDK's send path, which returned `TransactionOutcomeUnknownError` in the Step 3 preflight, onto viem: signed locally, sent to the standard RPC with `ORDER_GAS` and an explicit nonce. It runs after Task 10 and before Task 11 (Task 11 depends on it). `--sdk-send` keeps the SDK path as an opt-in fallback; the evidence records `sendPath`.
+- **Task 15 (added 2026-11-11, after Task 12's first run):** `oracle-probe` reads the outcome from SomniaAgents logs. SomniaAgents deletes a request once it finalizes, so `getRequest` reverts `RequestNotFound` and the first run recorded "Pending" for a request that finalized Failed. Task 15 also adds `--from-tx <hash>`, which rebuilds the evidence without a key or a send, and makes the `g1d-oracle` check strict. Task 12 depends on it and rebuilds its evidence from the request already sent.
 - The root `.npmrc` (`legacy-peer-deps=true`, Task 1) is required: without it `npm install` crashes in npm 10's resolver (`Cannot read properties of null (reading 'edgesOut')`) on Vite 8's optional peer graph, which vitest pulls in.
 - Commands run from the repo root. **The repo path contains a space** (`C:\Users\bamig\Documents\VIBE CODE…`); a prior campaign lost hours to a Node tool that shells out unquoted. Task 1's gate (install + test) must pass from this path. Do not move the build to a no-space clone to make a gate pass; if install or test fails because of the space, stop and report it as an environment blocker.
 
@@ -2491,27 +2492,36 @@ Message: `docs(evidence): G1(a) referee closes a voucher account on Hideki`
 **Files:**
 - Create: `docs/evidence/g1d-oracle.json`
 
-**Depends on:** Task 7, Task 10
+**Depends on:** Task 7, Task 10, Task 15
 **Effort:** low
 **Model tier:** top
 **Provides:** `docs/evidence/g1d-oracle.json (requestId, finalStatus, symbols: BTC/USDC:PERP and BTC/USDC with price and numSources)`
-**Requires:** `CLI: npx tsx packages/spike/src/oracle-probe.ts [--dry-run]`, `CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS`
+**Requires:** `CLI: npx tsx packages/spike/src/oracle-probe.ts [--dry-run] [--from-tx <hash>]`, `CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS`
 
 **Human-gated.** Spends about 0.0309 STT plus gas from the referee burner (`REFEREE_PK`). A `TimedOut`, `Failed` or zero-source result is a valid answer: it decides the cut order (spec §1: the Price Oracle cross-check is cut first) and whether the rulebooks switch `oracleSymbol` to `BTC/USDC` before deploy.
+
+**The request was already sent on 2026-11-11** (request 7773100, createRequest tx `0xdf795f1f7938638ebd78a119d5de95c05930b6f1cd779d5f7ca402df0befa30d`, ledger `1d71274`). It finalized Failed one block later, in tx `0x851aaa04f95533ccabd87e11e3398b09eb85dfe9d709f393223126a3c9582301`.
+- Do not send it again. Skip Steps 1–2 and run Step 3, which rebuilds the evidence from that transaction without a key or a send.
+- Steps 1–2 apply only if a new request is ever authorised.
+- Do not commit the `g1d-oracle.json` from the first run: it says "Pending", and the strict check (Task 15) rejects it.
 
 - [ ] **Step 1: Dry-run**
 Run: `npx tsx packages/spike/src/oracle-probe.ts --dry-run`
 Expected: `oracle-probe: floor <wei> wei, sending <wei> wei from 0x…` then `dry-run: no transaction sent`.
 
-- [ ] **Step 2: Run live**
+- [ ] **Step 2: Run live (only for a new, authorised request)**
 Run: `npx tsx packages/spike/src/oracle-probe.ts`
-Expected: `oracle-probe: request <id> -> Success` (or `TimedOut` / `Failed`), then one line per symbol with its price and source count.
+Expected: `oracle-probe: request <id> -> <Success | Failed | TimedOut> (<n> validator responses; finalized in 0x…)`.
 
-- [ ] **Step 3: Check the evidence (the gate)**
+- [ ] **Step 3: Rebuild the evidence from the request already sent (no key, no send)**
+Run: `npx tsx packages/spike/src/oracle-probe.ts --from-tx 0xdf795f1f7938638ebd78a119d5de95c05930b6f1cd779d5f7ca402df0befa30d`
+Expected: `oracle-probe: request 7773100 -> Failed (3 validator responses; finalized in 0x851aaa04f95533ccabd87e11e3398b09eb85dfe9d709f393223126a3c9582301)`. This writes `docs/evidence/g1d-oracle.json` with `mode: "from-tx"`, `finalStatus: "Failed"` and the three validators' costs.
+
+- [ ] **Step 4: Check the evidence (the gate)**
 Run: `npx tsx packages/spike/src/check-evidence.ts g1d-oracle`
 Expected: PASS — `PASS g1d-oracle`.
 
-- [ ] **Step 4: Commit (kernel-performed — no agent runs this)**
+- [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
 Message: `docs(evidence): G1(d) Price Oracle request on Tokyo testnet`
 
 ---
@@ -3205,3 +3215,784 @@ Expected: PASS — `19 passed`.
 
 - [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
 Message: `feat(spike): account A's grant and orders signed by viem on the standard RPC; SDK send opt-in`
+
+---
+
+### Task 15: Oracle probe reads the outcome from SomniaAgents logs, rebuilds from a tx, and the g1d check gets strict
+
+**Files:**
+- Modify: `packages/spike/src/oracle-probe.ts`
+- Modify: `packages/spike/src/live-lib.ts`
+- Modify: `packages/spike/src/evidence.ts`
+- Test: `packages/spike/test/live-lib.test.ts`
+- Test: `packages/spike/test/evidence.test.ts`
+
+**Depends on:** Task 1, Task 2, Task 3, Task 4, Task 7, Task 10, Task 14
+**Effort:** high
+**Model tier:** top
+**Provides:** `REQUEST_FINALIZED_TOPIC: Hex`, `AGENT_RESPONSE_TOPIC: Hex (SomniaAgents per-validator response event, not in the published ABI)`, `interface AgentLog { topics: readonly Hex[]; data: Hex; transactionHash: Hex | null; blockNumber: bigint | null }`, `interface ValidatorResponse { validator: Address; executionCostWei: bigint; words: bigint[]; tx: Hex | null; block: bigint | null }`, `interface OracleOutcome { finalStatus: string; finalStatusCode: number | null; finalizeTx: Hex | null; finalizeBlock: bigint | null; validatorResponses: ValidatorResponse[] }`, `oracleOutcomeFromLogs(logs: readonly AgentLog[], requestId: bigint): OracleOutcome`, `checkEvidence g1d-oracle: finalStatus must be Success, Failed or TimedOut; Success needs a symbol with numSources > 0`, `CLI: npx tsx packages/spike/src/oracle-probe.ts [--dry-run] [--from-tx <hash>]`
+**Requires:** `repoPath(rel: string): string`, `BTC_POOL`, `OPERATOR_REGISTRY`, `SOMNIA_AGENTS`, `PLACE_ORDER_FOR_SELECTOR`, `CANCEL_ORDER_FOR_SELECTOR`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_LIMIT = 0`, `ORACLE_AGENT_ID = 9911223344556677889n`, `ORACLE_DEPOSIT = 30_900_000_000_000_000n`, `explorerTx(hash: Hex): string`, `operatorRegistryAbi`, `somniaAgentsAbi`, `priceOracleAbi`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }`, `type EvidenceName = "g1a-close" | "g1b-watch" | "g1c-history" | "g1d-oracle" | "r1-indexer" | "tape"`, `writeEvidence(name: EvidenceName, data: Record<string, unknown>): string`, `readEvidence(name: EvidenceName): Record<string, unknown> | null`, `checkEvidence(name: EvidenceName, data: Record<string, unknown> | null): string[]`, `pickMostFrequent(accounts: readonly Address[]): Address | null`, `publicClient(): PublicClient`, `walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account`, `interface TxRecord { label: string; hash: Hex; status: "success" | "reverted"; gasUsed: bigint; costWei: bigint; explorer: string }`, `txRecord(label: string, receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord`, `sumCosts(txs: readonly TxRecord[]): bigint`, `isFlat(s: AccountSnapshot): boolean`, `ORACLE_STATUS: readonly ["None", "Pending", "Success", "Failed", "TimedOut"]`, `decodeOraclePrices(result: Hex, symbols: readonly string[]): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[]`, `type SendPath = "viem" | "sdk"`, `parseSendPath(argv: readonly string[]): SendPath`, `interface UnsignedCall { to: Address; data: Hex; value: bigint }`, `ownerPoolAbi (owner-side placeOrder, selector 0x4e978373)`, `ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall`, `grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall`, `ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }`
+
+Why: Task 12's first run (2026-11-11, ledger `1d71274`) sent request 7773100.
+- **What happened on chain:** the request finalized **Failed** (`RequestFinalized` status 3, tx `0x851aaa04f95533ccabd87e11e3398b09eb85dfe9d709f393223126a3c9582301`) one block after creation. Each of the three validators logged a response with no result.
+- **What the script recorded:** SomniaAgents deletes a request once it finalizes, so every `getRequest` poll reverted `RequestNotFound` (`0x4ec726c7`). The script kept its initial status and wrote `finalStatus: "Pending"`.
+- **Why the gate passed anyway:** the `g1d-oracle` check only tested that the fields existed.
+
+This task makes three changes:
+- **Live mode reads the logs.** It polls SomniaAgents logs for `RequestFinalized` and the per-validator response events of its own request id, and never calls `getRequest`.
+- **`--from-tx <hash>` rebuilds the evidence** from an earlier `createRequest` transaction. It loads no key and sends nothing.
+- **The check gets strict.** `Pending` or a missing status fails. `Success` passes only with a symbol that has `numSources > 0`. The response events carry no result bytes, because prices reach only the callback. So a Success with no decoded prices fails the check, by design.
+
+Verified read-only on Hideki on 2026-11-11:
+- The rebuild of tx `0xdf795f1f7938638ebd78a119d5de95c05930b6f1cd779d5f7ca402df0befa30d` prints `oracle-probe: request 7773100 -> Failed (3 validator responses; finalized in 0x851aaa04f95533ccabd87e11e3398b09eb85dfe9d709f393223126a3c9582301)`.
+- The validator costs are 166,037,878,800,000, 174,149,532,000,000 and 251,392,050,000,000 wei.
+- The payload decodes to `getPrices(["BTC/USDC:PERP", "BTC/USDC"], 18)` (selector `0x1ca1d20c`).
+- `check-evidence g1d-oracle` prints PASS for the rebuilt file and FAIL for the first run's "Pending" file.
+
+Key safety is as in Task 10. This task writes code and runs unit tests; it sends nothing. Task 12 runs the rebuild.
+
+- [ ] **Step 1: Write the failing tests**
+
+Replace `packages/spike/test/live-lib.test.ts` with:
+```ts
+import { describe, expect, it } from "vitest";
+import {
+  decodeFunctionData,
+  encodeAbiParameters,
+  encodeEventTopics,
+  encodeFunctionData,
+  encodeFunctionResult,
+  getAddress,
+  pad,
+  toHex,
+  zeroAddress,
+  type Hex,
+} from "viem";
+import { perpPoolWriteAbi } from "@somnia-chain/markets-sdk";
+import {
+  BTC_POOL,
+  CANCEL_ORDER_FOR_SELECTOR,
+  OPERATOR_REGISTRY,
+  ORDER_GAS,
+  ORDER_TYPE_LIMIT,
+  PLACE_ORDER_FOR_SELECTOR,
+  operatorRegistryAbi,
+  priceOracleAbi,
+  somniaAgentsAbi,
+} from "@basanos/core";
+import {
+  AGENT_RESPONSE_TOPIC,
+  ORACLE_STATUS,
+  decodeOraclePrices,
+  oracleOutcomeFromLogs,
+  type AgentLog,
+  grantCall,
+  isFlat,
+  ownerOrderCall,
+  ownerTx,
+  parseSendPath,
+  sumCosts,
+  txRecord,
+} from "../src/live-lib";
+
+describe("txRecord", () => {
+  it("records cost as gasUsed x effectiveGasPrice with an explorer link", () => {
+    const r = txRecord("close", { transactionHash: "0xab", status: "success", gasUsed: 3_000_000n, effectiveGasPrice: 6_000_000_000n });
+    expect(r.costWei).toBe(18_000_000_000_000_000n);
+    expect(r.explorer).toBe("https://explorer.testnet.somnia.network/tokyo/tx/0xab");
+    expect(sumCosts([r, r])).toBe(36_000_000_000_000_000n);
+  });
+});
+
+describe("isFlat", () => {
+  it("needs no position, no locked collateral and no active pools", () => {
+    const base = { account: "0x1" as const, equityOk: true, equity: 1n, lockedCollateral: 0n, totalEquity: 1n, activePools: [], size: 0n };
+    expect(isFlat(base)).toBe(true);
+    expect(isFlat({ ...base, size: 1n })).toBe(false);
+    expect(isFlat({ ...base, lockedCollateral: 1n })).toBe(false);
+    expect(isFlat({ ...base, activePools: ["0x2"] })).toBe(false);
+  });
+});
+
+describe("oracle decoding", () => {
+  it("names statuses in the SomniaAgents enum order", () => {
+    expect(ORACLE_STATUS[2]).toBe("Success");
+    expect(ORACLE_STATUS[4]).toBe("TimedOut");
+  });
+  it("pairs each symbol with its median, sources and update time", () => {
+    const data = encodeFunctionResult({
+      abi: priceOracleAbi,
+      functionName: "getPrices",
+      result: [[74_500n * 10n ** 18n, 0n], [3, 0], [1_794_326_598_000n, 0n]],
+    });
+    expect(decodeOraclePrices(data, ["BTC/USDC:PERP", "BTC/USDC"])).toEqual([
+      { symbol: "BTC/USDC:PERP", price: 74_500n * 10n ** 18n, numSources: 3, lastUpdated: 1_794_326_598_000n },
+      { symbol: "BTC/USDC", price: 0n, numSources: 0, lastUpdated: 0n },
+    ]);
+  });
+});
+
+describe("owner-side writes on the viem path", () => {
+  it("encodes the raw placeOrder exactly as the SDK's perpPoolWriteAbi does", () => {
+    const price = 66_000n * 10n ** 18n;
+    const expiry = 3_371_163_205_000_000_000n;
+    const c = ownerOrderCall(BTC_POOL, true, price, 13_000n, ORDER_TYPE_LIMIT, expiry);
+    expect(c.to).toBe(BTC_POOL);
+    expect(c.value).toBe(0n);
+    expect(c.data.slice(0, 10)).toBe("0x4e978373");
+    expect(c.data).toBe(
+      encodeFunctionData({
+        abi: perpPoolWriteAbi,
+        functionName: "placeOrder",
+        args: [true, 0n, price, 13_000n, expiry, ORDER_TYPE_LIMIT, 0, zeroAddress, 0n],
+      }),
+    );
+  });
+  it("grants the referee place and cancel on one pool through the registry", () => {
+    const referee = "0xE358D82209ea9360F411A041C0200adc385877eb";
+    const c = grantCall(OPERATOR_REGISTRY, BTC_POOL, referee, [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR]);
+    expect(c.to).toBe(OPERATOR_REGISTRY);
+    expect(c.data.slice(0, 10)).toBe("0x7bbc67e6");
+    const d = decodeFunctionData({ abi: operatorRegistryAbi, data: c.data });
+    expect(d.functionName).toBe("setOperatorApprovalForPool");
+    expect(d.args).toEqual([BTC_POOL, referee, [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR], true]);
+  });
+  it("signs with ORDER_GAS and an explicit nonce, and keeps the SDK send opt-in", () => {
+    expect(ownerTx({ to: BTC_POOL, data: "0x4e978373", value: 0n }, 7, ORDER_GAS)).toEqual({
+      to: BTC_POOL,
+      data: "0x4e978373",
+      value: 0n,
+      gas: 10_000_000n,
+      nonce: 7,
+    });
+    expect(parseSendPath(["node", "skeleton-close.ts"])).toBe("viem");
+    expect(parseSendPath(["node", "skeleton-close.ts", "--dry-run"])).toBe("viem");
+    expect(parseSendPath(["node", "skeleton-close.ts", "--sdk-send"])).toBe("sdk");
+  });
+});
+
+describe("oracle outcome from SomniaAgents logs", () => {
+  const id = 7_773_100n;
+  const finalized = (requestId: bigint, status: number): AgentLog => ({
+    topics: encodeEventTopics({ abi: somniaAgentsAbi, eventName: "RequestFinalized", args: { requestId } }) as Hex[],
+    data: encodeAbiParameters([{ type: "uint8" }], [status]),
+    transactionHash: "0x851a",
+    blockNumber: 47_437_498n,
+  });
+  const response = (requestId: bigint, validator: Hex, cost: bigint): AgentLog => ({
+    topics: [AGENT_RESPONSE_TOPIC, pad(toHex(requestId), { size: 32 }), pad(validator, { size: 32 })],
+    data: encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }, { type: "uint256" }, { type: "uint256" }], [1n, 0n, 0n, cost]),
+    transactionHash: "0x4789",
+    blockNumber: 47_437_498n,
+  });
+  const validator: Hex = "0x92d237dea7eb9d37e1b303da586f4b83956df6ad";
+  it("reads one request's final status and each validator's cost, ignoring other requests", () => {
+    const out = oracleOutcomeFromLogs(
+      [response(id, validator, 166_000_000_000_000n), response(id + 1n, validator, 1n), finalized(id + 1n, 2), finalized(id, 3)],
+      id,
+    );
+    expect(out.finalStatus).toBe("Failed");
+    expect(out.finalStatusCode).toBe(3);
+    expect(out.finalizeTx).toBe("0x851a");
+    expect(out.finalizeBlock).toBe(47_437_498n);
+    expect(out.validatorResponses).toHaveLength(1);
+    expect(out.validatorResponses[0]?.validator).toBe(getAddress(validator));
+    expect(out.validatorResponses[0]?.executionCostWei).toBe(166_000_000_000_000n);
+  });
+  it("reports NotFinalized until the request's RequestFinalized log appears", () => {
+    const out = oracleOutcomeFromLogs([response(id, validator, 5n), finalized(id + 1n, 2)], id);
+    expect(out.finalStatus).toBe("NotFinalized");
+    expect(out.finalizeTx).toBeNull();
+    expect(out.validatorResponses).toHaveLength(1);
+  });
+});
+```
+
+Replace `packages/spike/test/evidence.test.ts` with:
+```ts
+import { describe, expect, it } from "vitest";
+import { checkEvidence, toJsonSafe } from "../src/evidence";
+import { pickMostFrequent } from "../src/find-active";
+
+describe("toJsonSafe", () => {
+  it("turns bigints into decimal strings, deeply", () => {
+    expect(toJsonSafe({ a: 1n, b: [2n, { c: 3n }], d: "x" })).toEqual({ a: "1", b: ["2", { c: "3" }], d: "x" });
+  });
+});
+
+describe("checkEvidence", () => {
+  it("flags a missing file", () => {
+    expect(checkEvidence("g1c-history", null)).toEqual(["g1c-history: evidence file is missing"]);
+  });
+  it("accepts a complete history file and rejects an empty one", () => {
+    const good = { account: "0x1", depths: [{ back: 10, block: "1", ok: true }], maxServedBack: 10 };
+    expect(checkEvidence("g1c-history", good)).toEqual([]);
+    expect(checkEvidence("g1c-history", { account: "0x1", depths: [] })).not.toEqual([]);
+  });
+  it("requires ok: true and a flat end state for the referee close", () => {
+    const base = {
+      ok: true,
+      txs: [
+        { label: "grant", hash: "0x1", status: "success" },
+        { label: "open", hash: "0x2", status: "success" },
+        { label: "close", hash: "0x3", status: "success" },
+      ],
+      finalPositionSize: "0",
+      leverage: { voucherLeverageCapX: 20 },
+      entry: { costBps: 1.25 },
+      costs: { totalWei: "1" },
+    };
+    expect(checkEvidence("g1a-close", base)).toEqual([]);
+    expect(checkEvidence("g1a-close", { ...base, ok: false })).toContain("g1a-close: ok is not true (STOP and escalate)");
+    expect(checkEvidence("g1a-close", { ...base, finalPositionSize: "13000" })).not.toEqual([]);
+  });
+  it("accepts a read oracle outcome and rejects Pending or a Success without prices", () => {
+    expect(checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "TimedOut", symbols: [] })).toEqual([]);
+    expect(checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "Failed", symbols: [] })).toEqual([]);
+    expect(
+      checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "Success", symbols: [{ symbol: "BTC/USDC:PERP", numSources: 3 }] }),
+    ).toEqual([]);
+    expect(checkEvidence("g1d-oracle", { requestId: "7" })).not.toEqual([]);
+    expect(checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "Pending", symbols: [] })).not.toEqual([]);
+    expect(
+      checkEvidence("g1d-oracle", { requestId: "7", finalStatus: "Success", symbols: [{ symbol: "BTC/USDC:PERP", numSources: 0 }] }),
+    ).not.toEqual([]);
+  });
+  it("needs three indexer reads, a watch with pushes and a tape with more than 100 points", () => {
+    expect(checkEvidence("r1-indexer", { reads: [{}, {}, {}] })).toEqual([]);
+    expect(checkEvidence("g1b-watch", { pushes: 3, blockNumbers: ["1"], timestampUnit: "seconds", equityDecoded: true })).toEqual([]);
+    expect(checkEvidence("tape", { pool: "0x1", points: Array.from({ length: 101 }, (_, i) => ({ block: String(i + 1), ts: String(i + 2), mark: "3" })) })).toEqual([]);
+    expect(checkEvidence("tape", { pool: "0x1", points: [] })).not.toEqual([]);
+  });
+});
+
+describe("pickMostFrequent", () => {
+  it("returns the address seen most often, or null", () => {
+    expect(pickMostFrequent([])).toBeNull();
+    expect(pickMostFrequent(["0xa", "0xb", "0xb"] as `0x${string}`[])).toBe("0xb");
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm the new tests fail**
+Run: `npm test -w @basanos/spike -- test/live-lib.test.ts test/evidence.test.ts`
+Expected: FAIL — `3 failed | 13 passed (16)`: two with `TypeError: oracleOutcomeFromLogs is not a function`, one because a `Pending` oracle file still passes.
+
+- [ ] **Step 3: Make the check strict and add the log decoder**
+
+Replace `packages/spike/src/evidence.ts` with:
+```ts
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { repoPath } from "@basanos/core/node";
+
+export type EvidenceName = "g1a-close" | "g1b-watch" | "g1c-history" | "g1d-oracle" | "r1-indexer" | "tape";
+
+export function evidencePath(name: EvidenceName): string {
+  return name === "tape" ? repoPath("packages/core/test/fixtures/btc-tape.json") : repoPath(`docs/evidence/${name}.json`);
+}
+
+export function toJsonSafe(value: unknown): unknown {
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map((v) => toJsonSafe(v));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, toJsonSafe(v)]));
+  }
+  return value;
+}
+
+export function writeEvidence(name: EvidenceName, data: Record<string, unknown>): string {
+  const path = evidencePath(name);
+  mkdirSync(dirname(path), { recursive: true });
+  const body = { evidence: name, writtenAt: new Date().toISOString(), ...data };
+  writeFileSync(path, `${JSON.stringify(toJsonSafe(body), null, 2)}\n`);
+  return path;
+}
+
+export function readEvidence(name: EvidenceName): Record<string, unknown> | null {
+  const path = evidencePath(name);
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+}
+
+const isArr = (v: unknown): v is unknown[] => Array.isArray(v);
+
+export function checkEvidence(name: EvidenceName, data: Record<string, unknown> | null): string[] {
+  if (!data) return [`${name}: evidence file is missing`];
+  const p: string[] = [];
+  const need = (cond: boolean, msg: string) => {
+    if (!cond) p.push(`${name}: ${msg}`);
+  };
+  switch (name) {
+    case "g1a-close": {
+      need(data.ok === true, "ok is not true (STOP and escalate)");
+      const txs = isArr(data.txs) ? (data.txs as Record<string, unknown>[]) : [];
+      need(txs.length >= 2, "fewer than 2 transactions (open and close) recorded");
+      need(
+        txs.every((t) => typeof t.hash === "string" && typeof t.label === "string"),
+        "every tx needs a label and a hash",
+      );
+      need(
+        txs.some((t) => t.label === "close" && t.status === "success"),
+        "no successful referee close tx",
+      );
+      need(data.finalPositionSize === "0", "the account is not flat at the end");
+      const lev = (data.leverage ?? {}) as Record<string, unknown>;
+      need(typeof lev.voucherLeverageCapX === "number", "leverage.voucherLeverageCapX missing");
+      const entry = (data.entry ?? null) as Record<string, unknown> | null;
+      need(entry !== null && typeof entry.costBps === "number", "entry fill vs mark missing");
+      need(typeof data.costs === "object" && data.costs !== null, "costs missing");
+      break;
+    }
+    case "g1b-watch":
+      need(typeof data.pushes === "number" && data.pushes > 0, "no pushes recorded");
+      need(isArr(data.blockNumbers) && data.blockNumbers.length > 0, "no block numbers decoded");
+      need(data.timestampUnit === "seconds" || data.timestampUnit === "milliseconds", "timestampUnit missing");
+      need(data.equityDecoded === true, "the attached equity multicall was not decoded");
+      break;
+    case "g1c-history":
+      need(typeof data.account === "string", "account missing");
+      need(isArr(data.depths) && data.depths.length > 0, "no depths measured");
+      need(typeof data.maxServedBack === "number", "maxServedBack missing");
+      break;
+    case "g1d-oracle": {
+      need(typeof data.requestId === "string", "requestId missing");
+      need(
+        data.finalStatus === "Success" || data.finalStatus === "Failed" || data.finalStatus === "TimedOut",
+        `finalStatus must be Success, Failed or TimedOut, got ${String(data.finalStatus)} (the outcome was never read)`,
+      );
+      need(isArr(data.symbols), "symbols missing");
+      if (data.finalStatus === "Success") {
+        const symbols = isArr(data.symbols) ? (data.symbols as Record<string, unknown>[]) : [];
+        need(symbols.some((s) => Number(s.numSources) > 0), "Success needs at least one symbol with numSources > 0");
+      }
+      break;
+    }
+    case "r1-indexer":
+      need(isArr(data.reads) && data.reads.length === 3, "expected exactly 3 indexer reads");
+      break;
+    case "tape":
+      need(typeof data.pool === "string", "pool missing");
+      need(isArr(data.points) && data.points.length > 100, "fewer than 101 tape points (the tape-proof test needs more than 100)");
+      break;
+  }
+  return p;
+}
+```
+
+Replace `packages/spike/src/live-lib.ts` with:
+```ts
+import {
+  decodeFunctionResult,
+  encodeFunctionData,
+  getAbiItem,
+  getAddress,
+  parseAbi,
+  toEventSelector,
+  zeroAddress,
+  type Address,
+  type Hex,
+} from "viem";
+import { explorerTx, operatorRegistryAbi, priceOracleAbi, somniaAgentsAbi, type AccountSnapshot } from "@basanos/core";
+
+export interface TxRecord {
+  label: string;
+  hash: Hex;
+  status: "success" | "reverted";
+  gasUsed: bigint;
+  costWei: bigint;
+  explorer: string;
+}
+
+export function txRecord(
+  label: string,
+  receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint },
+): TxRecord {
+  return {
+    label,
+    hash: receipt.transactionHash,
+    status: receipt.status,
+    gasUsed: receipt.gasUsed,
+    costWei: receipt.gasUsed * receipt.effectiveGasPrice,
+    explorer: explorerTx(receipt.transactionHash),
+  };
+}
+
+export function sumCosts(txs: readonly TxRecord[]): bigint {
+  return txs.reduce((acc, t) => acc + t.costWei, 0n);
+}
+
+export function isFlat(s: AccountSnapshot): boolean {
+  return s.size === 0n && s.lockedCollateral === 0n && s.activePools.length === 0;
+}
+
+/** SomniaAgents ResponseStatus, in declaration order. */
+export const ORACLE_STATUS = ["None", "Pending", "Success", "Failed", "TimedOut"] as const;
+
+export function decodeOraclePrices(
+  result: Hex,
+  symbols: readonly string[],
+): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[] {
+  const [prices, numSources, lastUpdated] = decodeFunctionResult({ abi: priceOracleAbi, functionName: "getPrices", data: result });
+  return symbols.map((symbol, i) => ({
+    symbol,
+    price: prices[i] ?? 0n,
+    numSources: numSources[i] ?? 0,
+    lastUpdated: lastUpdated[i] ?? 0n,
+  }));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Owner-side writes (account A). The default path signs locally with viem and sends eth_sendRawTransaction to the
+// standard RPC (rpcHttp(), api.hideki…), with ORDER_GAS and an explicit nonce. The SDK's own send path
+// (eth_sendRawTransactionSync on send.hideki…, which surfaced TransactionOutcomeUnknownError in the Step 3
+// preflight) is an opt-in fallback behind --sdk-send. The SDK stays in use for reads.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** How account A's own writes reach the chain; recorded in the evidence as `sendPath`. */
+export type SendPath = "viem" | "sdk";
+
+export function parseSendPath(argv: readonly string[]): SendPath {
+  return argv.includes("--sdk-send") ? "sdk" : "viem";
+}
+
+/** An unsigned call: the same shape as the SDK's build verbs return (to, data, value). */
+export interface UnsignedCall {
+  to: Address;
+  data: Hex;
+  value: bigint;
+}
+
+/** Owner-side PerpPool order: the SDK 0.33.0 perpPoolWriteAbi signature, selector 0x4e978373 (present in the BTC
+ *  pool's beacon implementation; a far resting bid simulates OK from an active account). */
+export const ownerPoolAbi = parseAbi([
+  "function placeOrder(bool isBid, uint64 userData, uint256 price, uint256 quantity, uint64 expireTimestampNs, uint8 orderType, uint8 selfMatchingOption, address builder, uint96 builderFeeBpsTimes1k)",
+]);
+
+/** Raw placeOrder on the pool, with the arguments the SDK's placePerpOrder fills in (userData 0, no self-match option, no builder). */
+export function ownerOrderCall(
+  pool: Address,
+  isBid: boolean,
+  price: bigint,
+  quantity: bigint,
+  orderType: number,
+  expireTimestampNs: bigint,
+): UnsignedCall {
+  return {
+    to: pool,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: ownerPoolAbi,
+      functionName: "placeOrder",
+      args: [isBid, 0n, price, quantity, expireTimestampNs, orderType, 0, zeroAddress, 0n],
+    }),
+  };
+}
+
+/** The per-pool operator grant on the OperatorPermissionsRegistry (the SDK has no build verb for it). */
+export function grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall {
+  return {
+    to: registry,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: operatorRegistryAbi,
+      functionName: "setOperatorApprovalForPool",
+      args: [pool, operator, [...selectors], true],
+    }),
+  };
+}
+
+/** The exact transaction account A signs on the viem path: a fixed gas limit and an explicit nonce. */
+export function ownerTx(
+  call: UnsignedCall,
+  nonce: number,
+  gas: bigint,
+): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number } {
+  return { to: call.to, data: call.data, value: call.value, gas, nonce };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Price Oracle outcome from SomniaAgents logs. getRequest cannot report it: the platform deletes a request once it
+// finalizes, and getRequest then reverts RequestNotFound (0x4ec726c7). Request 7773100 (2026-11-11) finalized one
+// block after creation, so a getRequest poll only ever saw the revert.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** topic0 of RequestFinalized(uint256 indexed requestId, uint8 status). */
+export const REQUEST_FINALIZED_TOPIC: Hex = toEventSelector(getAbiItem({ abi: somniaAgentsAbi, name: "RequestFinalized" }));
+
+/** topic0 of SomniaAgents' per-validator response event. It is not in the published ABI. Its topics are
+ *  [topic0, requestId, validator] and its data is four words, the last being the validator's execution cost in wei
+ *  (seen on requests 7773100 and 7773101). It carries no result bytes: prices reach only the callback. */
+export const AGENT_RESPONSE_TOPIC: Hex = "0x1b44ed537f0ae64cca44e5a71b06bc838a30bbc5454ffdc2aee3844926264dfd";
+
+export interface AgentLog {
+  topics: readonly Hex[];
+  data: Hex;
+  transactionHash: Hex | null;
+  blockNumber: bigint | null;
+}
+
+export interface ValidatorResponse {
+  validator: Address;
+  executionCostWei: bigint;
+  words: bigint[];
+  tx: Hex | null;
+  block: bigint | null;
+}
+
+export interface OracleOutcome {
+  /** An ORACLE_STATUS name, or "NotFinalized" while no RequestFinalized log for the request has been seen. */
+  finalStatus: string;
+  finalStatusCode: number | null;
+  finalizeTx: Hex | null;
+  finalizeBlock: bigint | null;
+  validatorResponses: ValidatorResponse[];
+}
+
+export function oracleOutcomeFromLogs(logs: readonly AgentLog[], requestId: bigint): OracleOutcome {
+  const out: OracleOutcome = { finalStatus: "NotFinalized", finalStatusCode: null, finalizeTx: null, finalizeBlock: null, validatorResponses: [] };
+  for (const log of logs) {
+    const [t0, t1, t2] = log.topics;
+    if (!t0 || !t1 || BigInt(t1) !== requestId) continue;
+    if (t0.toLowerCase() === REQUEST_FINALIZED_TOPIC.toLowerCase()) {
+      const code = Number(BigInt(log.data));
+      out.finalStatusCode = code;
+      out.finalStatus = ORACLE_STATUS[code] ?? `status ${code}`;
+      out.finalizeTx = log.transactionHash;
+      out.finalizeBlock = log.blockNumber;
+    } else if (t0.toLowerCase() === AGENT_RESPONSE_TOPIC && t2) {
+      const words = (log.data.slice(2).match(/.{64}/g) ?? []).map((w) => BigInt(`0x${w}`));
+      out.validatorResponses.push({
+        validator: getAddress(`0x${t2.slice(26)}`),
+        executionCostWei: words[words.length - 1] ?? 0n,
+        words,
+        tx: log.transactionHash,
+        block: log.blockNumber,
+      });
+    }
+  }
+  return out;
+}
+```
+
+- [ ] **Step 4: Run to confirm they pass**
+Run: `npm test -w @basanos/spike -- test/live-lib.test.ts test/evidence.test.ts`
+Expected: PASS — `16 passed`.
+
+- [ ] **Step 5: Read the outcome from the logs; add the rebuild mode**
+
+Replace `packages/spike/src/oracle-probe.ts` with:
+```ts
+// G1(d): one Price Oracle request on Tokyo testnet from the referee EOA (callback = the EOA itself), sending
+// 0.0309 STT, the practical deposit (never the bare floor).
+// The outcome is read from SomniaAgents logs (RequestFinalized and the per-validator response events), never from
+// getRequest: the platform deletes a request once it finalizes, and getRequest then reverts RequestNotFound
+// (0x4ec726c7). That is why the first run recorded "Pending" for a request that had finalized Failed.
+// --dry-run reads only. --from-tx <hash> rebuilds the evidence from an earlier createRequest transaction: it loads
+// no key and sends nothing.
+import { decodeEventLog, decodeFunctionData, encodeFunctionData, pad, toHex, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { ORACLE_AGENT_ID, ORACLE_DEPOSIT, SOMNIA_AGENTS, priceOracleAbi, somniaAgentsAbi } from "@basanos/core";
+import { loadDotEnv, requirePrivateKey } from "@basanos/core/node";
+import { writeEvidence } from "./evidence";
+import {
+  AGENT_RESPONSE_TOPIC,
+  REQUEST_FINALIZED_TOPIC,
+  oracleOutcomeFromLogs,
+  txRecord,
+  type AgentLog,
+  type OracleOutcome,
+} from "./live-lib";
+import { publicClient, walletFor } from "./rpc";
+
+loadDotEnv();
+const dryRun = process.argv.includes("--dry-run");
+const fromTxAt = process.argv.indexOf("--from-tx");
+const fromTx = fromTxAt >= 0 ? process.argv[fromTxAt + 1] : undefined;
+if (fromTxAt >= 0 && (!fromTx || !/^0x[0-9a-fA-F]{64}$/.test(fromTx))) {
+  console.error("oracle-probe: --from-tx needs a 32-byte transaction hash");
+  process.exit(1);
+}
+const client = publicClient();
+const SYMBOLS = ["BTC/USDC:PERP", "BTC/USDC"] as const;
+const LOG_WINDOW = 1_000n; // eth_getLogs answers at most 1,000 blocks per call on Hideki
+const REBUILD_SPAN = 3_000n; // a rebuild scans this many blocks after the request (it finalizes within a few)
+
+type Receipt = Awaited<ReturnType<typeof client.waitForTransactionReceipt>>;
+
+/** SomniaAgents logs for one request (RequestFinalized or a validator response), in 1,000-block windows. */
+async function agentLogs(requestId: bigint, fromBlock: bigint, toBlock: bigint): Promise<AgentLog[]> {
+  const out: AgentLog[] = [];
+  for (let from = fromBlock; from <= toBlock; from += LOG_WINDOW) {
+    const to = from + LOG_WINDOW - 1n < toBlock ? from + LOG_WINDOW - 1n : toBlock;
+    const raw = await client.request({
+      method: "eth_getLogs",
+      params: [
+        {
+          address: SOMNIA_AGENTS,
+          fromBlock: toHex(from),
+          toBlock: toHex(to),
+          topics: [[REQUEST_FINALIZED_TOPIC, AGENT_RESPONSE_TOPIC], pad(toHex(requestId), { size: 32 })],
+        },
+      ],
+    });
+    for (const l of raw) {
+      out.push({ topics: l.topics, data: l.data, transactionHash: l.transactionHash, blockNumber: l.blockNumber === null ? null : BigInt(l.blockNumber) });
+    }
+  }
+  return out;
+}
+
+/** Polls the logs from the request's block until it finalizes or the deadline passes. */
+async function waitForOutcome(requestId: bigint, fromBlock: bigint, untilMs: number): Promise<OracleOutcome> {
+  const logs: AgentLog[] = [];
+  let scanned = fromBlock - 1n;
+  for (;;) {
+    const head = await client.getBlockNumber();
+    if (head > scanned) {
+      logs.push(...(await agentLogs(requestId, scanned + 1n, head)));
+      scanned = head;
+    }
+    const outcome = oracleOutcomeFromLogs(logs, requestId);
+    if (outcome.finalizeTx !== null || Date.now() > untilMs) return outcome;
+    await new Promise((r) => setTimeout(r, 3_000));
+  }
+}
+
+function createdFrom(receipt: Receipt): { requestId: bigint; perAgentBudget: bigint; subcommittee: readonly Address[] } | null {
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== SOMNIA_AGENTS.toLowerCase()) continue;
+    try {
+      const ev = decodeEventLog({ abi: somniaAgentsAbi, data: log.data, topics: log.topics });
+      if (ev.eventName === "RequestCreated") {
+        return { requestId: ev.args.requestId, perAgentBudget: ev.args.perAgentBudget, subcommittee: ev.args.subcommittee };
+      }
+    } catch {
+      // another SomniaAgents event
+    }
+  }
+  return null;
+}
+
+function payloadOf(payload: Hex): { selector: Hex; symbols: readonly string[] | null; decimals: number | null } {
+  try {
+    const d = decodeFunctionData({ abi: priceOracleAbi, data: payload });
+    return { selector: payload.slice(0, 10) as Hex, symbols: d.args[0], decimals: d.args[1] };
+  } catch {
+    return { selector: payload.slice(0, 10) as Hex, symbols: null, decimals: null };
+  }
+}
+
+function record(
+  mode: "live" | "from-tx",
+  receipt: Receipt,
+  sent: { requester: Address; agentId: bigint; callback: Address; callbackSelector: Hex; payload: Hex; value: bigint; floor: bigint | null },
+  created: { requestId: bigint; perAgentBudget: bigint; subcommittee: readonly Address[] },
+  outcome: OracleOutcome,
+): never {
+  writeEvidence("g1d-oracle", {
+    mode,
+    requestId: created.requestId,
+    agentId: sent.agentId,
+    requester: sent.requester,
+    callback: sent.callback.toLowerCase() === sent.requester.toLowerCase() ? "referee EOA" : sent.callback,
+    callbackSelector: sent.callbackSelector,
+    payload: payloadOf(sent.payload),
+    depositFloorWei: sent.floor,
+    sentWei: sent.value,
+    perAgentBudget: created.perAgentBudget,
+    subcommittee: created.subcommittee,
+    finalStatus: outcome.finalStatus,
+    finalStatusCode: outcome.finalStatusCode,
+    finalizeTx: outcome.finalizeTx,
+    finalizeBlock: outcome.finalizeBlock,
+    responses: outcome.validatorResponses.length,
+    validatorResponses: outcome.validatorResponses,
+    validatorCostWei: outcome.validatorResponses.reduce((a, r) => a + r.executionCostWei, 0n),
+    outcomeSource: "SomniaAgents logs: RequestFinalized and the per-validator response events",
+    // Prices reach only the callback; the logs carry none, so no symbol is reported from them.
+    symbols: [],
+    tx: txRecord("createRequest", receipt),
+  });
+  console.log(
+    `oracle-probe: request ${created.requestId} -> ${outcome.finalStatus} (${outcome.validatorResponses.length} validator responses` +
+      `${outcome.finalizeTx ? `; finalized in ${outcome.finalizeTx}` : ""})`,
+  );
+  process.exit(outcome.finalizeTx === null ? 1 : 0);
+}
+
+if (fromTx) {
+  // Rebuild from an earlier createRequest transaction: reads only, no key.
+  const hash = fromTx as Hex;
+  const [tx, receipt] = await Promise.all([client.getTransaction({ hash }), client.getTransactionReceipt({ hash })]);
+  if (tx.to?.toLowerCase() !== SOMNIA_AGENTS.toLowerCase()) {
+    console.error(`oracle-probe: ${hash} is not a SomniaAgents transaction`);
+    process.exit(1);
+  }
+  const call = decodeFunctionData({ abi: somniaAgentsAbi, data: tx.input });
+  if (call.functionName !== "createRequest") {
+    console.error(`oracle-probe: ${hash} calls ${call.functionName}, not createRequest`);
+    process.exit(1);
+  }
+  const [agentId, callback, callbackSelector, payload] = call.args;
+  const created = createdFrom(receipt);
+  if (!created) {
+    console.error(`oracle-probe: ${hash} emitted no RequestCreated`);
+    process.exit(1);
+  }
+  let floor: bigint | null = null;
+  try {
+    floor = await client.readContract({ address: SOMNIA_AGENTS, abi: somniaAgentsAbi, functionName: "getRequestDeposit", blockNumber: receipt.blockNumber - 1n });
+  } catch {
+    floor = null; // that block's state is no longer served
+  }
+  const head = await client.getBlockNumber();
+  const last = receipt.blockNumber + REBUILD_SPAN < head ? receipt.blockNumber + REBUILD_SPAN : head;
+  const outcome = oracleOutcomeFromLogs(await agentLogs(created.requestId, receipt.blockNumber, last), created.requestId);
+  record("from-tx", receipt, { requester: tx.from, agentId, callback, callbackSelector, payload, value: tx.value, floor }, created, outcome);
+}
+
+const refereePk = requirePrivateKey("REFEREE_PK");
+const referee: Address = privateKeyToAccount(refereePk).address;
+const wallet = walletFor(refereePk);
+const payload = encodeFunctionData({ abi: priceOracleAbi, functionName: "getPrices", args: [[...SYMBOLS], 18] });
+const floor = await client.readContract({ address: SOMNIA_AGENTS, abi: somniaAgentsAbi, functionName: "getRequestDeposit" });
+const value = floor >= ORACLE_DEPOSIT ? floor + 900_000_000_000_000n : ORACLE_DEPOSIT;
+console.log(`oracle-probe: floor ${floor} wei, sending ${value} wei from ${referee}`);
+if (dryRun) {
+  console.log("dry-run: no transaction sent");
+  process.exit(0);
+}
+const hash = await wallet.writeContract({
+  address: SOMNIA_AGENTS,
+  abi: somniaAgentsAbi,
+  functionName: "createRequest",
+  args: [ORACLE_AGENT_ID, referee, "0x00000000", payload],
+  value,
+});
+const receipt = await client.waitForTransactionReceipt({ hash });
+const created = createdFrom(receipt);
+if (!created) {
+  writeEvidence("g1d-oracle", { mode: "live", requestId: "none", finalStatus: "NoRequestCreated", symbols: [], tx: txRecord("createRequest", receipt) });
+  process.exit(1);
+}
+const outcome = await waitForOutcome(created.requestId, receipt.blockNumber, Date.now() + 180_000);
+record(
+  "live",
+  receipt,
+  { requester: referee, agentId: ORACLE_AGENT_ID, callback: referee, callbackSelector: "0x00000000", payload, value, floor },
+  created,
+  outcome,
+);
+```
+
+- [ ] **Step 6: Type-check (Task 12 runs the rebuild)**
+Run: `npm run typecheck -w @basanos/spike`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 7: Run the package tests (the gate)**
+Run: `npm test -w @basanos/spike`
+Expected: PASS — `21 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `fix(spike): oracle probe reads RequestFinalized from the logs, rebuilds from a tx; strict g1d check`
