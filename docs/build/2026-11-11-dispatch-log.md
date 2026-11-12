@@ -160,3 +160,20 @@ letter while git resolves `C:/`, which the harness reads as a worktree redirect.
 removed; every task in this wave ran sequentially in the main tree (no parallelism, so no isolation needed).
 
 Status: 57 / 70 done. Ready: spike:18 and spike:19 only (human gates: LIVE deposits). Stopped per the guide.
+
+## Resume — P5 wave (2026-11-12)
+
+Synced to `8cec5fe` (manifest 77 tasks). spike:18's evidence (`docs/evidence/deposit-a.json`, left uncommitted by the concierge's run) re-checked key-free (`PASS deposit-a`) and committed. All tasks serial in the main tree (worktree isolation still broken).
+
+| Task | Executor / model | Commit | Gate re-run / checks |
+|---|---|---|---|
+| spike:18 evidence | (concierge run) | 719ff3c | `deposit.ts --account A --check` → PASS deposit-a; 50 USDso credited, 0 locked, 0 pools |
+| referee:13 | executor-medium / opus | 3c4e756 | 16 passed; core 69; 4 files SAME, 2 partial-block files all added lines in plan |
+| referee:14 | executor-medium / opus | cbdf2cf | 3 passed; referee 24; all added lines in plan |
+| referee:15 | executor-medium / opus | 4b6bd40 | 2 passed; bot 11; 60 added lines all in plan |
+| spike:21 | executor-medium / opus | 9f48687 | 2 passed; spike 33; skeleton-close never run |
+| web:11 | executor-high / sonnet | 83e788a | 3 passed; web 35; build OK |
+| web:12 | executor-high / sonnet | 2c7c912 | 3 passed; web 38; build OK |
+| ship:11 | executor-high / sonnet | 6c1da30 | check-readme PASS; README fragments verbatim from plan |
+
+Workspace: 197 tests (core 69, referee 24, spike 33, web 38, ship 11, bot 11, landing 11); typecheck 0 errors; web build `check-env: no VITE_*_PK variables`. Remaining ready: spike:11, spike:19 (human gates).
