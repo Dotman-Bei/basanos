@@ -38,12 +38,31 @@ export type SendResult =
 
 const short = (e: unknown): string => (e instanceof Error ? e.message : String(e)).split("\n")[0]?.slice(0, 160) ?? "";
 
+/** A signed write not yet sent: its hash is known before the send. */
+export interface PreparedWrite {
+  label: string;
+  raw: Hex;
+  hash: Hex;
+  nonce: number;
+}
+
+/** Signs `call` at the pending nonce with ORDER_GAS. Nothing is sent. */
+export async function prepareWrite(s: Sender, label: string, call: UnsignedCall): Promise<PreparedWrite> {
+  const nonce = await s.pendingNonce();
+  const raw = await s.sign(ownerTx(call, nonce, ORDER_GAS));
+  return { label, raw, hash: keccak256(raw), nonce };
+}
+
 /** Signs `call` at the pending nonce with ORDER_GAS, sends it once, and waits for its receipt by the hash known before
  *  the send. A failed send still waits, since a timed-out send may have reached the node. Never re-sends. */
 export async function sendWrite(s: Sender, label: string, call: UnsignedCall, waitMs: number = RECEIPT_WAIT_MS): Promise<SendResult> {
-  const nonce = await s.pendingNonce();
-  const raw = await s.sign(ownerTx(call, nonce, ORDER_GAS));
-  const hash = keccak256(raw);
+  return submitWrite(s, await prepareWrite(s, label, call), waitMs);
+}
+
+/** Sends a prepared write once and waits for its receipt (P7): the demo signs both opens first, then submits them
+ *  together, so the opposite pair enters in the same block or the next. */
+export async function submitWrite(s: Sender, p: PreparedWrite, waitMs: number = RECEIPT_WAIT_MS): Promise<SendResult> {
+  const { label, raw, hash, nonce } = p;
   let reason = "";
   try {
     await s.sendRaw(raw);

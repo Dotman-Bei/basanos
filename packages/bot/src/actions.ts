@@ -26,7 +26,7 @@ import { planOpenFromBook, readBookLevels } from "@basanos/core/book";
 import { repoPath } from "@basanos/core/node";
 import { grantCall, ownerOrderCall, startRunCall } from "@basanos/core/owner-tx";
 import { jsonSafe } from "@basanos/referee";
-import { effectOf, sendWrite, type AccountWrite, type SendResult, type Sender } from "./send";
+import { effectOf, prepareWrite, sendWrite, submitWrite, type AccountWrite, type SendResult, type Sender } from "./send";
 
 export interface Preflight {
   account: Address;
@@ -41,8 +41,8 @@ export interface Preflight {
   equity: bigint;
 }
 
-/** The least unlocked MarginBank margin a demo run needs: its DEMO_LEVERAGE_X (5x) size must clear the 0.00013 BTC
- *  pool minimum (about 1.9 USDso of equity) with room for costs. */
+/** The least unlocked MarginBank margin a demo run needs: its DEMO_LEVERAGE_X (10x since P7) size must clear the
+ *  0.00013 BTC pool minimum (about 0.95 USDso of equity) with room for costs. */
 export const DEMO_MIN_UNLOCKED = 5n * 10n ** 18n;
 
 /** Inferred return type: bound to CHAIN and the key's account. */
@@ -200,6 +200,46 @@ export async function openIoc(
   const order = ownerOrderCall(BTC_POOL, isBid, plan.price, plan.quantity, ORDER_TYPE_IOC, farFutureNs());
   const sent = await sendWrite(viemSender(wallet, client), label, order);
   return settle(client, account, sent, async () => (await positionSize(client, account)) !== before);
+}
+
+/** One leg of an opposite pair: the account, its side and its size. */
+export interface PairLeg {
+  wallet: AccountWallet;
+  isBid: boolean;
+  quantity: bigint;
+}
+
+/** Opens an opposite pair together (architect P7, 2026-11-12). Opposite positions only anti-correlate if they enter
+ *  at the same moment: in the rehearsal the two opens landed 13 s apart, inside a whipsaw, and both lost. Both IOCs are
+ *  capped from ONE book read, both are signed first, then both are sent back to back, so they land in the same block or
+ *  the next. Each leg counts only if its position moved (P6b); nothing is re-sent. */
+export async function openPair(client: PublicClient, legs: readonly PairLeg[]): Promise<AccountWrite[]> {
+  const params = await readBook(client);
+  const levels = await readBookLevels(client, BTC_POOL);
+  if (!levels) throw new Error("the BTC-PERP book could not be read; no order was sent");
+  const ready = await Promise.all(
+    legs.map(async (leg) => {
+      const plan = planOpenFromBook(leg.isBid, leg.quantity, levels, params);
+      const account = leg.wallet.account.address;
+      const sender = viemSender(leg.wallet, client);
+      const before = await positionSize(client, account);
+      const order = ownerOrderCall(BTC_POOL, leg.isBid, plan.price, plan.quantity, ORDER_TYPE_IOC, farFutureNs());
+      return { account, sender, before, prepared: await prepareWrite(sender, leg.isBid ? "open long" : "open short", order) };
+    }),
+  );
+  const sent = await Promise.all(ready.map((r) => submitWrite(r.sender, r.prepared)));
+  return Promise.all(ready.map(async (r, i) => settle(client, r.account, sent[i]!, async () => (await positionSize(client, r.account)) !== r.before)));
+}
+
+/** The --a-manual follower (P7): polls the account's position every `pollMs` until it is open, so the scripted side opens
+ *  right after the human's fill. Returns the size, or null once `untilMs` passes. */
+export async function waitForPosition(client: PublicClient, account: Address, untilMs: number, pollMs = 250): Promise<bigint | null> {
+  for (;;) {
+    const size = await positionSize(client, account);
+    if (size !== 0n) return size;
+    if (Date.now() > untilMs) return null;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
 }
 
 export const DEMO_TAKES = "docs/evidence/demo-takes.json";

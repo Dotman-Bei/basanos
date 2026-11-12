@@ -1,10 +1,13 @@
-// The demo runner. Primary: both builder-operated accounts take Tokyo Sprint · Demo with opposite positions at
-// DEMO_LEVERAGE_X (5x; rules judge closeable equity, spec §5). Fallback (--one-account, only if account B cannot be
-// funded): account A takes two runs in sequence. Run 1 is a FAIL on demand: a 5x long, then size past the 15x
-// exposure cap. Run 2 is the PASS attempt: 5x (--pass-side long|short),
-// held until the referee locks the target or a rule ends it. A PASS is not guaranteed with one account, which is why
-// the two-account demo is primary. Accounts must be FUNDED (own USDso deposited, spike:18 / spike:19); no voucher.
-// The referee daemon (packages/referee/src/cli.ts start) must already be running in another terminal.
+// The demo runner. Primary: both builder-operated accounts take Tokyo Sprint · Demo (demo v2) with opposite positions
+// at DEMO_LEVERAGE_X (10x; rules judge closeable equity, spec §5). Architect P7, 2026-11-12, from a replay of 12 hours
+// of real history: both runs start together, and the pair opens in the same block (openPair: one book read, both IOCs
+// signed first, sent back to back), or, with --a-manual, B opens as soon as A's long is seen. Once one run PASSES, the
+// other, still Active, is pushed past the 15x exposure cap: a FAIL on demand (take.ts). Fallback (--one-account, only
+// if account B cannot be funded): account A takes two runs in sequence. Run 1 is a FAIL on demand: a long, then size
+// past the cap. Run 2 is the PASS attempt (--pass-side long|short), held until the referee locks the target or a rule
+// ends it. A PASS is not guaranteed with one account, which is why the two-account demo is primary. Accounts must be
+// FUNDED (own USDso deposited, spike:18 / spike:19); no voucher. The referee daemon (packages/referee/src/cli.ts start)
+// must already be running in another terminal.
 // Every account write (grant, startRun, opens) is viem-direct (send.ts, P6) and read back from the chain before the
 // take goes on. When one does not take effect, or anything throws (onFailure, P6b): before the take has started a run
 // it stops, and a re-run starts over; once a run has started the take aborts. Nothing is re-sent and no run is voided:
@@ -24,19 +27,21 @@ import {
   makeMarkets,
   notReady,
   openIoc,
+  openPair,
   preflight,
   readBook,
   startRunAs,
+  waitForPosition,
   type AccountWallet,
 } from "./actions";
 import { VERDICT_GRACE_SEC, describeWrite, onFailure, verdictDeadline, type AccountWrite, type WriteKind } from "./send";
+import { breachTarget } from "./take";
 
 loadDotEnv();
 const argv = process.argv.slice(2);
 const manualA = argv.includes("--a-manual");
 const oneAccount = argv.includes("--one-account");
 const passSide = argv[argv.indexOf("--pass-side") + 1] === "short" ? "short" : "long";
-const waitMin = Number(argv[argv.indexOf("--wait-min") + 1] ?? "10") || 10;
 const client = makePublicClient(rpcHttp());
 const registry = requireAddress("REGISTRY_ADDRESS");
 const referee = requireAddress("REFEREE_ADDRESS");
@@ -145,32 +150,40 @@ function runRows(final: readonly (Run | undefined)[]) {
 async function twoAccountTake(): Promise<void> {
   const [accA, accB] = accounts;
   if (!accA || !accB) throw new Error("two accounts expected");
-  for (const a of accounts) await startRun(a);
+  // Both runs start together, and the pair opens only once both have started (P7).
+  await Promise.all(accounts.map((a) => startRun(a)));
+  started.sort((x, y) => accounts.findIndex((a) => a.address === x.account) - accounts.findIndex((a) => a.address === y.account));
   const book = await readBook(client);
   const snap = await readSnapshot(client, accounts.map((a) => a.address), BTC_POOL);
+  const qtyA = quantityForLeverage(snap.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
   const qtyB = quantityForLeverage(snap.accounts[1]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
-  check("open", await openIoc(client, accB.wallet, false, qtyB));
-  say(`B short ${qtyB} at ${DEMO_LEVERAGE_X}x`);
+  const until = verdictDeadline(lastStartMs, rb.timeLimitSec);
   if (manualA) {
-    say(`A: open the long from the Basanos terminal now (${DEMO_LEVERAGE_X}x).`);
+    say(`A: open the long from the Basanos terminal now (${DEMO_LEVERAGE_X}x); B opens its short as soon as A's long is seen.`);
+    const sizeA = await waitForPosition(client, accA.address, until);
+    if (sizeA === null) throw new Error("account A opened no position before the time limit");
+    check("open", await openIoc(client, accB.wallet, false, qtyB));
+    say(`A long ${sizeA} seen; B short ${qtyB} at ${DEMO_LEVERAGE_X}x`);
   } else {
-    const qtyA = quantityForLeverage(snap.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
-    check("open", await openIoc(client, accA.wallet, true, qtyA));
-    say(`A long ${qtyA} at ${DEMO_LEVERAGE_X}x`);
+    const opens = await openPair(client, [
+      { wallet: accA.wallet, isBid: true, quantity: qtyA },
+      { wallet: accB.wallet, isBid: false, quantity: qtyB },
+    ]);
+    for (const w of opens) if (w.sent.tx) txs.push(w.sent.tx);
+    const failed = opens.find((w) => w.effect !== "done");
+    if (failed) throw new WriteFailed("open", opens.map((w) => describeWrite(w)).join("; "));
+    say(`A long ${qtyA} and B short ${qtyB} at ${DEMO_LEVERAGE_X}x, sent together`);
   }
-  const openedAt = Date.now();
-  let tried = false;
+  // The FAIL on demand (take.ts): once one run PASSES, the other, still Active, is pushed past the exposure cap.
   let breached = false;
-  const final = await waitVerdicts(
-    started.map((r) => r.runId),
-    verdictDeadline(lastStartMs, rb.timeLimitSec),
-    async (rs) => {
-      if (tried || Date.now() - openedAt <= waitMin * 60_000 || rs[1]?.status !== 1) return;
-      tried = true; // one attempt only
-      say("market still: exposure breach on B (FAIL on demand); A resolves or hits its time limit");
-      breached = await topUp(accB, book);
-    },
-  );
+  const final = await waitVerdicts(started.map((r) => r.runId), until, async (rs) => {
+    const i = breachTarget(rs.map((r) => RUN_STATUS[r.status] ?? "None"), breached);
+    const target = i === null ? undefined : accounts[i];
+    if (!target) return;
+    breached = true;
+    say(`a run PASSED: exposure breach on ${target.name} (FAIL on demand)`);
+    await topUp(target, book);
+  });
   if (!final) throw new Error(`a run is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after the last start; check the referee terminal`);
   const flat = await flatAll(started.map((r) => r.account), 120_000);
   const take = appendDemoTake({ at: new Date().toISOString(), mode, rulebook: { id, label: rb.label }, runs: runRows(final), breachedOnDemand: breached, flatAfter: flat, notes, txs });
