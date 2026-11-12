@@ -450,5 +450,272 @@
       "costWei": "19193472000000000",
       "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x2a4e54184986a2b554d24bedc4fd7e7ab4ed31f6d221220ab2fbab61c663aca7"
     }
+  },
+  "3": {
+    "bundle": {
+      "runId": "3",
+      "account": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+      "rulebook": {
+        "name": "Tokyo Sprint",
+        "variant": "demo",
+        "label": "Tokyo Sprint · Demo",
+        "id": "0x5a5af7ee9971c4921c5616b1d462d5df50afc6872a13362337e520699608c448"
+      },
+      "startBlock": "48539976",
+      "startEquity": "49671425000000000000",
+      "gaps": [],
+      "verdict": "PASSED",
+      "lock": {
+        "blockNumber": "48541592",
+        "judgedEquity": "50063345000000000000",
+        "bufferBps": 10
+      },
+      "close": {
+        "flat": true,
+        "finalSize": "0",
+        "attempts": 1,
+        "txs": [
+          {
+            "label": "close",
+            "hash": "0xfdf79939e50b31b3b5452d5a854d78932dedefafa1d34154a289cc5e38b75548",
+            "status": "success",
+            "gasUsed": "1751448",
+            "costWei": "10508688000000000",
+            "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0xfdf79939e50b31b3b5452d5a854d78932dedefafa1d34154a289cc5e38b75548"
+          }
+        ],
+        "notes": []
+      }
+    },
+    "evidenceHash": "0x3a3e7eaf829c977633a53cdcdf53826e3a319ef7533f207598fcea11b6894e61",
+    "verdictTx": {
+      "label": "recordPass",
+      "hash": "0xc9686bcf33e34d4371caeaf1dbabf12336671a2b979cea5d0c0abec8e314272c",
+      "status": "success",
+      "gasUsed": "1419929",
+      "costWei": "8519574000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0xc9686bcf33e34d4371caeaf1dbabf12336671a2b979cea5d0c0abec8e314272c"
+    }
+  },
+  "4": {
+    "bundle": {
+      "runId": "4",
+      "account": "0x1609F6ABE3aD29B45D1F2fdd15a15d17AbB326aD",
+      "rulebook": {
+        "name": "Tokyo Sprint",
+        "variant": "demo",
+        "label": "Tokyo Sprint · Demo",
+        "id": "0x5a5af7ee9971c4921c5616b1d462d5df50afc6872a13362337e520699608c448"
+      },
+      "startBlock": "48539978",
+      "startEquity": "49711250000000000000",
+      "gaps": [],
+      "verdict": "FAILED",
+      "rule": "MaxExposure",
+      "breach": {
+        "blockNumber": "48541742",
+        "equityOk": true,
+        "equity": "50276695644459522879",
+        "lockedCollateral": "0",
+        "positionSize": "-1108000",
+        "markOk": true,
+        "markPrice": "72001159237864664000000"
+      },
+      "judged": {
+        "equity": "48976559999999999999",
+        "book": {
+          "blockNumber": "48541742",
+          "bids": [
+            {
+              "price": "72106200000000000000000",
+              "quantity": "972000"
+            },
+            {
+              "price": "72105800000000000000000",
+              "quantity": "1389000"
+            },
+            {
+              "price": "72104100000000000000000",
+              "quantity": "6250000"
+            },
+            {
+              "price": "72102800000000000000000",
+              "quantity": "6250000"
+            },
+            {
+              "price": "72102200000000000000000",
+              "quantity": "2778000"
+            },
+            {
+              "price": "72100200000000000000000",
+              "quantity": "9723000"
+            },
+            {
+              "price": "72097000000000000000000",
+              "quantity": "62506000"
+            },
+            {
+              "price": "72092600000000000000000",
+              "quantity": "16670000"
+            },
+            {
+              "price": "72085500000000000000000",
+              "quantity": "31954000"
+            },
+            {
+              "price": "72043900000000000000000",
+              "quantity": "26040000"
+            },
+            {
+              "price": "72041800000000000000000",
+              "quantity": "658000"
+            },
+            {
+              "price": "72019900000000000000000",
+              "quantity": "26040000"
+            },
+            {
+              "price": "71993900000000000000000",
+              "quantity": "23151000"
+            },
+            {
+              "price": "71936300000000000000000",
+              "quantity": "46338000"
+            },
+            {
+              "price": "71932700000000000000000",
+              "quantity": "334000"
+            },
+            {
+              "price": "71925000000000000000000",
+              "quantity": "1316000"
+            },
+            {
+              "price": "71919300000000000000000",
+              "quantity": "601000"
+            },
+            {
+              "price": "71890200000000000000000",
+              "quantity": "96000"
+            },
+            {
+              "price": "71878700000000000000000",
+              "quantity": "69562000"
+            },
+            {
+              "price": "71878200000000000000000",
+              "quantity": "29650000"
+            }
+          ],
+          "asks": [
+            {
+              "price": "72118500000000000000000",
+              "quantity": "1389000"
+            },
+            {
+              "price": "72121400000000000000000",
+              "quantity": "4167000"
+            },
+            {
+              "price": "72121900000000000000000",
+              "quantity": "9723000"
+            },
+            {
+              "price": "72122700000000000000000",
+              "quantity": "1389000"
+            },
+            {
+              "price": "72123100000000000000000",
+              "quantity": "16669000"
+            },
+            {
+              "price": "72123800000000000000000",
+              "quantity": "2083000"
+            },
+            {
+              "price": "72124700000000000000000",
+              "quantity": "9028000"
+            },
+            {
+              "price": "72124900000000000000000",
+              "quantity": "31950000"
+            },
+            {
+              "price": "72137900000000000000000",
+              "quantity": "62506000"
+            },
+            {
+              "price": "72152100000000000000000",
+              "quantity": "10000000"
+            },
+            {
+              "price": "72183200000000000000000",
+              "quantity": "25000000"
+            },
+            {
+              "price": "72212600000000000000000",
+              "quantity": "25000000"
+            },
+            {
+              "price": "72216500000000000000000",
+              "quantity": "323000"
+            },
+            {
+              "price": "72236200000000000000000",
+              "quantity": "25000000"
+            },
+            {
+              "price": "72236300000000000000000",
+              "quantity": "583000"
+            },
+            {
+              "price": "72265900000000000000000",
+              "quantity": "907000"
+            },
+            {
+              "price": "72280400000000000000000",
+              "quantity": "1296000"
+            },
+            {
+              "price": "77931900000000000000000",
+              "quantity": "6415000"
+            },
+            {
+              "price": "78765000000000000000000",
+              "quantity": "126000"
+            },
+            {
+              "price": "81246000000000000000000",
+              "quantity": "14991000"
+            }
+          ]
+        }
+      },
+      "close": {
+        "flat": true,
+        "finalSize": "0",
+        "attempts": 1,
+        "txs": [
+          {
+            "label": "close",
+            "hash": "0x09d3c86c16976c96d2229a4e7dbc9fdbbfdabaa1370b4b043b0b1edfa261b441",
+            "status": "success",
+            "gasUsed": "1698166",
+            "costWei": "10188996000000000",
+            "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x09d3c86c16976c96d2229a4e7dbc9fdbbfdabaa1370b4b043b0b1edfa261b441"
+          }
+        ],
+        "notes": []
+      }
+    },
+    "evidenceHash": "0x599b2065a03308d52ab6e59614ca45abae5f566a84025af9f50b474bb3974f82",
+    "verdictTx": {
+      "label": "recordFail",
+      "hash": "0x579377b42e04a9f60cd80134864fa7b8887f4b035eb0cbc4f716cf9d44df5f16",
+      "status": "success",
+      "gasUsed": "2411768",
+      "costWei": "14470608000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x579377b42e04a9f60cd80134864fa7b8887f4b035eb0cbc4f716cf9d44df5f16"
+    }
   }
 }

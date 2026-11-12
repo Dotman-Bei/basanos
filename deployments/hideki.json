@@ -22,9 +22,16 @@
       "gasUsed": "718540"
     },
     {
-      "name": "tokyo-sprint-demo",
+      "name": "tokyo-sprint-demo-v1",
       "id": "0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757",
       "tx": "0xe119222c4093dd34828d70bfcf06fa1dc7a8c4e9e3c8cade44598f92ed6e9016",
+      "status": "success",
+      "gasUsed": "718540"
+    },
+    {
+      "name": "tokyo-sprint-demo",
+      "id": "0x5a5af7ee9971c4921c5616b1d462d5df50afc6872a13362337e520699608c448",
+      "tx": "0xab800465701907e41a53c85388dc5e9b9e989d9002d22449b9a820672106c30c",
       "status": "success",
       "gasUsed": "718540"
     }

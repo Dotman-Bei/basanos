@@ -1,0 +1,28 @@
+{
+  "evidence": "rehearsal-pass",
+  "writtenAt": "2026-11-12T18:43:37.672Z",
+  "registry": "0xf5D8099239200DF961E0910A42C105214D1E9370",
+  "take": 2,
+  "passRunId": "3",
+  "runs": [
+    {
+      "runId": "3",
+      "account": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+      "status": 2,
+      "rule": 0,
+      "holder": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+      "statusName": "Passed",
+      "ruleName": "None"
+    },
+    {
+      "runId": "4",
+      "account": "0x1609F6ABE3aD29B45D1F2fdd15a15d17AbB326aD",
+      "status": 3,
+      "rule": 3,
+      "holder": null,
+      "statusName": "Failed",
+      "ruleName": "MaxExposure"
+    }
+  ],
+  "problems": []
+}
