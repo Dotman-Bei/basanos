@@ -16,6 +16,7 @@
 - **No task claims a voucher**, because `claim()` reverts chain-wide (B14). Each challenge account is funded with its own wallet USDso, deposited into its own MarginBank balance (spike:18 for A, spike:19 for B). The verdict path never calls `getMarginEvents`, `listPerpMarginPulls` or `listPerpMainFundingEvents` (R1).
 - Task 10 is human-gated: it signs with `REFEREE_PK`, `ACCOUNT_A_PK` and `ACCOUNT_B_PK`, and it produces the first real verdict runs (`docs/evidence/rehearsal.json`) that the landing plan builds against.
 - The repo path contains a space (tollgate S3). Every command here is run from the repo root.
+- **Tasks 16 and 17 (P6, 2026-11-12)** run before Task 10. The bot's grant, `startRun` and opens leave the SDK's send path for viem-direct sends that are read back from the chain and never re-sent. A take that fails after a run started aborts into `docs/evidence/demo-aborted.json`. Task 16 moves the account-write builders from the spike's `live-lib.ts` into `@basanos/core/owner-tx`; `live-lib.ts` re-exports them.
 
 ---
 
@@ -2519,18 +2520,18 @@ Message: `feat(referee): demo-cost check, rulebook registration and rehearsal ch
 - Modify: `rulebooks/tokyo-sprint-demo.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 7, Task 8, Task 9, Task 11, Task 12, Task 14, Task 15, contracts:Task 10, contracts:Task 11, spike:Task 11, spike:Task 18, spike:Task 19
+**Depends on:** Task 7, Task 8, Task 9, Task 11, Task 12, Task 14, Task 15, Task 17, contracts:Task 10, contracts:Task 11, spike:Task 11, spike:Task 18, spike:Task 19
 **Effort:** medium
 **Model tier:** top
 **Provides:** `docs/evidence/rehearsal.json (first real verdict runs: firstVerdictRunId, runs with statusName, ruleName, closeTxs)`, `docs/evidence/runs.json (per-run evidence bundles + evidenceHash + verdictTx)`, `docs/evidence/demo-takes.json (demo takes with run ids and tx hashes)`
-**Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)`, `CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (closeable-equity cost: the spread for the demo size walked from one book read, at DEMO_LEVERAGE_X)`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)`, `CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`
+**Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback; every account write viem-direct and read back; a take that fails after a run started aborts: nothing re-sent, verdicts awaited, recorded in docs/evidence/demo-aborted.json, exit 1)`, `CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (closeable-equity cost: the spread for the demo size walked from one book read, at DEMO_LEVERAGE_X)`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)`, `CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`
 
 **Human-gated.** This signs real transactions with `REFEREE_PK` (closes and verdicts, plus 0.0309 STT per PASS or FAIL verdict for the Price Oracle, mostly rebated; set `ORACLE_ENABLED=true` in `.env` first), `ACCOUNT_A_PK` and `ACCOUNT_B_PK` (grant, `startRun`, orders). Needed first:
 - all three burners topped up to about 1 STT from the Tokyo faucet;
 - `REGISTRY_ADDRESS` and `REFEREE_ADDRESS` set in `.env`;
 - both accounts flat, each funded: its own USDso deposited in its own MarginBank balance (spike:18, spike:19; no voucher).
 
-No voucher is ever claimed. The referee judges closeable equity (referee:13, referee:14), and the demo opens from the book at 5× (referee:15), so a fresh position starts only the spread down, not the mark-to-book basis. `rulebooks/tokyo-sprint-demo.json` and `deployments/hideki.json` change only if step 1 fails.
+No voucher is ever claimed. The referee judges closeable equity (referee:13, referee:14), and the demo opens from the book at 5× (referee:15), so a fresh position starts only the spread down, not the mark-to-book basis. The demo's own writes (grant, `startRun`, opens) are viem-direct and read back from the chain, never re-sent (referee:16, referee:17): the first GO stopped at B's grant on the SDK's send path (B18). `rulebooks/tokyo-sprint-demo.json` and `deployments/hideki.json` change only if step 1 fails.
 
 - [ ] **Step 1: Check the demo target against real costs**
 Run: `npx tsx packages/bot/src/demo-check.ts` (it sizes from A's and B's live equity; `--equity <USDso>` is only for checking before the accounts are funded)
@@ -2547,8 +2548,13 @@ Expected: `referee watching registry 0x…`. Keep this terminal open until step 
 Run: `npx tsx packages/bot/src/demo.ts`
 Expected:
 - the line `Basanos demo: both challenge accounts are burners operated by the builder …`;
+- a `granted the referee place + cancel on BTC-PERP` line for each account not yet granted (B; A was granted by spike:11);
 - two `run <id> on Tokyo Sprint · Demo` lines, then `runs …` status lines every 2 s;
 - within about 15 minutes, both runs leave `Active`. Terminal 1 shows the referee's `breach … cancelling and closing`, its close tx links, then `FAILED (DailyLoss)` or `PASSED`. The take ends with `take 1 recorded in docs/evidence/demo-takes.json`.
+
+If it prints a `STOP:` line instead, stop and report; no second take without a new GO:
+- **`STOP:` before any `run <id>` line:** the take started nothing. Nothing was re-sent and nothing needs cleaning up.
+- **`STOP: take aborted: …`:** a write failed after a run started. Nothing was re-sent and no run was voided. The demo waits for the referee's verdicts, at most the 900 s time limit + 300 s, so keep terminal 1 running until it exits. It records the take in `docs/evidence/demo-aborted.json` (leave it for the orchestrator) and exits 1.
 
 - [ ] **Step 4: Stop the referee and check the rehearsal (the gate)**
 Stop terminal 1 with Ctrl+C.
@@ -4993,3 +4999,1338 @@ Expected: PASS — `2 passed`.
 
 - [ ] **Step 10: Commit (kernel-performed — no agent runs this)**
 Message: `fix(bot): open from the book, run the demo at 5x, measure the demo cost as the spread (P5)`
+
+---
+
+### Task 16: Account writes in core — the grant, open and startRun calls, byte-identical to the SDK's encoding (P6)
+
+**Files:**
+- Create: `packages/core/src/owner-tx.ts`
+- Modify: `packages/spike/src/live-lib.ts`
+- Test: `packages/core/test/owner-tx.test.ts`
+
+**Depends on:** spike:Task 2, contracts:Task 8, spike:Task 10, spike:Task 14, spike:Task 15, spike:Task 16
+**Effort:** low
+**Model tier:** standard
+**Provides:** `interface UnsignedCall { to: Address; data: Hex; value: bigint }`, `ownerPoolAbi (owner-side placeOrder, selector 0x4e978373)`, `ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall`, `grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall`, `startRunCall(registry: Address, account: Address, rulebookId: Hex): UnsignedCall`, `ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }`, `@basanos/core/owner-tx (the account-write builders, byte-identical to the SDK's encoding; packages/spike/src/live-lib.ts re-exports them)`
+**Requires:** `operatorRegistryAbi`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `BTC_POOL`, `CANCEL_ORDER_FOR_SELECTOR`, `PLACE_ORDER_FOR_SELECTOR`, `CHAIN (hidekiTestnet, id 50383)`, `HIDEKI_ADDRESSES`, `INDEXER_URL`, `OPERATOR_REGISTRY`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_IOC = 2`
+
+Why (architect P6, 2026-11-12; spec §9): referee:17 moves the bot's own writes onto viem-direct, as spike:14 did for account A's skeleton writes. The calls it signs must be the bytes the SDK encodes. spike:14's builders live in `packages/spike/src/live-lib.ts`, which the bot cannot import, so this task moves them into `@basanos/core/owner-tx`:
+- `ownerOrderCall`, `grantCall`, `ownerTx`, `ownerPoolAbi` and `UnsignedCall` move unchanged. `live-lib.ts` re-exports them, so the spike scripts and their tests keep one import and the spike suite stays at 35.
+- `startRunCall` is new: the account's own `startRun(account, rulebookId)`.
+- The test pins the bytes to the SDK itself: the opening IOC against the SDK's own build verb `buildPlacePerpOrder` (which shares its call with `placePerpOrder`), on both sides, built from a throwaway key that is never funded and sends nothing; the grant against `operatorRegistryWriteAbi.setOperatorApprovalForPool` (the SDK has no build verb for it).
+
+Checked read-only on Hideki on 2026-11-12, from public addresses only: B's grant, B's book-capped 5× short and A's book-capped 5× long simulate OK; A's `startRun` simulates OK (previewStart code 0); B's reverts with code 3 until its grant lands, which the demo sends first.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/core/test/owner-tx.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { decodeFunctionData, encodeFunctionData, type Address } from "viem";
+import { generatePrivateKey } from "viem/accounts";
+import { SomniaMarkets, operatorRegistryWriteAbi } from "@somnia-chain/markets-sdk";
+import {
+  BTC_POOL,
+  CANCEL_ORDER_FOR_SELECTOR,
+  CHAIN,
+  HIDEKI_ADDRESSES,
+  INDEXER_URL,
+  OPERATOR_REGISTRY,
+  ORDER_GAS,
+  ORDER_TYPE_IOC,
+  PLACE_ORDER_FOR_SELECTOR,
+  basanosRegistryAbi,
+} from "../src/index";
+import { grantCall, ownerOrderCall, ownerTx, startRunCall } from "../src/owner-tx";
+
+const E18 = 10n ** 18n;
+const REFEREE: Address = "0xE358D82209ea9360F411A041C0200adc385877eb";
+const ACCOUNT: Address = "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1";
+const REGISTRY: Address = "0xf5d8099239200dF961E0910a42c105214d1e9370";
+const EXPIRY = 3_371_163_205_000_000_000n;
+
+describe("account writes build the bytes the SDK encodes (P6)", () => {
+  it("encodes an opening IOC exactly as the SDK's own build verb, on both sides", async () => {
+    // A throwaway key, never funded: the SDK needs one to hand out a trader. Building sends nothing.
+    const trader = new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES, privateKey: generatePrivateKey() }).trader;
+    for (const isBid of [true, false]) {
+      const price = isBid ? 72_797_900n * 10n ** 15n : 72_506_200n * 10n ** 15n;
+      const { order } = await trader.buildPlacePerpOrder({ pool: BTC_POOL, isBid, price, quantity: 342_000n, orderType: ORDER_TYPE_IOC, expireTimestampNs: EXPIRY });
+      const c = ownerOrderCall(BTC_POOL, isBid, price, 342_000n, ORDER_TYPE_IOC, EXPIRY);
+      expect(c.to).toBe(order.to);
+      expect(c.value).toBe(order.value);
+      expect(c.data).toBe(order.data);
+      expect(c.data.slice(0, 10)).toBe("0x4e978373");
+    }
+  });
+  it("encodes the referee's grant exactly as the SDK's setOperatorApprovalForPool", () => {
+    const selectors = [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR];
+    const c = grantCall(OPERATOR_REGISTRY, BTC_POOL, REFEREE, selectors);
+    expect(c.to).toBe(OPERATOR_REGISTRY);
+    expect(c.value).toBe(0n);
+    expect(c.data.slice(0, 10)).toBe("0x7bbc67e6");
+    expect(c.data).toBe(encodeFunctionData({ abi: operatorRegistryWriteAbi, functionName: "setOperatorApprovalForPool", args: [BTC_POOL, REFEREE, selectors, true] }));
+  });
+  it("encodes startRun for the account itself", () => {
+    const id = "0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757";
+    const c = startRunCall(REGISTRY, ACCOUNT, id);
+    expect(c.to).toBe(REGISTRY);
+    expect(c.value).toBe(0n);
+    const d = decodeFunctionData({ abi: basanosRegistryAbi, data: c.data });
+    expect(d.functionName).toBe("startRun");
+    expect(d.args).toEqual([ACCOUNT, id]);
+  });
+  it("signs with ORDER_GAS and an explicit nonce", () => {
+    const c = ownerOrderCall(BTC_POOL, true, 72_000n * E18, 13_000n, ORDER_TYPE_IOC, EXPIRY);
+    expect(ownerTx(c, 2, ORDER_GAS)).toEqual({ to: BTC_POOL, data: c.data, value: 0n, gas: 10_000_000n, nonce: 2 });
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/core -- test/owner-tx.test.ts`
+Expected: FAIL — `Cannot find module '../src/owner-tx'`.
+
+- [ ] **Step 3: Add the account-write builders to core**
+
+`packages/core/src/owner-tx.ts`:
+```ts
+// The writes a challenge account signs itself, as unsigned calls, and the exact transaction it signs (P6, 2026-11-12).
+// Moved here from packages/spike/src/live-lib.ts (spike:14), which re-exports them, so the bot and the spike build the
+// same bytes. Each call encodes what the SDK's own write encodes: placeOrder as perpPoolWriteAbi (the SDK's
+// placePerpOrder and buildPlacePerpOrder), the grant as operatorRegistryWriteAbi (the SDK's setOperatorApprovalForPool);
+// owner-tx.test.ts pins both byte for byte. Nothing here sends: packages/bot/src/send.ts and the spike scripts do.
+import { encodeFunctionData, parseAbi, zeroAddress, type Address, type Hex } from "viem";
+import { operatorRegistryAbi } from "./abi";
+import { basanosRegistryAbi } from "./abi/basanosRegistry";
+
+/** An unsigned call: the same shape as the SDK's build verbs return (to, data, value). */
+export interface UnsignedCall {
+  to: Address;
+  data: Hex;
+  value: bigint;
+}
+
+/** Owner-side PerpPool order: the SDK 0.33.0 perpPoolWriteAbi signature, selector 0x4e978373 (present in the BTC
+ *  pool's beacon implementation; a far resting bid simulates OK from an active account). */
+export const ownerPoolAbi = parseAbi([
+  "function placeOrder(bool isBid, uint64 userData, uint256 price, uint256 quantity, uint64 expireTimestampNs, uint8 orderType, uint8 selfMatchingOption, address builder, uint96 builderFeeBpsTimes1k)",
+]);
+
+/** Raw placeOrder on the pool, with the arguments the SDK's placePerpOrder fills in (userData 0, no self-match option, no builder). */
+export function ownerOrderCall(
+  pool: Address,
+  isBid: boolean,
+  price: bigint,
+  quantity: bigint,
+  orderType: number,
+  expireTimestampNs: bigint,
+): UnsignedCall {
+  return {
+    to: pool,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: ownerPoolAbi,
+      functionName: "placeOrder",
+      args: [isBid, 0n, price, quantity, expireTimestampNs, orderType, 0, zeroAddress, 0n],
+    }),
+  };
+}
+
+/** The per-pool operator grant on the OperatorPermissionsRegistry (the SDK has no build verb for it). */
+export function grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall {
+  return {
+    to: registry,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: operatorRegistryAbi,
+      functionName: "setOperatorApprovalForPool",
+      args: [pool, operator, [...selectors], true],
+    }),
+  };
+}
+
+/** The account enrolls itself on a rulebook (msg.sender == account; the registry reads its start equity in the same tx). */
+export function startRunCall(registry: Address, account: Address, rulebookId: Hex): UnsignedCall {
+  return {
+    to: registry,
+    value: 0n,
+    data: encodeFunctionData({ abi: basanosRegistryAbi, functionName: "startRun", args: [account, rulebookId] }),
+  };
+}
+
+/** The exact transaction an account signs: a fixed gas limit and an explicit nonce. */
+export function ownerTx(
+  call: UnsignedCall,
+  nonce: number,
+  gas: bigint,
+): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number } {
+  return { to: call.to, data: call.data, value: call.value, gas, nonce };
+}
+```
+
+- [ ] **Step 4: Re-export them from the spike**
+
+Replace `packages/spike/src/live-lib.ts` with:
+```ts
+import {
+  decodeAbiParameters,
+  decodeFunctionResult,
+  getAbiItem,
+  getAddress,
+  parseAbi,
+  parseAbiParameters,
+  toEventSelector,
+  type Address,
+  type Hex,
+} from "viem";
+import { ORACLE_DEPOSIT, explorerTx, priceOracleAbi, somniaAgentsAbi, type AccountSnapshot } from "@basanos/core";
+
+export interface TxRecord {
+  label: string;
+  hash: Hex;
+  status: "success" | "reverted";
+  gasUsed: bigint;
+  costWei: bigint;
+  explorer: string;
+}
+
+export function txRecord(
+  label: string,
+  receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint },
+): TxRecord {
+  return {
+    label,
+    hash: receipt.transactionHash,
+    status: receipt.status,
+    gasUsed: receipt.gasUsed,
+    costWei: receipt.gasUsed * receipt.effectiveGasPrice,
+    explorer: explorerTx(receipt.transactionHash),
+  };
+}
+
+export function sumCosts(txs: readonly TxRecord[]): bigint {
+  return txs.reduce((acc, t) => acc + t.costWei, 0n);
+}
+
+export function isFlat(s: AccountSnapshot): boolean {
+  return s.size === 0n && s.lockedCollateral === 0n && s.activePools.length === 0;
+}
+
+/** SomniaAgents ResponseStatus, in declaration order. */
+export const ORACLE_STATUS = ["None", "Pending", "Success", "Failed", "TimedOut"] as const;
+
+export function decodeOraclePrices(
+  result: Hex,
+  symbols: readonly string[],
+): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[] {
+  const [prices, numSources, lastUpdated] = decodeFunctionResult({ abi: priceOracleAbi, functionName: "getPrices", data: result });
+  return symbols.map((symbol, i) => ({
+    symbol,
+    price: prices[i] ?? 0n,
+    numSources: numSources[i] ?? 0,
+    lastUpdated: lastUpdated[i] ?? 0n,
+  }));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Owner-side writes (account A). The default path signs locally with viem and sends eth_sendRawTransaction to the
+// standard RPC (rpcHttp(), api.hideki…), with ORDER_GAS and an explicit nonce. The SDK's own send path
+// (eth_sendRawTransactionSync on send.hideki…, which surfaced TransactionOutcomeUnknownError in the Step 3
+// preflight) is an opt-in fallback behind --sdk-send. The SDK stays in use for reads.
+// The call builders live in @basanos/core/owner-tx since P6 (2026-11-12), shared with the bot; they are re-exported
+// here so the spike scripts and their tests keep one import.
+// ---------------------------------------------------------------------------------------------------------------
+
+export { grantCall, ownerOrderCall, ownerPoolAbi, ownerTx, type UnsignedCall } from "@basanos/core/owner-tx";
+
+/** How account A's own writes reach the chain; recorded in the evidence as `sendPath`. */
+export type SendPath = "viem" | "sdk";
+
+export function parseSendPath(argv: readonly string[]): SendPath {
+  return argv.includes("--sdk-send") ? "sdk" : "viem";
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Price Oracle outcome from SomniaAgents logs. getRequest cannot report it: the platform deletes a request once it
+// finalizes, and getRequest then reverts RequestNotFound (0x4ec726c7). Request 7773100 (2026-11-11) finalized one
+// block after creation, so a getRequest poll only ever saw the revert.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** topic0 of RequestFinalized(uint256 indexed requestId, uint8 status). */
+export const REQUEST_FINALIZED_TOPIC: Hex = toEventSelector(getAbiItem({ abi: somniaAgentsAbi, name: "RequestFinalized" }));
+
+/** topic0 of SomniaAgents' per-validator response event. It is not in the published ABI. Its topics are
+ *  [topic0, requestId, validator] and its data is four words, the last being the validator's execution cost in wei
+ *  (seen on requests 7773100 and 7773101). It carries no result bytes: prices reach only the callback. */
+export const AGENT_RESPONSE_TOPIC: Hex = "0x1b44ed537f0ae64cca44e5a71b06bc838a30bbc5454ffdc2aee3844926264dfd";
+
+export interface AgentLog {
+  topics: readonly Hex[];
+  data: Hex;
+  transactionHash: Hex | null;
+  blockNumber: bigint | null;
+}
+
+export interface ValidatorResponse {
+  validator: Address;
+  executionCostWei: bigint;
+  words: bigint[];
+  tx: Hex | null;
+  block: bigint | null;
+}
+
+export interface OracleOutcome {
+  /** An ORACLE_STATUS name, or "NotFinalized" while no RequestFinalized log for the request has been seen. */
+  finalStatus: string;
+  finalStatusCode: number | null;
+  finalizeTx: Hex | null;
+  finalizeBlock: bigint | null;
+  validatorResponses: ValidatorResponse[];
+}
+
+export function oracleOutcomeFromLogs(logs: readonly AgentLog[], requestId: bigint): OracleOutcome {
+  const out: OracleOutcome = { finalStatus: "NotFinalized", finalStatusCode: null, finalizeTx: null, finalizeBlock: null, validatorResponses: [] };
+  for (const log of logs) {
+    const [t0, t1, t2] = log.topics;
+    if (!t0 || !t1 || BigInt(t1) !== requestId) continue;
+    if (t0.toLowerCase() === REQUEST_FINALIZED_TOPIC.toLowerCase()) {
+      const code = Number(BigInt(log.data));
+      out.finalStatusCode = code;
+      out.finalStatus = ORACLE_STATUS[code] ?? `status ${code}`;
+      out.finalizeTx = log.transactionHash;
+      out.finalizeBlock = log.blockNumber;
+    } else if (t0.toLowerCase() === AGENT_RESPONSE_TOPIC && t2) {
+      const words = (log.data.slice(2).match(/.{64}/g) ?? []).map((w) => BigInt(`0x${w}`));
+      out.validatorResponses.push({
+        validator: getAddress(`0x${t2.slice(26)}`),
+        executionCostWei: words[words.length - 1] ?? 0n,
+        words,
+        tx: log.transactionHash,
+        block: log.blockNumber,
+      });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Oracle probes P1 / P2 (guide GO, 2026-11-11). P1 asks one symbol through the 4-argument createRequest (Majority
+// consensus): the registry's exact path. P2 asks it through createAdvancedRequest with Threshold consensus (2 of 3,
+// 30 s, 0.01 STT per validator): the call dreamDEX's PriceFeedScheduler makes every 5 blocks.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** createAdvancedRequest, selector 0x9256632b. The types are confirmed by that selector and by the scheduler's call
+ *  arguments (3, 2, 1, 30); it returns the request id (eth_call). The parameter names are ours. */
+export const agentsAdvancedAbi = parseAbi([
+  "function createAdvancedRequest(uint256 agentId, address callbackAddress, bytes4 callbackSelector, bytes payload, uint256 subcommitteeSize, uint256 threshold, uint8 consensusType, uint256 timeout) payable returns (uint256 requestId)",
+]);
+
+/** Threshold consensus as the PriceFeedScheduler uses it. consensusType 1 = Threshold (0 = Majority, the default). */
+export const ADVANCED_REQUEST = {
+  subcommitteeSize: 3n,
+  threshold: 2n,
+  consensusType: 1,
+  timeoutSec: 30n,
+  perAgentBudgetWei: 10_000_000_000_000_000n,
+} as const;
+
+/** Hard cap on what one probe may send: 0.1 STT. */
+export const PROBE_MAX_WEI = 100_000_000_000_000_000n;
+
+export type OracleEvidence = "g1d-oracle" | "g1d-probe-p1" | "g1d-probe-p2";
+
+export interface ProbeArgs {
+  dryRun: boolean;
+  fromTx: Hex | null;
+  symbols: string[];
+  advanced: boolean;
+  evidence: OracleEvidence;
+}
+
+/** No flags: the original G1(d) request (two symbols) into g1d-oracle. --symbols: P1 into g1d-probe-p1.
+ *  --advanced: P2 into g1d-probe-p2 (one symbol, BTC/USDC:PERP, unless --symbols says otherwise). */
+export function parseProbeArgs(argv: readonly string[]): ProbeArgs {
+  const valueOf = (flag: string): string | null => {
+    const i = argv.indexOf(flag);
+    if (i < 0) return null;
+    const v = argv[i + 1];
+    if (!v || v.startsWith("--")) throw new Error(`${flag} needs a value`);
+    return v;
+  };
+  const fromTx = valueOf("--from-tx");
+  if (fromTx !== null && !/^0x[0-9a-fA-F]{64}$/.test(fromTx)) throw new Error("--from-tx needs a 32-byte transaction hash");
+  const list = valueOf("--symbols");
+  const advanced = argv.includes("--advanced");
+  const symbols =
+    list !== null ? list.split(",").map((s) => s.trim()).filter((s) => s.length > 0) : advanced ? ["BTC/USDC:PERP"] : ["BTC/USDC:PERP", "BTC/USDC"];
+  if (symbols.length === 0 || symbols.some((s) => !/^[A-Z0-9]+\/[A-Z0-9]+(:PERP)?$/.test(s))) {
+    throw new Error(`--symbols must list symbols such as BTC/USDC:PERP (got ${list ?? "nothing"})`);
+  }
+  const evidence: OracleEvidence = advanced ? "g1d-probe-p2" : list !== null ? "g1d-probe-p1" : "g1d-oracle";
+  return { dryRun: argv.includes("--dry-run"), fromTx: fromTx === null ? null : (fromTx as Hex), symbols, advanced, evidence };
+}
+
+/** What a request sends: Majority keeps the practical 0.0309 STT; Threshold funds 0.01 STT per validator over the floor. */
+export function probeDeposit(floorWei: bigint, advanced: boolean): bigint {
+  if (advanced) return floorWei + ADVANCED_REQUEST.perAgentBudgetWei * ADVANCED_REQUEST.subcommitteeSize;
+  return floorWei >= ORACLE_DEPOSIT ? floorWei + 900_000_000_000_000n : ORACLE_DEPOSIT;
+}
+
+/** One node of a debug_traceTransaction callTracer result. */
+export interface TraceCall {
+  type?: string;
+  to?: string;
+  input?: Hex;
+  calls?: TraceCall[];
+}
+
+/** The first call to `to` that carries data: SomniaAgents' callback inside the finalize transaction. */
+export function findCallTo(node: TraceCall, to: Address): TraceCall | null {
+  if ((node.to ?? "").toLowerCase() === to.toLowerCase() && (node.input ?? "0x").length > 10) return node;
+  for (const k of node.calls ?? []) {
+    const hit = findCallTo(k, to);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+const RESPONSE_T = "(address validator, bytes result, uint8 status, uint256 receipt, uint256 timestamp, uint256 executionCost)";
+const REQUEST_T =
+  "(uint256 id, address requester, address callbackAddress, bytes4 callbackSelector, address[] subcommittee, " +
+  RESPONSE_T +
+  "[] responses, uint256 responseCount, uint256 failureCount, uint256 threshold, uint256 createdAt, uint256 deadline, uint8 status, uint8 consensusType, uint256 remainingBudget, uint256 perAgentBudget)";
+
+/** The callback's arguments as SomniaAgents sends them: (requestId, responses, status, details). */
+export const ORACLE_CALLBACK_PARAMS = parseAbiParameters(`uint256 requestId, ${RESPONSE_T}[] responses, uint8 status, ${REQUEST_T} details`);
+
+export interface OracleAnswer {
+  validator: Address;
+  status: number;
+  result: Hex;
+  prices: { price: bigint; numSources: number; lastUpdated: bigint }[] | null;
+}
+
+export interface OracleCallback {
+  requestId: bigint;
+  status: number;
+  statusName: string;
+  consensusType: number;
+  threshold: bigint;
+  failureCount: bigint;
+  answers: OracleAnswer[];
+  answersIdentical: boolean;
+}
+
+/** Decodes the callback input (selector + arguments), including each validator's getPrices answer. */
+export function decodeOracleCallback(input: Hex): OracleCallback {
+  const [requestId, responses, status, details] = decodeAbiParameters(ORACLE_CALLBACK_PARAMS, `0x${input.slice(10)}`);
+  const answers: OracleAnswer[] = responses.map((r) => {
+    let prices: OracleAnswer["prices"] = null;
+    try {
+      const [p, n, u] = decodeFunctionResult({ abi: priceOracleAbi, functionName: "getPrices", data: r.result });
+      prices = p.map((price, i) => ({ price, numSources: n[i] ?? 0, lastUpdated: u[i] ?? 0n }));
+    } catch {
+      prices = null;
+    }
+    return { validator: r.validator, status: r.status, result: r.result, prices };
+  });
+  const first = answers[0]?.result;
+  return {
+    requestId,
+    status,
+    statusName: ORACLE_STATUS[status] ?? `status ${status}`,
+    consensusType: details.consensusType,
+    threshold: details.threshold,
+    failureCount: details.failureCount,
+    answers,
+    answersIdentical: first !== undefined && answers.every((a) => a.result === first),
+  };
+}
+
+/** The consensus reading per symbol: only a Success callback yields one (taken from its first successful answer). */
+export function symbolsFromCallback(
+  cb: OracleCallback | null,
+  symbols: readonly string[],
+): { symbol: string; price: bigint; numSources: number; lastUpdated: bigint }[] {
+  if (!cb || cb.status !== 2) return [];
+  const first = cb.answers.find((a) => a.status === 2 && a.prices !== null);
+  if (!first?.prices) return [];
+  const prices = first.prices;
+  return symbols.map((symbol, i) => ({
+    symbol,
+    price: prices[i]?.price ?? 0n,
+    numSources: prices[i]?.numSources ?? 0,
+    lastUpdated: prices[i]?.lastUpdated ?? 0n,
+  }));
+}
+```
+
+- [ ] **Step 5: Type-check core and the spike**
+Run: `npm run typecheck -w @basanos/core`
+Run: `npm run typecheck -w @basanos/spike`
+Expected: both exit 0 with no `error TS` lines.
+
+- [ ] **Step 6: Run the spike suite (the re-export keeps every import)**
+Run: `npm test -w @basanos/spike`
+Expected: no failed tests (`35 passed`).
+
+- [ ] **Step 7: Run the new test (the gate)**
+Run: `npm test -w @basanos/core -- test/owner-tx.test.ts`
+Expected: PASS — `4 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `refactor(core): account-write builders move to @basanos/core/owner-tx, pinned to the SDK's encoding (P6)`
+
+---
+
+### Task 17: The bot's writes go viem-direct and are read back from the chain; a take that fails after a run started aborts without re-sending (P6)
+
+**Files:**
+- Create: `packages/bot/src/send.ts`
+- Modify: `packages/bot/src/actions.ts`
+- Modify: `packages/bot/src/demo.ts`
+- Modify: `packages/bot/src/bot.ts`
+- Test: `packages/bot/test/send.test.ts`
+
+**Depends on:** Task 3, Task 6, Task 8, Task 12, Task 13, Task 15, Task 16, spike:Task 1, spike:Task 2, spike:Task 3, spike:Task 4, spike:Task 6, contracts:Task 8
+**Effort:** medium
+**Model tier:** top
+**Provides:** `RECEIPT_WAIT_MS = 60_000`, `VERDICT_GRACE_SEC = 300`, `interface Sender { address: Address; pendingNonce(): Promise<number>; sign(tx: SignedTx): Promise<Hex>; sendRaw(raw: Hex): Promise<unknown>; waitReceipt(hash: Hex, timeoutMs: number): Promise<Receipt>; receipt(hash: Hex): Promise<Receipt | null> }`, `type SendResult = { outcome: "landed"; label: string; hash: Hex; nonce: number; tx: TxRecord; reason: null } | { outcome: "unknown"; label: string; hash: Hex; nonce: number; tx: null; reason: string }`, `sendWrite(s: Sender, label: string, call: UnsignedCall, waitMs?: number): Promise<SendResult> (signs at the pending nonce with ORDER_GAS, sends the raw transaction once, takes the receipt by the hash known before the send; never re-sends)`, `type Effect = "done" | "not-done" | "unknown"`, `effectOf(sent: SendResult, seen: boolean, latestNonce: number): Effect`, `interface AccountWrite { sent: SendResult; effect: Effect }`, `describeWrite(w: AccountWrite): string`, `type WriteKind = "grant" | "start" | "open" | "breach"`, `onFailure(kind: WriteKind | "error", runsStarted: number): "stop" | "abort" | "note"`, `verdictDeadline(lastStartMs: number, timeLimitSec: number): number`, `type AccountWallet = ReturnType<typeof makeAccountWallet>`, `viemSender(wallet: AccountWallet, client: PublicClient): Sender (signs locally; nonce, raw send and receipt on the standard RPC)`, `makeMarkets(): SomniaMarkets (read-only: the bot never hands the SDK a key)`, `ensureGrant(client: PublicClient, wallet: AccountWallet, referee: Address): Promise<AccountWrite | null> (viem-direct; done only when both selectors read authorized)`, `startRunAs(client: PublicClient, wallet: AccountWallet, registry: Address, rulebookId: Hex): Promise<AccountWrite & { runId: bigint | null }> (viem-direct; the run read back from activeRunOf)`, `openIoc(client: PublicClient, wallet: AccountWallet, isBid: boolean, quantity: bigint, label?: string): Promise<AccountWrite> (capped from the book; viem-direct; done only if the position size moved; never re-sent)`, `DEMO_ABORTED = "docs/evidence/demo-aborted.json"`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback; every account write viem-direct and read back; a take that fails after a run started aborts: nothing re-sent, verdicts awaited, recorded in docs/evidence/demo-aborted.json, exit 1)`, `CLI: npx tsx packages/bot/src/bot.ts start [--rulebook <name>] [--side short|long] [--leverage 5] | breach [--leverage 16] (viem-direct writes, read back; stops on a write that does not take effect)`
+**Requires:** `interface UnsignedCall { to: Address; data: Hex; value: bigint }`, `ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall`, `grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall`, `startRunCall(registry: Address, account: Address, rulebookId: Hex): UnsignedCall`, `ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }`, `txRecord(label: string, receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord`, `interface TxRecord { label: string; hash: Hex; status: "success" | "reverted"; gasUsed: bigint; costWei: bigint; explorer: string }`, `jsonSafe(value: unknown): unknown`, `makePublicClient(url: string): PublicClient`, `makeAccountWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)`, `readBook(client: PublicClient): Promise<BookParams>`, `breachQuantity(currentSize: bigint, equity: bigint, targetX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`, `appendDemoTake(take: Record<string, unknown>, path?: string): number`, `runIdFromLogs(logs: readonly { address: Address; data: Hex; topics: readonly Hex[] }[], registry: Address): bigint | null`, `preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei?: bigint): Promise<Preflight>`, `notReady(pf: Preflight): string[]`, `interface Preflight { account: Address; stt: bigint; sttOk: boolean; voucherClaimed: boolean; unlockedCollateral: bigint; funded: boolean; flat: boolean; equity: bigint }`, `planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps?: number): OrderPlan`, `readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>`, `DEMO_LEVERAGE_X = 5`, `repoPath(rel: string): string`, `BTC_POOL`, `CANCEL_ORDER_FOR_SELECTOR`, `PLACE_ORDER_FOR_SELECTOR`, `CHAIN (hidekiTestnet, id 50383)`, `HIDEKI_ADDRESSES`, `INDEXER_URL`, `MARGIN_BANK`, `OPERATOR_REGISTRY`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_IOC = 2`, `farFutureNs(nowMs?: number): bigint`, `explorerTx(hash: Hex): string`, `marginBankAbi`, `perpPoolAbi`, `loadDotEnv(path?: string): boolean`, `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`, `requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `rulebookId(rb: Rulebook): Hex`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `RUN_STATUS = ["None", "Active", "Passed", "Failed", "Voided"]`, `RULE_NAMES = ["None", "DailyLoss", "TrailingDrawdown", "MaxExposure", "TimeLimit", "Liquidated"]`
+
+Why (architect P6, 2026-11-12, on the guide's diagnosis B18; spec §9):
+- **The stop:** referee:10's first GO died in `ensureGrant` for B. The SDK's `setOperatorApprovalForPool` threw `TransactionOutcomeUnknownError`: `eth_sendRawTransactionSync` timed out on `send.hideki…`. The guide found nothing on either RPC host, B's nonce still 2 and runCount 0. It is the second "outcome unknown" on the SDK's send path (the first was the voucher claim on Nov 11, why spike:14 moved A's writes). Every viem-direct transaction since has landed: the deploy, both registrations, the A-to-B transfer, 4 deposits and 5 skeleton transactions.
+- **P6a, the send path.** The bot was the one place still on it: `ensureGrant` (`markets.trader.setOperatorApprovalForPool`) and `openIoc` (`markets.trader.placePerpOrder`), used by `demo.ts` and `bot.ts`.
+  - `send.ts` does what spike:14 does for A. It signs locally with `ORDER_GAS` and the pending nonce, sends the raw bytes once with `eth_sendRawTransaction` to the standard RPC, and takes the receipt from the public client.
+  - Signing first gives the hash before the send, so a send that fails or times out is still looked up by that hash.
+  - The grant, `startRun` and every open go through it, with calls built by referee:16.
+  - `makeMarkets()` loses its key: the SDK stays for reads only, so no SDK write can leave the bot.
+- **P6b, never a blind re-send.**
+  - A write counts only when its effect is read back: both grant selectors authorized, the account's `activeRunOf`, or its position size moving.
+  - Unseen, it did not happen if it has a receipt or its nonce was used; otherwise its outcome is unknown and it may still land. The latest nonce is read before the effect, so a write that lands between the two reads is seen.
+  - Nothing is ever re-sent. A grant is idempotent, but an open is not.
+- **P6b, what the demo does (`onFailure`):**
+  - **Before the take has started a run:** it stops (exit 1). A re-run starts over and re-reads the grant and the active run before sending anything. All preflights now pass before the first write.
+  - **Once a run has started, the take aborts.** Nothing is re-sent and no run is voided. A void is the referee's verdict on a flow, a foreign market or a revoked grant, and none of those happened. Revoking the grant to force one would leave the referee unable to close an open that lands late.
+  - **What the abort does next:** the referee ends each run by a rule or at its time limit (FAIL TimeLimit at 900 s for a flat account), closing any position first. The demo waits for every verdict, at most the time limit + 300 s after the last start. It checks the accounts are flat, records the take in `docs/evidence/demo-aborted.json` and exits 1.
+  - **Why demo-takes.json is not used:** check-rehearsal and check-money-shot judge every take in `demo-takes.json`, and an aborted take's flat TimeLimit FAIL has no close, so it would fail every later good take.
+  - **The exposure top-up** for a FAIL on demand is only noted if it does not take effect. The runner's "market still" line no longer says "take aborted".
+  - **Every wait is now bounded,** and a take also exits 1 when an account still holds a position after its verdict.
+- **Checked read-only on Hideki, 2026-11-12:** `viemSender`'s prepare-and-sign, with a throwaway key (never sent), gives an EIP-1559 transaction on chain 50383 with gas 10,000,000 and the grant's calldata. B's nonce reads 2, latest and pending.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/bot/test/send.test.ts`:
+```ts
+import { readFileSync, readdirSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { keccak256, type Address, type Hex } from "viem";
+import { BTC_POOL, ORDER_GAS, ORDER_TYPE_IOC } from "@basanos/core";
+import { ownerOrderCall } from "@basanos/core/owner-tx";
+import { RECEIPT_WAIT_MS, describeWrite, effectOf, onFailure, sendWrite, verdictDeadline, type Receipt, type SendResult, type Sender } from "../src/send";
+
+// Any signed bytes will do: the fake signer returns them, and the hash is theirs.
+const RAW: Hex = "0x02f8b28301c8cf0284017d784084017d784083989680944181dd08e73bbcdd1ba3e615a18f6abd941b94c080";
+const HASH = keccak256(RAW);
+const ACCOUNT: Address = "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1";
+const OPEN = ownerOrderCall(BTC_POOL, false, 72_506_200n * 10n ** 15n, 342_000n, ORDER_TYPE_IOC, 3_371_163_205_000_000_000n);
+const receipt = (status: "success" | "reverted"): Receipt => ({ transactionHash: HASH, status, gasUsed: 3_149_456n, effectiveGasPrice: 6_000_000_000n });
+// What B's grant hit on the SDK's send path in the first rehearsal (2026-11-12).
+const timedOut = () => Promise.reject(new Error("TransactionOutcomeUnknownError: eth_sendRawTransactionSync timed out"));
+
+function fakeSender(over: Partial<Sender> = {}) {
+  const s = {
+    address: ACCOUNT,
+    pendingNonce: vi.fn(async () => 2),
+    sign: vi.fn(async () => RAW),
+    sendRaw: vi.fn(async () => HASH as unknown),
+    waitReceipt: vi.fn(async () => receipt("success")),
+    receipt: vi.fn(async (): Promise<Receipt | null> => null),
+    ...over,
+  };
+  return s;
+}
+
+const source = (rel: string) => readFileSync(new URL(`../src/${rel}`, import.meta.url), "utf8");
+
+describe("bot writes are viem-direct and sent once (P6a)", () => {
+  it("signs at the pending nonce with ORDER_GAS, sends the raw bytes once and takes the receipt by their hash", async () => {
+    const s = fakeSender();
+    const r = await sendWrite(s, "open short", OPEN);
+    expect(s.sign).toHaveBeenCalledWith({ to: BTC_POOL, data: OPEN.data, value: 0n, gas: ORDER_GAS, nonce: 2 });
+    expect(s.sendRaw).toHaveBeenCalledTimes(1);
+    expect(s.sendRaw).toHaveBeenCalledWith(RAW);
+    expect(s.waitReceipt).toHaveBeenCalledWith(HASH, RECEIPT_WAIT_MS);
+    expect(r.outcome).toBe("landed");
+    expect(r.hash).toBe(HASH);
+    expect(r.nonce).toBe(2);
+    expect(r.tx?.costWei).toBe(18_896_736_000_000_000n);
+  });
+  it("looks a failed send up by the hash it signed, and never sends twice", async () => {
+    const landedAnyway = fakeSender({ sendRaw: vi.fn(timedOut) });
+    expect((await sendWrite(landedAnyway, "grant", OPEN)).outcome).toBe("landed");
+    expect(landedAnyway.sendRaw).toHaveBeenCalledTimes(1);
+
+    const late = fakeSender({ sendRaw: vi.fn(timedOut), waitReceipt: vi.fn(timedOut), receipt: vi.fn(async () => receipt("reverted")) });
+    const lateResult = await sendWrite(late, "open short", OPEN);
+    expect(lateResult.outcome).toBe("landed");
+    expect(lateResult.tx?.status).toBe("reverted");
+
+    const lost = fakeSender({ sendRaw: vi.fn(timedOut), waitReceipt: vi.fn(timedOut) });
+    const lostResult = await sendWrite(lost, "open short", OPEN);
+    expect(lostResult).toMatchObject({ outcome: "unknown", hash: HASH, nonce: 2, tx: null });
+    expect(lostResult.reason).toMatch(/^send failed: TransactionOutcomeUnknownError/);
+    expect(lost.sendRaw).toHaveBeenCalledTimes(1);
+
+    const noReceipt = fakeSender({ waitReceipt: vi.fn(timedOut) });
+    expect((await sendWrite(noReceipt, "startRun", OPEN, 1_000)).reason).toMatch(/^no receipt within 1 s/);
+  });
+  it("leaves the SDK out of every bot write", () => {
+    for (const file of readdirSync(new URL("../src/", import.meta.url))) {
+      expect(source(file), file).not.toMatch(/\.trader\.|placePerpOrder|privateKey\s*:/);
+    }
+    const actions = source("actions.ts");
+    expect(actions.match(/sendWrite\(viemSender\(wallet, client\)/g)).toHaveLength(3);
+    expect(actions).toContain("planOpenFromBook(isBid, quantity, levels, params)");
+  });
+});
+
+describe("a write counts only when the chain shows it (P6b)", () => {
+  const landed = (status: "success" | "reverted"): SendResult => ({ outcome: "landed", label: "open short", hash: HASH, nonce: 2, tx: { label: "open short", hash: HASH, status, gasUsed: 1n, costWei: 1n, explorer: "" }, reason: null });
+  const unknown: SendResult = { outcome: "unknown", label: "open short", hash: HASH, nonce: 2, tx: null, reason: "send failed: timed out" };
+  it("reads the effect back: a position, a grant or a run, never the send call", () => {
+    expect(effectOf(landed("success"), true, 3)).toBe("done");
+    expect(effectOf(landed("reverted"), false, 3)).toBe("not-done");
+    expect(effectOf(unknown, true, 2)).toBe("done");
+    expect(effectOf(unknown, false, 3)).toBe("not-done");
+    expect(effectOf(unknown, false, 2)).toBe("unknown");
+    expect(describeWrite({ sent: unknown, effect: "unknown" })).toBe(`open short: unknown (send failed: timed out; tx ${HASH}, nonce 2)`);
+    expect(describeWrite({ sent: landed("reverted"), effect: "not-done" })).toBe(`open short: not-done (receipt reverted; tx ${HASH}, nonce 2)`);
+  });
+  it("stops before any run, aborts once a run has started, and only notes a failed exposure top-up", () => {
+    for (const kind of ["grant", "start", "open", "error"] as const) expect(onFailure(kind, 0)).toBe("stop");
+    for (const kind of ["start", "open", "error"] as const) expect(onFailure(kind, 1)).toBe("abort");
+    expect(onFailure("open", 2)).toBe("abort");
+    expect(onFailure("breach", 2)).toBe("note");
+    expect(verdictDeadline(1_000, 900)).toBe(1_201_000);
+  });
+  it("records an aborted take apart from the takes check-rehearsal judges, and never voids a run", () => {
+    const demo = source("demo.ts");
+    expect(demo).toContain("repoPath(DEMO_ABORTED)");
+    expect(demo).toContain("onFailure(e instanceof WriteFailed ? e.kind : \"error\", started.length)");
+    expect(demo).not.toMatch(/voidRun|setOperatorApproval|approved: false/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/bot -- test/send.test.ts`
+Expected: FAIL — `Cannot find module '../src/send'`.
+
+- [ ] **Step 3: Send once, read the effect back**
+
+`packages/bot/src/send.ts`:
+```ts
+// How a challenge account's own writes reach the chain (P6, 2026-11-12). viem-direct, as spike:14 does for account A:
+// the transaction is signed locally with ORDER_GAS and an explicit pending nonce, sent once with
+// eth_sendRawTransaction to the standard RPC (rpcHttp()), and its receipt is taken from the public client. Signing
+// first gives the hash before the send, so a send that fails or times out can still be looked up.
+// The SDK's send path (eth_sendRawTransactionSync on send.hideki…) ended "outcome unknown" with nothing on-chain twice:
+// the voucher claim (2026-11-11) and B's grant in the first rehearsal (2026-11-12). No bot write uses it.
+// Nothing here re-sends. Whether a write took effect is read back from the chain (effectOf), never assumed from the
+// send call: a grant is idempotent, but an open is not, and a blind re-send could double a position.
+import { keccak256, type Address, type Hex } from "viem";
+import { ORDER_GAS } from "@basanos/core";
+import { ownerTx, type UnsignedCall } from "@basanos/core/owner-tx";
+import { txRecord, type TxRecord } from "@basanos/referee";
+
+/** How long a send waits for its receipt before its outcome counts as unknown. Hideki blocks are about 0.1 s apart. */
+export const RECEIPT_WAIT_MS = 60_000;
+
+/** After the last run starts, how long past the rulebook's time limit the demo waits for the verdicts. */
+export const VERDICT_GRACE_SEC = 300;
+
+export type Receipt = Parameters<typeof txRecord>[1];
+export type SignedTx = ReturnType<typeof ownerTx>;
+
+/** The chain calls one send makes. viemSender() in actions.ts binds them to an account wallet and the public client;
+ *  tests fake them. */
+export interface Sender {
+  address: Address;
+  pendingNonce(): Promise<number>;
+  sign(tx: SignedTx): Promise<Hex>;
+  sendRaw(raw: Hex): Promise<unknown>;
+  waitReceipt(hash: Hex, timeoutMs: number): Promise<Receipt>;
+  receipt(hash: Hex): Promise<Receipt | null>;
+}
+
+/** A write that reached a receipt (success or reverted), or one whose outcome is not known yet. */
+export type SendResult =
+  | { outcome: "landed"; label: string; hash: Hex; nonce: number; tx: TxRecord; reason: null }
+  | { outcome: "unknown"; label: string; hash: Hex; nonce: number; tx: null; reason: string };
+
+const short = (e: unknown): string => (e instanceof Error ? e.message : String(e)).split("\n")[0]?.slice(0, 160) ?? "";
+
+/** Signs `call` at the pending nonce with ORDER_GAS, sends it once, and waits for its receipt by the hash known before
+ *  the send. A failed send still waits, since a timed-out send may have reached the node. Never re-sends. */
+export async function sendWrite(s: Sender, label: string, call: UnsignedCall, waitMs: number = RECEIPT_WAIT_MS): Promise<SendResult> {
+  const nonce = await s.pendingNonce();
+  const raw = await s.sign(ownerTx(call, nonce, ORDER_GAS));
+  const hash = keccak256(raw);
+  let reason = "";
+  try {
+    await s.sendRaw(raw);
+  } catch (e) {
+    reason = `send failed: ${short(e)}`;
+  }
+  try {
+    return { outcome: "landed", label, hash, nonce, tx: txRecord(label, await s.waitReceipt(hash, waitMs)), reason: null };
+  } catch (e) {
+    if (!reason) reason = `no receipt within ${waitMs / 1000} s: ${short(e)}`;
+  }
+  const late = await s.receipt(hash);
+  if (late) return { outcome: "landed", label, hash, nonce, tx: txRecord(label, late), reason: null };
+  return { outcome: "unknown", label, hash, nonce, tx: null, reason };
+}
+
+export type Effect = "done" | "not-done" | "unknown";
+
+/** Whether a write took effect, from the chain (P6b). `seen` is the effect itself, read back after the send: both
+ *  grant selectors authorized, the account's active run, or its position size moving. Unseen, the write did not
+ *  happen if it has a receipt (it reverted) or its nonce was used by another transaction; otherwise its outcome is
+ *  unknown and it may still land. */
+export function effectOf(sent: SendResult, seen: boolean, latestNonce: number): Effect {
+  if (seen) return "done";
+  if (sent.outcome === "landed" || latestNonce > sent.nonce) return "not-done";
+  return "unknown";
+}
+
+/** One account write and what it did on-chain. */
+export interface AccountWrite {
+  sent: SendResult;
+  effect: Effect;
+}
+
+export function describeWrite(w: AccountWrite): string {
+  const how = w.sent.outcome === "landed" ? `receipt ${w.sent.tx.status}` : w.sent.reason;
+  return `${w.sent.label}: ${w.effect} (${how}; tx ${w.sent.hash}, nonce ${w.sent.nonce})`;
+}
+
+export type WriteKind = "grant" | "start" | "open" | "breach";
+
+/** What a demo take does when a write does not take effect, or anything else throws (P6b):
+ *  - "stop": the take has started no run, so there is nothing to clean up. The demo exits 1, and a re-run starts
+ *    over: the grant and the active run are read before anything is sent, so nothing is sent twice.
+ *  - "abort": the take has started a run. Nothing is re-sent and no run is voided: a void is the referee's verdict on
+ *    a flow, a foreign market or a revoked grant, and none of those happened. Revoking the grant to force one would
+ *    also leave the referee unable to close an open that lands late. The referee keeps judging and ends each run by a
+ *    rule or at its time limit (FAIL TimeLimit), closing any position first. The demo waits for every verdict, checks
+ *    the accounts are flat, records the take in demo-aborted.json, and exits 1.
+ *  - "note": the on-demand exposure top-up did not take effect. The take goes on; its runs still end by a rule or at
+ *    their time limits. */
+export function onFailure(kind: WriteKind | "error", runsStarted: number): "stop" | "abort" | "note" {
+  if (runsStarted === 0) return "stop";
+  return kind === "breach" ? "note" : "abort";
+}
+
+/** When the demo stops waiting for verdicts: the rulebook's time limit plus VERDICT_GRACE_SEC after the last start. */
+export function verdictDeadline(lastStartMs: number, timeLimitSec: number): number {
+  return lastStartMs + (timeLimitSec + VERDICT_GRACE_SEC) * 1_000;
+}
+```
+
+- [ ] **Step 4: Grant, startRun and opens through send.ts**
+
+Replace `packages/bot/src/actions.ts` with:
+```ts
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { createWalletClient, decodeEventLog, http, type Address, type Hex, type PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { SomniaMarkets } from "@somnia-chain/markets-sdk";
+import {
+  BTC_POOL,
+  CANCEL_ORDER_FOR_SELECTOR,
+  CHAIN,
+  HIDEKI_ADDRESSES,
+  INDEXER_URL,
+  MARGIN_BANK,
+  OPERATOR_REGISTRY,
+  ORDER_TYPE_IOC,
+  PLACE_ORDER_FOR_SELECTOR,
+  STT_WRITE_HEADROOM,
+  alignUp,
+  basanosRegistryAbi,
+  farFutureNs,
+  marginBankAbi,
+  perpPoolAbi,
+  readSnapshot,
+  type BookParams,
+} from "@basanos/core";
+import { planOpenFromBook, readBookLevels } from "@basanos/core/book";
+import { repoPath } from "@basanos/core/node";
+import { grantCall, ownerOrderCall, startRunCall } from "@basanos/core/owner-tx";
+import { jsonSafe } from "@basanos/referee";
+import { effectOf, sendWrite, type AccountWrite, type SendResult, type Sender } from "./send";
+
+export interface Preflight {
+  account: Address;
+  stt: bigint;
+  sttOk: boolean;
+  voucherClaimed: boolean;
+  /** MarginBank getAccountState().unlockedCollateralBalance: the account's own deposited USDso not locked in a position. */
+  unlockedCollateral: bigint;
+  /** unlockedCollateral at or above what a demo run needs (DEMO_MIN_UNLOCKED unless the caller passes another need). */
+  funded: boolean;
+  flat: boolean;
+  equity: bigint;
+}
+
+/** The least unlocked MarginBank margin a demo run needs: its DEMO_LEVERAGE_X (5x) size must clear the 0.00013 BTC
+ *  pool minimum (about 1.9 USDso of equity) with room for costs. */
+export const DEMO_MIN_UNLOCKED = 5n * 10n ** 18n;
+
+/** Inferred return type: bound to CHAIN and the key's account. */
+export function makeAccountWallet(pk: Hex, url: string) {
+  return createWalletClient({ account: privateKeyToAccount(pk), chain: CHAIN, transport: http(url) });
+}
+
+export type AccountWallet = ReturnType<typeof makeAccountWallet>;
+
+/** Read-only: the bot uses the SDK for reads only (the voucher read in preflight). It never hands the SDK a key, so no
+ *  SDK write can leave the bot (P6, 2026-11-12). */
+export function makeMarkets(): SomniaMarkets {
+  return new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES });
+}
+
+/** Binds send.ts to an account wallet, which signs locally, and the public client on the standard RPC (rpcHttp()),
+ *  which gives the nonce, takes the raw transaction and returns the receipt. */
+export function viemSender(wallet: AccountWallet, client: PublicClient): Sender {
+  const address = wallet.account.address;
+  return {
+    address,
+    pendingNonce: () => client.getTransactionCount({ address, blockTag: "pending" }),
+    sign: async (tx) => wallet.signTransaction(await wallet.prepareTransactionRequest(tx)),
+    sendRaw: (raw) => client.sendRawTransaction({ serializedTransaction: raw }),
+    waitReceipt: (hash, timeout) => client.waitForTransactionReceipt({ hash, timeout }),
+    receipt: (hash) => client.getTransactionReceipt({ hash }).catch(() => null),
+  };
+}
+
+/** The latest nonce is read before the effect, so a write that lands between the two reads is seen, not missed. */
+async function settle(client: PublicClient, account: Address, sent: SendResult, seen: () => Promise<boolean>): Promise<AccountWrite> {
+  const latest = await client.getTransactionCount({ address: account, blockTag: "latest" });
+  return { sent, effect: effectOf(sent, await seen(), latest) };
+}
+
+async function positionSize(client: PublicClient, account: Address): Promise<bigint> {
+  const p = await client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getPosition", args: [account, BTC_POOL] });
+  return p.size;
+}
+
+/** Reads only. Never claims a voucher: claim() reverts chain-wide (B14), so an account is ready when it is FUNDED,
+ *  with its own wallet USDso deposited into its own MarginBank balance (spike:18 for A, spike:19 for B). */
+export async function preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei: bigint = DEMO_MIN_UNLOCKED): Promise<Preflight> {
+  const [stt, voucher, snap, state] = await Promise.all([
+    client.getBalance({ address: account }),
+    markets.client.getPerpVoucher(MARGIN_BANK, account),
+    readSnapshot(client, [account], BTC_POOL),
+    client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getAccountState", args: [account] }),
+  ]);
+  const a = snap.accounts[0];
+  return {
+    account,
+    stt,
+    sttOk: stt >= STT_WRITE_HEADROOM,
+    voucherClaimed: voucher?.claimed ?? false,
+    unlockedCollateral: state.unlockedCollateralBalance,
+    funded: state.unlockedCollateralBalance >= needWei,
+    flat: a ? a.size === 0n && a.lockedCollateral === 0n && a.activePools.length === 0 : false,
+    equity: a?.totalEquity ?? 0n,
+  };
+}
+
+/** Why an account cannot start a demo run, or [] when it can. A voucher is never required. */
+export function notReady(pf: Preflight): string[] {
+  const p: string[] = [];
+  if (!pf.sttOk) p.push(`STT ${pf.stt} is below the 0.6 write headroom (top up from the Tokyo faucet)`);
+  if (!pf.funded) {
+    p.push(
+      `unlocked MarginBank margin is ${pf.unlockedCollateral} wei, below what a demo run needs; deposit the account's own wallet USDso first (deposit.ts: spike:18 for A, spike:19 for B)`,
+    );
+  }
+  if (!pf.flat) p.push("the account is not flat (flatten it in the dreamDEX app first)");
+  return p;
+}
+
+export async function readBook(client: PublicClient): Promise<BookParams> {
+  const p = await client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "getOrderBookParameters" });
+  return { tickSize: p.tickSize, minQuantity: p.minQuantity, lotSize: p.lotSize };
+}
+
+/** Grants the referee place + cancel on the BTC pool only, if not already granted (null: nothing sent). viem-direct
+ *  (send.ts, P6); it counts only when the pool reports both selectors authorized. A grant is idempotent, so a re-run
+ *  after a stop re-reads it first. */
+export async function ensureGrant(client: PublicClient, wallet: AccountWallet, referee: Address): Promise<AccountWrite | null> {
+  const owner = wallet.account.address;
+  const has = async (selector: Hex) =>
+    client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [owner, referee, selector] });
+  const granted = async () => (await has(PLACE_ORDER_FOR_SELECTOR)) && (await has(CANCEL_ORDER_FOR_SELECTOR));
+  if (await granted()) return null;
+  const selectors = [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR];
+  const sent = await sendWrite(viemSender(wallet, client), "grant", grantCall(OPERATOR_REGISTRY, BTC_POOL, referee, selectors));
+  return settle(client, owner, sent, granted);
+}
+
+export function runIdFromLogs(logs: readonly { address: Address; data: Hex; topics: readonly Hex[] }[], registry: Address): bigint | null {
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== registry.toLowerCase()) continue;
+    try {
+      const ev = decodeEventLog({ abi: basanosRegistryAbi, data: log.data, topics: log.topics as [Hex, ...Hex[]] });
+      if (ev.eventName === "RunStarted") return ev.args.runId;
+    } catch {
+      // another registry event
+    }
+  }
+  return null;
+}
+
+/** The account itself enrolls (msg.sender == account); the registry reads its start equity in the same tx. viem-direct
+ *  (send.ts, P6). The run is read back from activeRunOf, so it counts once the registry holds it, receipt or not. */
+export async function startRunAs(
+  client: PublicClient,
+  wallet: AccountWallet,
+  registry: Address,
+  rulebookId: Hex,
+): Promise<AccountWrite & { runId: bigint | null }> {
+  const account = wallet.account.address;
+  const activeRun = async () => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "activeRunOf", args: [account] });
+  const before = await activeRun();
+  const sent = await sendWrite(viemSender(wallet, client), "startRun", startRunCall(registry, account, rulebookId));
+  let after = before;
+  const w = await settle(client, account, sent, async () => {
+    after = await activeRun();
+    return after !== 0n && after !== before;
+  });
+  return { ...w, runId: w.effect === "done" ? after : null };
+}
+
+/** Extra size so the account's notional strictly exceeds targetX x equity (the on-demand exposure breach). */
+export function breachQuantity(currentSize: bigint, equity: bigint, targetX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint {
+  const oneBase = 10n ** BigInt(baseDecimals);
+  const abs = currentSize < 0n ? -currentSize : currentSize;
+  const targetNotional = equity * BigInt(targetX);
+  const current = (abs * mark) / oneBase;
+  const neededNotional = targetNotional > current ? targetNotional - current : 0n;
+  const qty = alignUp((neededNotional * oneBase) / mark + 1n, book.lotSize);
+  return qty < book.minQuantity ? book.minQuantity : qty;
+}
+
+/** An opening IOC capped from the book (best ask + 20 bps to buy, best bid - 20 bps to sell), never from the mark:
+ *  the BTC-PERP book trades about 19 bps above the mark, so a mark + 20 bps buy does not fill (P5, 2026-11-12).
+ *  viem-direct (send.ts, P6): it took effect only if the account's position size moved. An open is never re-sent. */
+export async function openIoc(
+  client: PublicClient,
+  wallet: AccountWallet,
+  isBid: boolean,
+  quantity: bigint,
+  label: string = isBid ? "open long" : "open short",
+): Promise<AccountWrite> {
+  const account = wallet.account.address;
+  const params = await readBook(client);
+  const levels = await readBookLevels(client, BTC_POOL);
+  if (!levels) throw new Error("the BTC-PERP book could not be read; no order was sent");
+  const plan = planOpenFromBook(isBid, quantity, levels, params);
+  const before = await positionSize(client, account);
+  const order = ownerOrderCall(BTC_POOL, isBid, plan.price, plan.quantity, ORDER_TYPE_IOC, farFutureNs());
+  const sent = await sendWrite(viemSender(wallet, client), label, order);
+  return settle(client, account, sent, async () => (await positionSize(client, account)) !== before);
+}
+
+export const DEMO_TAKES = "docs/evidence/demo-takes.json";
+
+/** Takes that aborted after a run started (P6b). Kept apart from DEMO_TAKES, which check-rehearsal and the money-shot
+ *  check judge: an aborted take's runs end FAIL TimeLimit without a close, and must not fail a later good take. */
+export const DEMO_ABORTED = "docs/evidence/demo-aborted.json";
+
+export function appendDemoTake(take: Record<string, unknown>, path: string = repoPath(DEMO_TAKES)): number {
+  const all = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as unknown[]) : [];
+  const n = all.length + 1;
+  all.push(jsonSafe({ take: n, ...take }));
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(all, null, 2)}\n`);
+  return n;
+}
+```
+
+- [ ] **Step 5: The demo and the bot stop or abort explicitly**
+
+Replace `packages/bot/src/demo.ts` with:
+```ts
+// The demo runner. Primary: both builder-operated accounts take Tokyo Sprint · Demo with opposite positions at
+// DEMO_LEVERAGE_X (5x; rules judge closeable equity, spec §5). Fallback (--one-account, only if account B cannot be
+// funded): account A takes two runs in sequence. Run 1 is a FAIL on demand: a 5x long, then size past the 15x
+// exposure cap. Run 2 is the PASS attempt: 5x (--pass-side long|short),
+// held until the referee locks the target or a rule ends it. A PASS is not guaranteed with one account, which is why
+// the two-account demo is primary. Accounts must be FUNDED (own USDso deposited, spike:18 / spike:19); no voucher.
+// The referee daemon (packages/referee/src/cli.ts start) must already be running in another terminal.
+// Every account write (grant, startRun, opens) is viem-direct (send.ts, P6) and read back from the chain before the
+// take goes on. When one does not take effect, or anything throws (onFailure, P6b): before the take has started a run
+// it stops, and a re-run starts over; once a run has started the take aborts. Nothing is re-sent and no run is voided:
+// the referee ends each run by a rule or at its time limit, the demo waits for every verdict, checks the accounts are
+// flat, records the take in docs/evidence/demo-aborted.json (never demo-takes.json) and exits 1.
+import type { Address, Hex } from "viem";
+import { BTC_POOL, RULE_NAMES, RUN_STATUS, basanosRegistryAbi, explorerTx, quantityForLeverage, readSnapshot, rulebookId, type BookParams } from "@basanos/core";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
+import { loadDotEnv, loadRulebook, repoPath, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { makePublicClient, type TxRecord } from "@basanos/referee";
+import {
+  DEMO_ABORTED,
+  appendDemoTake,
+  breachQuantity,
+  ensureGrant,
+  makeAccountWallet,
+  makeMarkets,
+  notReady,
+  openIoc,
+  preflight,
+  readBook,
+  startRunAs,
+  type AccountWallet,
+} from "./actions";
+import { VERDICT_GRACE_SEC, describeWrite, onFailure, verdictDeadline, type AccountWrite, type WriteKind } from "./send";
+
+loadDotEnv();
+const argv = process.argv.slice(2);
+const manualA = argv.includes("--a-manual");
+const oneAccount = argv.includes("--one-account");
+const passSide = argv[argv.indexOf("--pass-side") + 1] === "short" ? "short" : "long";
+const waitMin = Number(argv[argv.indexOf("--wait-min") + 1] ?? "10") || 10;
+const client = makePublicClient(rpcHttp());
+const registry = requireAddress("REGISTRY_ADDRESS");
+const referee = requireAddress("REFEREE_ADDRESS");
+const rb = loadRulebook("tokyo-sprint-demo");
+const id: Hex = rulebookId(rb);
+const markets = makeMarkets();
+const mode = oneAccount ? "one-account" : "two-account";
+const txs: TxRecord[] = [];
+const notes: string[] = [];
+const started: { runId: bigint; account: Address }[] = [];
+let lastStartMs = 0;
+const say = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+say(
+  oneAccount
+    ? "Basanos demo (one-account fallback): account A is a burner operated by the builder; run 1 FAIL by exposure, run 2 the PASS attempt."
+    : "Basanos demo: both challenge accounts are burners operated by the builder (A human-driven, B scripted).",
+);
+interface Account {
+  name: string;
+  wallet: AccountWallet;
+  address: Address;
+}
+const accounts: Account[] = (oneAccount ? (["ACCOUNT_A_PK"] as const) : (["ACCOUNT_A_PK", "ACCOUNT_B_PK"] as const)).map((name) => {
+  const wallet = makeAccountWallet(requirePrivateKey(name), rpcHttp());
+  return { name, wallet, address: wallet.account.address };
+});
+
+class WriteFailed extends Error {
+  constructor(
+    readonly kind: WriteKind,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Keeps the write's receipt, and throws unless the write took effect on-chain. */
+function check(kind: WriteKind, w: AccountWrite | null): void {
+  if (!w) return;
+  if (w.sent.tx) txs.push(w.sent.tx);
+  if (w.effect !== "done") throw new WriteFailed(kind, describeWrite(w));
+}
+
+const statusOf = async (runId: bigint) => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [runId] });
+type Run = Awaited<ReturnType<typeof statusOf>>;
+const label = (r: Run | undefined) => (r ? `${RUN_STATUS[r.status] ?? r.status}${r.rule ? `/${RULE_NAMES[r.rule]}` : ""}` : "?");
+const activeRunOf = async (account: Address) => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "activeRunOf", args: [account] });
+
+async function startRun(a: Account): Promise<bigint> {
+  const { runId, ...w } = await startRunAs(client, a.wallet, registry, id);
+  check("start", w);
+  if (runId === null) throw new WriteFailed("start", describeWrite(w));
+  started.push({ runId, account: a.address });
+  lastStartMs = Date.now();
+  say(`${a.name} run ${runId} on ${rb.label}: ${w.sent.tx?.explorer ?? explorerTx(w.sent.hash)}`);
+  return runId;
+}
+
+/** Polls every 2 s until every run has left Active; null once `until` passes with one still Active. */
+async function waitVerdicts(runIds: readonly bigint[], until: number, onTick?: (rs: Run[]) => Promise<void>): Promise<Run[] | null> {
+  for (;;) {
+    const rs = await Promise.all(runIds.map((r) => statusOf(r)));
+    say(`runs ${runIds.join(", ")}: ${rs.map((r) => label(r)).join(" | ")}`);
+    if (rs.every((r) => r.status !== 1)) return rs;
+    if (Date.now() > until) return null;
+    if (onTick) await onTick(rs);
+    await sleep(2_000);
+  }
+}
+
+async function flatAll(addresses: readonly Address[], waitMs: number): Promise<boolean> {
+  const unique = [...new Set(addresses)];
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const s = await readSnapshot(client, unique, BTC_POOL);
+    if (s.accounts.every((a) => a.size === 0n && a.lockedCollateral === 0n && a.activePools.length === 0)) return true;
+    if (Date.now() > until) return false;
+    await sleep(3_000);
+  }
+}
+
+/** The on-demand exposure breach: size past the 15x cap. If it does not take effect it is noted, never re-sent, and
+ *  the take goes on (onFailure "note"). */
+async function topUp(a: Account, book: BookParams): Promise<boolean> {
+  const s = await readSnapshot(client, [a.address], BTC_POOL);
+  const p = s.accounts[0];
+  if (!p || p.size === 0n) return false;
+  try {
+    check("breach", await openIoc(client, a.wallet, p.size > 0n, breachQuantity(p.size, p.totalEquity, 16, s.markPrice, 8, book), "exposure top-up"));
+    return true;
+  } catch (e) {
+    if (onFailure("breach", started.length) !== "note") throw e;
+    const why = e instanceof Error ? e.message : String(e);
+    notes.push(`exposure top-up did not take effect: ${why}`);
+    say(`note: the exposure top-up did not take effect (${why}); nothing is re-sent and the runs go on`);
+    return false;
+  }
+}
+
+function runRows(final: readonly (Run | undefined)[]) {
+  return started.map((r, i) => ({ runId: r.runId, account: r.account, status: RUN_STATUS[final[i]?.status ?? 0], rule: RULE_NAMES[final[i]?.rule ?? 0] }));
+}
+
+async function twoAccountTake(): Promise<void> {
+  const [accA, accB] = accounts;
+  if (!accA || !accB) throw new Error("two accounts expected");
+  for (const a of accounts) await startRun(a);
+  const book = await readBook(client);
+  const snap = await readSnapshot(client, accounts.map((a) => a.address), BTC_POOL);
+  const qtyB = quantityForLeverage(snap.accounts[1]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
+  check("open", await openIoc(client, accB.wallet, false, qtyB));
+  say(`B short ${qtyB} at ${DEMO_LEVERAGE_X}x`);
+  if (manualA) {
+    say(`A: open the long from the Basanos terminal now (${DEMO_LEVERAGE_X}x).`);
+  } else {
+    const qtyA = quantityForLeverage(snap.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
+    check("open", await openIoc(client, accA.wallet, true, qtyA));
+    say(`A long ${qtyA} at ${DEMO_LEVERAGE_X}x`);
+  }
+  const openedAt = Date.now();
+  let tried = false;
+  let breached = false;
+  const final = await waitVerdicts(
+    started.map((r) => r.runId),
+    verdictDeadline(lastStartMs, rb.timeLimitSec),
+    async (rs) => {
+      if (tried || Date.now() - openedAt <= waitMin * 60_000 || rs[1]?.status !== 1) return;
+      tried = true; // one attempt only
+      say("market still: exposure breach on B (FAIL on demand); A resolves or hits its time limit");
+      breached = await topUp(accB, book);
+    },
+  );
+  if (!final) throw new Error(`a run is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after the last start; check the referee terminal`);
+  const flat = await flatAll(started.map((r) => r.account), 120_000);
+  const take = appendDemoTake({ at: new Date().toISOString(), mode, rulebook: { id, label: rb.label }, runs: runRows(final), breachedOnDemand: breached, flatAfter: flat, notes, txs });
+  say(`take ${take} recorded in docs/evidence/demo-takes.json`);
+  for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+  if (!flat) {
+    say("STOP: an account still holds a position after its verdict; check the referee terminal");
+    process.exit(1);
+  }
+}
+
+async function oneAccountTake(): Promise<void> {
+  const [accA] = accounts;
+  if (!accA) throw new Error("account A expected");
+  const book = await readBook(client);
+  // Run 1: FAIL on demand by exposure.
+  const r1 = await startRun(accA);
+  const s1 = await readSnapshot(client, [accA.address], BTC_POOL);
+  check("open", await openIoc(client, accA.wallet, true, quantityForLeverage(s1.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s1.markPrice, 8, book)));
+  if (await topUp(accA, book)) say("run 1: size added past the 15x exposure cap (FAIL on demand)");
+  const v1 = await waitVerdicts([r1], verdictDeadline(lastStartMs, rb.timeLimitSec));
+  if (!v1) throw new Error(`run 1 is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after its start; check the referee terminal`);
+  if (!(await flatAll([accA.address], 5 * 60_000))) throw new Error("account A is not flat 5 min after run 1's verdict");
+  // Run 2: the PASS attempt.
+  const r2 = await startRun(accA);
+  say(`run 2 (${r2}): ${passSide} ${DEMO_LEVERAGE_X}x`);
+  const s2 = await readSnapshot(client, [accA.address], BTC_POOL);
+  check("open", await openIoc(client, accA.wallet, passSide === "long", quantityForLeverage(s2.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s2.markPrice, 8, book)));
+  const v2 = await waitVerdicts([r2], verdictDeadline(lastStartMs, rb.timeLimitSec));
+  if (!v2) throw new Error(`run 2 is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after its start; check the referee terminal`);
+  const flat = await flatAll([accA.address], 120_000);
+  const rows = runRows([...v1, ...v2]);
+  const take = appendDemoTake({
+    at: new Date().toISOString(),
+    mode,
+    rulebook: { id, label: rb.label },
+    runs: rows.map((r, i) => (i === 1 ? { ...r, side: passSide } : r)),
+    breachedOnDemand: true,
+    flatAfter: flat,
+    notes,
+    txs,
+  });
+  say(`take ${take} recorded in docs/evidence/demo-takes.json (one-account fallback)`);
+  for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+  if (!flat) {
+    say("STOP: account A still holds a position after its verdict; check the referee terminal");
+    process.exit(1);
+  }
+}
+
+/** P6b, once the take has started a run: nothing is re-sent and no run is voided. The referee ends each run by a rule
+ *  or at its time limit; the demo waits for the verdicts, checks the accounts, records the take apart, and exits 1. */
+async function abortTake(reason: string): Promise<never> {
+  const ids = started.map((r) => r.runId);
+  say(`STOP: take aborted: ${reason}`);
+  say(
+    `Nothing is re-sent and no run is voided. The referee keeps judging run(s) ${ids.join(", ")} and ends each by a rule or at ` +
+      `its ${rb.timeLimitSec} s time limit, closing any position first. Keep the referee running until this exits.`,
+  );
+  const final = await waitVerdicts(ids, verdictDeadline(lastStartMs, rb.timeLimitSec));
+  const flat = await flatAll(started.map((r) => r.account), 120_000);
+  const stillActive: string[] = [];
+  for (const a of accounts) {
+    const r = await activeRunOf(a.address);
+    if (r !== 0n) stillActive.push(`${a.name} run ${r}`);
+  }
+  const n = appendDemoTake(
+    { at: new Date().toISOString(), mode, rulebook: { id, label: rb.label }, aborted: reason, runs: runRows(final ?? []), flatAfter: flat, stillActive, notes, txs },
+    repoPath(DEMO_ABORTED),
+  );
+  say(`aborted take ${n} recorded in ${DEMO_ABORTED} (not demo-takes.json, which check-rehearsal judges)`);
+  for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+  if (!final || stillActive.length > 0) say(`STOP: still Active after the time limit + ${VERDICT_GRACE_SEC} s: ${stillActive.join(", ") || ids.join(", ")}; check the referee terminal`);
+  if (!flat) say("STOP: an account still holds a position after its verdict; check the referee terminal");
+  process.exit(1);
+}
+
+try {
+  // Every account passes preflight before anything is sent.
+  for (const a of accounts) {
+    const pf = await preflight(client, markets, a.address);
+    say(`${a.name} ${a.address}: stt ${pf.stt} unlocked margin ${pf.unlockedCollateral} flat ${pf.flat} equity ${pf.equity}`);
+    const problems = notReady(pf);
+    if (problems.length > 0) {
+      say(`STOP: ${a.name} is not ready: ${problems.join("; ")}. No voucher is ever claimed here.`);
+      process.exit(1);
+    }
+  }
+  for (const a of accounts) {
+    const g = await ensureGrant(client, a.wallet, referee);
+    check("grant", g);
+    if (g) say(`${a.name} granted the referee place + cancel on BTC-PERP: ${g.sent.tx?.explorer ?? explorerTx(g.sent.hash)}`);
+  }
+  if (oneAccount) await oneAccountTake();
+  else await twoAccountTake();
+  process.exit(0);
+} catch (e) {
+  const reason = e instanceof Error ? e.message : String(e);
+  const step = onFailure(e instanceof WriteFailed ? e.kind : "error", started.length);
+  if (step === "stop") {
+    say(`STOP: ${reason}. The take started no run, so nothing needs cleaning up, and nothing was re-sent. Re-run demo.ts once the cause is fixed.`);
+    process.exit(1);
+  }
+  await abortTake(reason);
+}
+```
+
+Replace `packages/bot/src/bot.ts` with:
+```ts
+// The scripted challenger (account B). It signs as itself; the referee's grant is the only delegation. Every write is
+// viem-direct (send.ts, P6) and read back from the chain; a write that does not take effect stops the bot, and nothing
+// is re-sent (P6b).
+import { BTC_POOL, explorerTx, readSnapshot, rulebookId, quantityForLeverage } from "@basanos/core";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
+import { RULEBOOK_FILES, loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { makePublicClient } from "@basanos/referee";
+import { breachQuantity, ensureGrant, makeAccountWallet, makeMarkets, notReady, openIoc, preflight, readBook, startRunAs } from "./actions";
+import { describeWrite, type AccountWrite } from "./send";
+
+loadDotEnv();
+const [cmd, ...rest] = process.argv.slice(2);
+const opt = (name: string, fallback: string): string => {
+  const i = rest.indexOf(name);
+  return i >= 0 && rest[i + 1] ? (rest[i + 1] as string) : fallback;
+};
+const pk = requirePrivateKey("ACCOUNT_B_PK");
+const wallet = makeAccountWallet(pk, rpcHttp());
+const account = wallet.account.address;
+const client = makePublicClient(rpcHttp());
+const markets = makeMarkets();
+const registry = requireAddress("REGISTRY_ADDRESS");
+const referee = requireAddress("REFEREE_ADDRESS");
+
+/** Prints the write with its link; exits 1 unless it took effect on-chain. */
+function took(w: AccountWrite | null, ifNot: string): void {
+  if (!w) return;
+  console.log(`${describeWrite(w)} ${w.sent.tx?.explorer ?? explorerTx(w.sent.hash)}`);
+  if (w.effect === "done") return;
+  console.error(`STOP: ${w.sent.label} did not take effect; nothing is re-sent. ${ifNot}`);
+  process.exit(1);
+}
+
+if (cmd === "start") {
+  const name = opt("--rulebook", "tokyo-sprint-demo") as keyof typeof RULEBOOK_FILES;
+  const side = opt("--side", "short");
+  const leverage = Number(opt("--leverage", String(DEMO_LEVERAGE_X)));
+  const pf = await preflight(client, markets, account);
+  const problems = notReady(pf);
+  if (problems.length > 0) {
+    console.error(`bot preflight failed: ${problems.join("; ")}`);
+    process.exit(1);
+  }
+  took(await ensureGrant(client, wallet, referee), "No run was started; re-run once the cause is fixed (the grant is read first).");
+  const start = await startRunAs(client, wallet, registry, rulebookId(loadRulebook(name)));
+  took(start, "Re-run once the cause is fixed (the registry refuses a second active run).");
+  console.log(`run ${start.runId} started`);
+  const snap = await readSnapshot(client, [], BTC_POOL);
+  const qty = quantityForLeverage(pf.equity, leverage, snap.markPrice, 8, await readBook(client));
+  took(await openIoc(client, wallet, side === "long", qty), `Run ${start.runId} stays with the referee, which ends it by a rule or at its time limit.`);
+  process.exit(0);
+} else if (cmd === "breach") {
+  const leverage = Number(opt("--leverage", "16"));
+  const snap = await readSnapshot(client, [account], BTC_POOL);
+  const a = snap.accounts[0];
+  if (!a || a.size === 0n) {
+    console.error("bot has no position to extend");
+    process.exit(1);
+  }
+  const add = breachQuantity(a.size, a.totalEquity, leverage, snap.markPrice, 8, await readBook(client));
+  took(await openIoc(client, wallet, a.size > 0n, add, "exposure top-up"), "The run goes on.");
+  console.log(`exposure breach: +${add}`);
+  process.exit(0);
+} else {
+  console.error(`usage: bot.ts start [--rulebook <name>] [--side short|long] [--leverage ${DEMO_LEVERAGE_X}] | breach [--leverage 16]`);
+  process.exit(2);
+}
+```
+
+- [ ] **Step 6: Type-check (the demo runs live in referee:10 and ship:3)**
+Run: `npm run typecheck -w @basanos/bot`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 7: Run the whole bot suite**
+Run: `npm test -w @basanos/bot`
+Expected: no failed tests (`17 passed`).
+
+- [ ] **Step 8: Run the new test (the gate)**
+Run: `npm test -w @basanos/bot -- test/send.test.ts`
+Expected: PASS — `6 passed`.
+
+- [ ] **Step 9: Commit (kernel-performed — no agent runs this)**
+Message: `fix(bot): account writes go viem-direct and are read back from the chain; a failed take aborts without re-sending (P6)`

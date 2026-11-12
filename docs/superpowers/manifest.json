@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10. 2026-11-12 (P5, the book trades ~19 bps above the mark): referee:13 (core: book reads, the evaluator judges closeable equity, book-capped opens, DEMO_LEVERAGE_X 5), referee:14 (the referee judges with the book of the same block; FAIL evidence records it), referee:15 (bot opens from the book, 5x demo, demo-check measures the spread), spike:21 (skeleton opens from the book; the dry-run simulates the open), web:11 (terminal orders from the book, closeable equity, 5x ticket), web:12 (verdict replays the judged equity) and ship:11 (README) added; spike:11 depends on spike:21, referee:10 on referee:14 and referee:15, ship:3 on referee:14, referee:15 and web:11, ship:6 on web:11 and web:12.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10. 2026-11-12 (P5, the book trades ~19 bps above the mark): referee:13 (core: book reads, the evaluator judges closeable equity, book-capped opens, DEMO_LEVERAGE_X 5), referee:14 (the referee judges with the book of the same block; FAIL evidence records it), referee:15 (bot opens from the book, 5x demo, demo-check measures the spread), spike:21 (skeleton opens from the book; the dry-run simulates the open), web:11 (terminal orders from the book, closeable equity, 5x ticket), web:12 (verdict replays the judged equity) and ship:11 (README) added; spike:11 depends on spike:21, referee:10 on referee:14 and referee:15, ship:3 on referee:14, referee:15 and web:11, ship:6 on web:11 and web:12. 2026-11-12 (P6, the SDK's send path ended 'outcome unknown' twice, B18): referee:16 (account-write builders move to @basanos/core/owner-tx, byte-identical to the SDK's encoding; the spike's live-lib re-exports them) and referee:17 (the bot's grant, startRun and opens go viem-direct, read back from the chain, never re-sent; a take that fails after a run started aborts into demo-aborted.json) added; referee:10 and ship:3 depend on referee:17.",
   "subsystems": [
     "spike",
     "contracts",
@@ -2452,6 +2452,7 @@
         "referee:12",
         "referee:14",
         "referee:15",
+        "referee:17",
         "contracts:10",
         "contracts:11",
         "spike:11",
@@ -2479,7 +2480,7 @@
       ],
       "requires": [
         "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
-        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback; every account write viem-direct and read back; a take that fails after a run started aborts: nothing re-sent, verdicts awaited, recorded in docs/evidence/demo-aborted.json, exit 1)",
         "CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (closeable-equity cost: the spread for the demo size walked from one book read, at DEMO_LEVERAGE_X)",
         "CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)",
         "CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal",
@@ -2852,6 +2853,178 @@
         "expect": "PASS — `2 passed`."
       },
       "commit": "fix(bot): open from the book, run the demo at 5x, measure the demo cost as the spread (P5)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:16",
+      "subsystem": "referee",
+      "title": "Account writes in core — the grant, open and startRun calls, byte-identical to the SDK's encoding (P6)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "spike:2",
+        "contracts:8",
+        "spike:10",
+        "spike:14",
+        "spike:15",
+        "spike:16"
+      ],
+      "effort": "low",
+      "model_tier": "standard",
+      "files": {
+        "create": [
+          "packages/core/src/owner-tx.ts"
+        ],
+        "modify": [
+          "packages/spike/src/live-lib.ts"
+        ],
+        "test": [
+          "packages/core/test/owner-tx.test.ts"
+        ]
+      },
+      "provides": [
+        "interface UnsignedCall { to: Address; data: Hex; value: bigint }",
+        "ownerPoolAbi (owner-side placeOrder, selector 0x4e978373)",
+        "ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall",
+        "grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall",
+        "startRunCall(registry: Address, account: Address, rulebookId: Hex): UnsignedCall",
+        "ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }",
+        "@basanos/core/owner-tx (the account-write builders, byte-identical to the SDK's encoding; packages/spike/src/live-lib.ts re-exports them)"
+      ],
+      "requires": [
+        "operatorRegistryAbi",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "BTC_POOL",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "HIDEKI_ADDRESSES",
+        "INDEXER_URL",
+        "OPERATOR_REGISTRY",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_IOC = 2"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/owner-tx.test.ts",
+        "expect": "PASS — `4 passed`."
+      },
+      "commit": "refactor(core): account-write builders move to @basanos/core/owner-tx, pinned to the SDK's encoding (P6)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:17",
+      "subsystem": "referee",
+      "title": "The bot's writes go viem-direct and are read back from the chain; a take that fails after a run started aborts without re-sending (P6)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:3",
+        "referee:6",
+        "referee:8",
+        "referee:12",
+        "referee:13",
+        "referee:15",
+        "referee:16",
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6",
+        "contracts:8"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/bot/src/send.ts"
+        ],
+        "modify": [
+          "packages/bot/src/actions.ts",
+          "packages/bot/src/demo.ts",
+          "packages/bot/src/bot.ts"
+        ],
+        "test": [
+          "packages/bot/test/send.test.ts"
+        ]
+      },
+      "provides": [
+        "RECEIPT_WAIT_MS = 60_000",
+        "VERDICT_GRACE_SEC = 300",
+        "interface Sender { address: Address; pendingNonce(): Promise<number>; sign(tx: SignedTx): Promise<Hex>; sendRaw(raw: Hex): Promise<unknown>; waitReceipt(hash: Hex, timeoutMs: number): Promise<Receipt>; receipt(hash: Hex): Promise<Receipt | null> }",
+        "type SendResult = { outcome: \"landed\"; label: string; hash: Hex; nonce: number; tx: TxRecord; reason: null } | { outcome: \"unknown\"; label: string; hash: Hex; nonce: number; tx: null; reason: string }",
+        "sendWrite(s: Sender, label: string, call: UnsignedCall, waitMs?: number): Promise<SendResult> (signs at the pending nonce with ORDER_GAS, sends the raw transaction once, takes the receipt by the hash known before the send; never re-sends)",
+        "type Effect = \"done\" | \"not-done\" | \"unknown\"",
+        "effectOf(sent: SendResult, seen: boolean, latestNonce: number): Effect",
+        "interface AccountWrite { sent: SendResult; effect: Effect }",
+        "describeWrite(w: AccountWrite): string",
+        "type WriteKind = \"grant\" | \"start\" | \"open\" | \"breach\"",
+        "onFailure(kind: WriteKind | \"error\", runsStarted: number): \"stop\" | \"abort\" | \"note\"",
+        "verdictDeadline(lastStartMs: number, timeLimitSec: number): number",
+        "type AccountWallet = ReturnType<typeof makeAccountWallet>",
+        "viemSender(wallet: AccountWallet, client: PublicClient): Sender (signs locally; nonce, raw send and receipt on the standard RPC)",
+        "makeMarkets(): SomniaMarkets (read-only: the bot never hands the SDK a key)",
+        "ensureGrant(client: PublicClient, wallet: AccountWallet, referee: Address): Promise<AccountWrite | null> (viem-direct; done only when both selectors read authorized)",
+        "startRunAs(client: PublicClient, wallet: AccountWallet, registry: Address, rulebookId: Hex): Promise<AccountWrite & { runId: bigint | null }> (viem-direct; the run read back from activeRunOf)",
+        "openIoc(client: PublicClient, wallet: AccountWallet, isBid: boolean, quantity: bigint, label?: string): Promise<AccountWrite> (capped from the book; viem-direct; done only if the position size moved; never re-sent)",
+        "DEMO_ABORTED = \"docs/evidence/demo-aborted.json\"",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback; every account write viem-direct and read back; a take that fails after a run started aborts: nothing re-sent, verdicts awaited, recorded in docs/evidence/demo-aborted.json, exit 1)",
+        "CLI: npx tsx packages/bot/src/bot.ts start [--rulebook <name>] [--side short|long] [--leverage 5] | breach [--leverage 16] (viem-direct writes, read back; stops on a write that does not take effect)"
+      ],
+      "requires": [
+        "interface UnsignedCall { to: Address; data: Hex; value: bigint }",
+        "ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall",
+        "grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall",
+        "startRunCall(registry: Address, account: Address, rulebookId: Hex): UnsignedCall",
+        "ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "jsonSafe(value: unknown): unknown",
+        "makePublicClient(url: string): PublicClient",
+        "makeAccountWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)",
+        "readBook(client: PublicClient): Promise<BookParams>",
+        "breachQuantity(currentSize: bigint, equity: bigint, targetX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "appendDemoTake(take: Record<string, unknown>, path?: string): number",
+        "runIdFromLogs(logs: readonly { address: Address; data: Hex; topics: readonly Hex[] }[], registry: Address): bigint | null",
+        "preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei?: bigint): Promise<Preflight>",
+        "notReady(pf: Preflight): string[]",
+        "interface Preflight { account: Address; stt: bigint; sttOk: boolean; voucherClaimed: boolean; unlockedCollateral: bigint; funded: boolean; flat: boolean; equity: bigint }",
+        "planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps?: number): OrderPlan",
+        "readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>",
+        "DEMO_LEVERAGE_X = 5",
+        "repoPath(rel: string): string",
+        "BTC_POOL",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "HIDEKI_ADDRESSES",
+        "INDEXER_URL",
+        "MARGIN_BANK",
+        "OPERATOR_REGISTRY",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_IOC = 2",
+        "farFutureNs(nowMs?: number): bigint",
+        "explorerTx(hash: Hex): string",
+        "marginBankAbi",
+        "perpPoolAbi",
+        "loadDotEnv(path?: string): boolean",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "rulebookId(rb: Rulebook): Hex",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "RULE_NAMES = [\"None\", \"DailyLoss\", \"TrailingDrawdown\", \"MaxExposure\", \"TimeLimit\", \"Liquidated\"]"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/bot -- test/send.test.ts",
+        "expect": "PASS — `6 passed`."
+      },
+      "commit": "fix(bot): account writes go viem-direct and are read back from the chain; a failed take aborts without re-sending (P6)",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"
@@ -3669,6 +3842,7 @@
         "referee:12",
         "referee:14",
         "referee:15",
+        "referee:17",
         "web:11"
       ],
       "effort": "medium",
@@ -3689,7 +3863,7 @@
         "FEATURED_RUN_ID (the money-shot PASS run; set in .env)"
       ],
       "requires": [
-        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback; every account write viem-direct and read back; a take that fails after a run started aborts: nothing re-sent, verdicts awaited, recorded in docs/evidence/demo-aborted.json, exit 1)",
         "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
         "CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json",
         "CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot",
