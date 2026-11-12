@@ -555,10 +555,15 @@ Routes (hash router): `#/challenge` (terminal), `#/run/:id` (verdict + replay), 
   10×), closeable equity (what the referee judges) beside the equity at the mark, live closeable-equity rails
   (start, target, daily floor, trailing high-water line), run status, event log with explorer links.
   Cut (cut order, recorded 2026-11-11): the limit-order ticket and the exposure rail.
-- **Verdict page:** status, rule, rulebook (name, variant, JSON, id), the start / breach / end reads,
-  close tx hashes, the Price Oracle cross-check line (the recorded reading beside the mark, or "No Price Oracle reading was recorded for this verdict."), and **Replay**: re-run each stored call at
+- **Verdict page:** status, rule, rulebook (name, variant, canonical JSON whose keccak256 is the id, id), the
+  start / breach / end reads (equity in USDso, position size in BTC), close tx hashes (a PASS stores none: the
+  page shows the referee's lock close from its evidence bundle, labelled as such, when the build holds that
+  run's bundle), the Price Oracle cross-check line (the recorded reading beside the mark, or "No Price Oracle reading was recorded for this verdict."), and **Replay**: re-run each stored call at
   its block (for a FAIL, also re-read the book there and show the breach's closeable equity) and show "chain: X — registry: X" or the stored-value fallback (R2); the X share card is
   cuttable polish.
+- **Certificate page:** the holder, the trust line, and the tokenURI attributes in plain words: start and
+  end equity in USDso, the gain (end against start, signed, 2 decimals), start and end blocks, the rulebook
+  by name and id. No page renders a raw wei amount.
 
 ## 11. Landing page (`@basanos/landing`, served at `/`)
 
@@ -758,6 +763,7 @@ feedback, deploy; Nov 15 — buffer, submitted by 09:00.
 | Which equity do the rules judge? | Closeable equity: the marked equity revalued at the same-block book (bids for a long, asks for a short); opening IOCs capped from the book; demo at 5×; rulebooks unchanged | architect ruling P5 on the guide's measurement (the book ≈ 19 bps above the mark), 2026-11-12 |
 | How do the bot's own writes reach the chain, and what if one fails mid-take? | viem-direct (signed locally, `ORDER_GAS`, explicit pending nonce, standard RPC), read back from the chain, never re-sent; a take that fails after a run started aborts: the runs end by a rule or at their time limits (no void), recorded in `demo-aborted.json` | architect ruling P6 on the guide's diagnosis B18 (the SDK's send path ended "outcome unknown" twice), 2026-11-12 |
 | What makes a demo PASS likely, and how fast does the referee close? | Demo v2 (+0.50% target, 1.5% / 2% floors, 20 min) at 10×, chosen by replaying 12 h of on-chain history (95.6% of windows see a PASS); same-block entries; the FAIL on demand after the first PASS; closes capped from the book and sent in one round trip from the push; a 10 bps PASS lock buffer; the Price Oracle stays best-effort (no redeploy) | architect ruling P7 on the guide's diagnosis B19, 2026-11-12 |
+| How do the verdict and certificate pages show amounts, and a PASS's close? | Money in USDso to the cent, the gain as a signed percent, sizes in BTC, blocks as plain integers, the rulebook JSON in canonical form (its keccak256 is the id); a PASS's lock close from the referee's evidence bundle, labelled as such (recordPass stores none); the landing names a PASS's certificate instead of a close count | architect ruling P8 on the guide's viewing of run 3 and certificate #3 (2026-11-12) |
 | Demo mode | `tokyo-sprint-demo`, a separately registered parameter set of the one rulebook, labelled on every surface; demo runner; exposure-breach fallback | user (fold-in list) + G4 |
 | Landing page | Required scope, additive `landing` plan, truthful content, kit checkers as gate | user directive via the guide |
 | Deploy host | Vercel | user, 2026-11-10 |
