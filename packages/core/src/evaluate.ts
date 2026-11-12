@@ -1,3 +1,4 @@
+import { closeableEquity, type BookSides } from "./book";
 import type { Rulebook } from "./rulebook";
 import type { AccountSnapshot } from "./snapshot";
 
@@ -22,12 +23,18 @@ export interface MarketView {
   timestamp: bigint;
   markOk: boolean;
   markPrice: bigint;
+  /** The book in the same block (spec §5: rules judge closeable equity). Omitted: equity is valued at the mark (tape
+   *  simulations). null: the book read failed, so an open position cannot be judged and the run pauses. */
+  book?: BookSides | null;
 }
 
 export interface Evaluation {
   state: RunState;
   verdict: Verdict;
   exposureX: number | null;
+  /** The equity the rules judged: closeable equity when a book was given (marked equity when flat or when no book
+   *  was given); null on a pause or void. */
+  judgedEquity: bigint | null;
 }
 
 const DAY = 86_400n;
@@ -41,14 +48,24 @@ export function notional(size: bigint, mark: bigint, baseDecimals: number): bigi
   return (abs * mark) / 10n ** BigInt(baseDecimals);
 }
 
-/** Spec §5, in order: pause, void, state update, time limit, daily loss, trailing drawdown, exposure, target. */
+/** The equity the rules judge (spec §5): the marked equity revalued at the book that would fill a close; the marked
+ *  equity itself when flat or when no book was given; null when the book cannot price the position. */
+export function equityToJudge(acct: AccountSnapshot, market: MarketView, baseDecimals: number): bigint | null {
+  if (market.book === undefined || acct.size === 0n) return acct.totalEquity;
+  if (market.book === null) return null;
+  return closeableEquity(acct.totalEquity, acct.size, market.markPrice, market.book, baseDecimals);
+}
+
+/** Spec §5, in order: pause, void, book pause, state update, time limit, daily loss, trailing drawdown, exposure, target. */
 export function evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, market: MarketView): Evaluation {
-  if (!acct.equityOk || !market.markOk) return { state, verdict: { kind: "pause", reason: "unpriceable" }, exposureX: null };
+  const pause: Evaluation = { state, verdict: { kind: "pause", reason: "unpriceable" }, exposureX: null, judgedEquity: null };
+  if (!acct.equityOk || !market.markOk) return pause;
   const pool = rb.market.pool.toLowerCase();
   if (acct.activePools.some((p) => p.toLowerCase() !== pool)) {
-    return { state, verdict: { kind: "void", reason: "ForeignMarket" }, exposureX: null };
+    return { state, verdict: { kind: "void", reason: "ForeignMarket" }, exposureX: null, judgedEquity: null };
   }
-  const total = acct.totalEquity;
+  const total = equityToJudge(acct, market, rb.market.baseDecimals);
+  if (total === null) return pause;
   const day = market.timestamp / DAY;
   const next: RunState = {
     ...state,
@@ -72,5 +89,5 @@ export function evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, m
   ) {
     verdict = { kind: "target" };
   }
-  return { state: next, verdict, exposureX };
+  return { state: next, verdict, exposureX, judgedEquity: total };
 }
