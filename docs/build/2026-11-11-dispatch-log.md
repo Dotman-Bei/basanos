@@ -201,3 +201,26 @@ Synced to `e0ff02b` (manifest 79 tasks).
 | referee:17 | executor-medium / opus | b34f730 | 6 passed; bot 17; send.ts + test SAME (the "no `.trader.` / placePerpOrder / privateKey:" source scan intact); 309 added lines all in plan |
 
 `grep -rn "\.trader\." packages/bot packages/referee apps/web` (src, excl. node_modules/dist): no matches. Workspace: 209 tests (core 73, referee 24, spike 35, web 38, ship 11, bot 17, landing 11); typecheck 0; web build clean. Remaining ready: referee:10 (human gate).
+
+## Resume — P7 wave (2026-11-12)
+
+Synced to `7790737` (manifest 85 tasks, 9 human gates).
+
+| Task | Executor / model | Commit | Gate re-run / checks |
+|---|---|---|---|
+| referee:10 evidence | (concierge run) | 78415bc | `check-rehearsal` → PASS rehearsal (first verdict run 1); runs 1, 2 Failed DailyLoss; no key material |
+| referee:18 | executor-high / sonnet | 6e9160c | 2 passed; v1 blob 70d3f12f… (byte copy), id 0x59e93903…0757; v2 id 0x5a5af7ee…c448 = guide's; 50 added lines in plan |
+| referee:20 | executor-medium / opus | ec054f6 | 9 passed; referee 33; 218 added lines in plan; test SAME |
+| referee:19 | executor-high / sonnet | 6d4f7e7 | 4 passed; 3 files SAME; demo-replay never run |
+| referee:21 | executor-medium / opus | aa2b4f3 | 3 passed; 4 new files SAME; 99 added lines in plan; send.test (no SDK write) 6 passed |
+| ship:12 | executor-high / sonnet | 7b8bf56 | check-readme PASS; all 5 New blocks present once, Old blocks gone |
+| ship:2 | (orchestrator, read-only, no key) | 185359a | `snapshot-run.ts` (1st try transient RPC null-data error, retry OK) → PASS featured 1 Failed; registry = deployment |
+| landing:2 | executor-high / sonnet | 0645c23 | wrote featured-verdict.json (run 1); script SAME |
+| landing:4 | executor-high / sonnet | 66697bd | verdict.png = run 1's real verdict page (viewed); referee/registry args from deployments/hideki.json, not .env |
+| landing:5 | executor-high / sonnet | ad0d9b8 | PASS landing checkers (0 FAIL; 9 consistency WARN, 2 perf WARN); runner SAME; truth PASS; 1440 shot viewed |
+
+**Plan-bugs (recorded):**
+- landing:4 `shoot-verdict.mjs`: `vite preview` bound only to `[::1]` while the shot targets `127.0.0.1` → Chrome error page saved with exit 0. Fixed in the declared file by adding `--host 127.0.0.1` (one line). Also its `taskkill /pid … /t` left the preview listening (killed by the executor).
+- landing:4 Step 2 reads `REFEREE_ADDRESS` from `.env`; the public address in `deployments/hideki.json` was used instead.
+
+Workspace: 229 tests (core 75, referee 34, spike 35, web 39, ship 11, bot 24, landing 11); typecheck 0; web build clean. `\.trader\.` grep in packages/bot, packages/referee, apps/web: no matches. Remaining: referee:22, ship:3, ship:6 (gates); ship:7 (after ship:3).
