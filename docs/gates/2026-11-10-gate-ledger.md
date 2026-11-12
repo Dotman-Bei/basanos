@@ -417,3 +417,24 @@ The referee now holds **1.6778143165982 STT**, nonce 7.
 **`.env`** (git-ignored): added `REGISTRY_ADDRESS` (the public registry address above) and `ORACLE_ENABLED=true`
 (a non-secret switch). Names now: REFEREE_PK, REFEREE_ADDRESS, ACCOUNT_A_PK, ACCOUNT_A_ADDRESS, ACCOUNT_B_PK,
 ACCOUNT_B_ADDRESS, REGISTRY_ADDRESS, ORACLE_ENABLED.
+
+### USDso transfer ACCOUNT_A → ACCOUNT_B (50 USDso). DONE 2026-11-12 ~11:25 WAT (user's direct request, confirmed)
+
+The user asked in chat to "Transfer 50 USDso from 0x917F…AEc1 to 0x1609…26aD". That contradicts the kickoff rule
+"never move USDso between accounts", so the concierge asked first. The user answered "confirm.", which overrides
+that rule for this one transfer only; the rule still holds for any other move.
+
+**Pre-state** (read-only): A held 100 USDso in its wallet (not from a voucher), 51 STT, nonce 0. B held 0 USDso, 1 STT,
+nonce 0. Both still had an unclaimed voucher. A's 100 USDso and 51 STT did not come from this seat.
+
+**Send** (one attempt, viem over public HTTPS, A's key from `.env`, never printed): ERC-20
+`transfer(B, 50e18)` on USDso `0xed7993a74dae1e6656b704a424dcd8711aaf4f72` (18 decimals). Nonce 0, gas 2,091,382
+(1.5 × the estimate of 1,394,255), legacy, 6 gwei.
+- Tx **`0xc5047ae5bc178dcbb61da4de4cf83a2b77fb7c28a87f4121cca5cf72a4901738`**: status success, block 48250844,
+  gas used 262,837, cost 0.001577022 STT.
+- One `Transfer` log (topic `0xddf252ad`) from A to B, amount 50000000000000000000 wei, i.e. **exactly 50 USDso**.
+  Checked independently over raw RPC.
+
+**Post-state:** A holds **50 USDso**, 50.998422978 STT, **nonce 1**. B holds **50 USDso** in its wallet. MarginBank
+equity is unchanged (0 for both): wallet USDso is not trading equity until it is deposited.
+**Note for later gates:** any voucher claim for A must now use nonce 1, not the nonce 0 in the P3 retry plan.
