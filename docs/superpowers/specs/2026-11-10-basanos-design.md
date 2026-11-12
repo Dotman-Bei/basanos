@@ -643,6 +643,7 @@ total (spike, rehearsal, demo takes).
 | `ORACLE_ENABLED` | `true` for this build (the cut-order switch: `false` sends no oracle deposit) | referee |
 | `FEATURED_RUN_ID` | the real run the landing shows | landing build |
 | `VERCEL_TOKEN` | Vercel deploy token (closing, human gate) | ship deploy |
+| `VERCEL_SCOPE` | optional Vercel team slug, passed as `--scope`; unset for the personal account that owns `suitz.xyz` | ship deploy |
 | `CHROME_PATH` | optional, for the kit's checkers | landing gate |
 
 Public web build variables (no secrets): `VITE_REGISTRY_ADDRESS`, `VITE_REFEREE_ADDRESS`.
@@ -719,10 +720,15 @@ Plans (one per subsystem; task ids `<subsystem>:<N>`):
 Push 2 is strictly additive: new plan files and appended manifest tasks; push 1's task ids, Files and
 gates never change.
 
-Deploy: **Vercel** (user decision). The assembled static site (`/` = landing, `/app/` = web) is deployed
-with `npx vercel@65.3.1 deploy --prod` using `VERCEL_TOKEN`; the Vercel account / token is a concierge
-signup gate; the deploy task is `human_gate: true`, `gate_profile: deploy`. It works while the repo is
-private.
+Deploy: **Vercel** (user decision), on the user's own account; the live site is
+**https://basanos.suitz.xyz** (P9: the user's domain, already on Vercel DNS with a wildcard certificate;
+`basanos.vercel.app` is someone else's site). The assembled static site (`/` = landing, `/app/` = web) is
+deployed to the Vercel project `basanos` with `npx vercel@65.3.1 deploy --prod --project basanos
+--create-if-missing --json` using `VERCEL_TOKEN` (optional `VERCEL_SCOPE`); the deployment URL is read from that
+JSON, and `vercel alias set` points the domain at it. The certificates' `baseUrl` is
+`https://basanos.suitz.xyz/app/#/cert/`. The gate fetches `/` and `/app/` on the domain unauthenticated and
+fails on anything but a 200 that stays on the domain. The deploy task is `human_gate: true`,
+`gate_profile: deploy`. It works while the repo is private.
 
 Calendar (WAT): Nov 10 evening — preflight (burners, faucet, two voucher claims); Nov 11 — spike, the
 first real order (tripwire), core, contracts; Nov 12 — deploy, referee end-to-end on live accounts, one
@@ -767,6 +773,7 @@ feedback, deploy; Nov 15 — buffer, submitted by 09:00.
 | Demo mode | `tokyo-sprint-demo`, a separately registered parameter set of the one rulebook, labelled on every surface; demo runner; exposure-breach fallback | user (fold-in list) + G4 |
 | Landing page | Required scope, additive `landing` plan, truthful content, kit checkers as gate | user directive via the guide |
 | Deploy host | Vercel | user, 2026-11-10 |
+| Live site address | https://basanos.suitz.xyz on the user's own Vercel account (project `basanos`), aliased to each production deployment; certificates point at `/app/#/cert/` there; no public surface names `basanos.vercel.app` | user via the guide, architect ruling P9 (2026-11-12) |
 | SDK pin | 0.33.0 exact, fallback 0.32.1, 2 h timebox | architect (Stage 1 diff + probes), user-confirmed |
 | Spec/plan shape | One spec, one plan per subsystem, two pushes, push 2 strictly additive | architect, user-confirmed |
 | Watch transport | Raw `somnia_watch` over WebSocket in `@basanos/core` (no `@somnia-chain/reactivity` dependency) for full control of resubscribe and gaps | derived (R3) |
