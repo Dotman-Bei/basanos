@@ -1,0 +1,24 @@
+{
+  "evidence": "r5-preview",
+  "writtenAt": "2026-11-12T13:51:24.410Z",
+  "registry": "0xf5d8099239200df961e0910a42c105214d1e9370",
+  "account": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+  "block": "48372484",
+  "code": 0,
+  "codeName": "ok",
+  "read": {
+    "blockNumber": "48372484",
+    "equityOk": true,
+    "equity": "49999025000000000000",
+    "lockedCollateral": "0",
+    "positionSize": "0",
+    "markOk": true,
+    "markPrice": "72403690783186879500000"
+  },
+  "sdk": {
+    "equity": "49999025000000000000",
+    "lockedCollateral": "0",
+    "asOfBlock": "48372484"
+  },
+  "match": true
+}
