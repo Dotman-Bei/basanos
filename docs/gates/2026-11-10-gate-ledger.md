@@ -583,3 +583,40 @@ skeleton-close: FLAT after 1 close attempt(s); 5 txs (owner writes via viem)
   1.6662837865982, nonce 7 → 9). Each drop equals the sum of that signer's receipts exactly.
 - The operator grant (place + cancel) from A to the referee stays in place; the script does not revoke it.
 - `docs/evidence/g1a-close.json` is left uncommitted for the orchestrator.
+
+### spike:19: deposit B's own wallet USDso into B's own MarginBank balance (50 USDso). DONE 2026-11-12 ~14:55 WAT (guide GO, spike:19 only)
+
+**PASS deposit-b.** B's unlocked margin went from 0 to 50 USDso and its wallet from 50 to 0, in 2 txs costing
+0.004691388 STT. The GO covered spike:19 only: no voucher claim, nothing moved between accounts.
+- **Sync:** `git fetch origin main` then `git merge --ff-only origin/main` was already up to date at `ee0159a`.
+  `package-lock.json` is unchanged, so `npm install` was not run.
+- **Dry-run** `npx tsx packages/spike/src/deposit.ts --account B --amount 50 --dry-run` (exit 0):
+  ```
+  deposit B: owner 0x1609F6ABE3aD29B45D1F2fdd15a15d17AbB326aD, wallet 50 USDso, allowance 0, unlocked margin 0 USDso, STT 1000000000000000000, active run 0
+  plan: approve, then deposit 50 USDso into account B's own MarginBank balance
+  dry-run: no transaction sent
+  ```
+  STT 1.0 is at least the 0.6 headroom.
+- **Cost check (cap 0.1 STT, read-only, no key):** the approve estimates 1,390,901 gas (0.0083 STT). The deposit
+  can't be estimated before the approve lands, because USDso's allowance slot was not found for a state override (as in
+  spike:18). The expected total was about 0.005 STT, going by spike:18's actual spend. 0.12 STT would need both
+  transactions to use their full 10M limit.
+- **Live, once** `npx tsx packages/spike/src/deposit.ts --account B --amount 50` (exit 0):
+  ```
+  deposit B: OK — unlocked margin 0 -> 50 USDso (+50); wallet 50 -> 0 USDso
+  ```
+
+| tx | signer | nonce | block | gas used | STT | hash |
+|---|---|---|---|---|---|---|
+| approve (USDso → MarginBank, 50) | B | 0 | 48377087 | 260,601 | 0.001563606 | [`0x6d65e578…cd099c`](https://explorer.testnet.somnia.network/tokyo/tx/0x6d65e578853acaf0c09e9ad8fb90b9ff238d4135abcc6ecc45140d41fdcd099c) |
+| deposit (50 USDso) | B | 1 | 48377106 | 521,297 | 0.003127782 | [`0x8ece1d5d…1ebdea`](https://explorer.testnet.somnia.network/tokyo/tx/0x8ece1d5d6e5180655f9da6e0a2633b106c1b2049fb0b48f1b0b9cb14821ebdea) |
+
+**Gate:** `npx tsx packages/spike/src/deposit.ts --account B --check` → `PASS deposit-b`.
+
+**Read-back (on-chain, read-only, no key):**
+- **B:** wallet 0 USDso; allowance to the MarginBank 0, so the approve was consumed exactly. MarginBank unlocked 50
+  USDso, locked 0, active perp pools 0. BTC position 0, open orders 0. STT 1 → 0.995308612 (nonce 0 → 2). The drop
+  equals the two receipts exactly.
+- **A, unchanged:** unlocked 49.999025 USDso, locked 0, active pools 0, BTC position 0, open orders 0, wallet 0 USDso,
+  STT 50.961693066, nonce 6.
+- `docs/evidence/deposit-b.json` is left uncommitted for the orchestrator.
