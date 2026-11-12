@@ -1,6 +1,6 @@
 import type { Address, Hex } from "viem";
 import { RULE_NAMES, RUN_STATUS, VOID_REASONS, explorerTx } from "@basanos/core";
-import { formatUsdso, shortHash } from "../lib/format";
+import { formatBtc, formatUsdso, shortHash } from "../lib/format";
 import type { JudgedView } from "../lib/judged";
 import type { ReplayRow, StoredRead } from "../lib/replay";
 import { routeHref } from "../routes";
@@ -57,7 +57,7 @@ function ReadBlock(props: { title: string; who: string; read: StoredRead; rows: 
         <dt>Equity</dt>
         <dd className="mono">{props.read.equityOk ? `${formatUsdso(props.read.equity + props.read.lockedCollateral)} USDso` : "unpriceable"}</dd>
         <dt>Position size</dt>
-        <dd className="mono">{props.read.positionSize.toString()}</dd>
+        <dd className="mono">{formatBtc(props.read.positionSize)}</dd>
         <dt>Mark</dt>
         <dd className="mono">{props.read.markOk ? formatUsdso(props.read.markPrice) : "no fresh mark"}</dd>
         {props.judged ? (
@@ -89,6 +89,8 @@ export function VerdictView(props: {
   onReplay: () => void;
   /** The breach revalued at the replayed book (spec §5); absent until Replay is pressed. */
   breachJudged?: JudgedView | null;
+  /** A PASS's lock close from the referee's evidence bundle (lib/evidence.ts); recordPass stores none. */
+  lockTxs?: readonly Hex[];
 }) {
   const d = props.data;
   const passed = d.status === 2;
@@ -128,7 +130,7 @@ export function VerdictView(props: {
             {d.rulebookJson ? (
               <details>
                 <summary className="label">Rulebook JSON (its id is the keccak256 of this canonical JSON)</summary>
-                <pre className="mono">{d.rulebookJson}</pre>
+                <p className="mono">{d.rulebookJson}</p>
               </details>
             ) : null}
           </section>
@@ -137,6 +139,21 @@ export function VerdictView(props: {
               <h2 className="label">Referee close transactions</h2>
               <ul className="log">
                 {d.closeTxs.map((h) => (
+                  <li key={h}>
+                    <a className="link mono" href={explorerTx(h)} target="_blank" rel="noreferrer">
+                      {shortHash(h)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {passed && props.lockTxs && props.lockTxs.length > 0 ? (
+            <section className="panel">
+              <h2 className="label">Referee lock transaction (from the evidence bundle)</h2>
+              <p className="label">A pass stores no close transaction: the registry reads the end state itself. The referee's evidence bundle records the order it sent to lock the result.</p>
+              <ul className="log">
+                {props.lockTxs.map((h) => (
                   <li key={h}>
                     <a className="link mono" href={explorerTx(h)} target="_blank" rel="noreferrer">
                       {shortHash(h)}

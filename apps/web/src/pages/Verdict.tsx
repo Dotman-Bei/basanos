@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
-import { basanosRegistryAbi } from "@basanos/core";
+import type { Hex } from "viem";
+import { basanosRegistryAbi, canonicalJson } from "@basanos/core";
 import { browserClient } from "../chain/client";
 import { VerdictView, type VerdictData } from "../components/VerdictView";
 import { REGISTRY } from "../config";
+import { EVIDENCE, lockTxsFromEvidence } from "../lib/evidence";
 import { replayJudged, type JudgedView } from "../lib/judged";
 import { replayRead, type ReplayRow } from "../lib/replay";
 import { rulebookById } from "../lib/rulebooks";
 import { routeHref } from "../routes";
+
+/** The rulebook as its canonical JSON (keys sorted, no whitespace): the exact text whose keccak256 is its id. */
+export function rulebookText(id: Hex): string | null {
+  const rb = rulebookById(id);
+  return rb ? canonicalJson(rb) : null;
+}
 
 /** A run id the registry never issued reads back as an empty record (status None, zero account). */
 export function runMissing(run: { status: number; account: string }): boolean {
@@ -58,10 +66,7 @@ export function VerdictPage(props: { runId: bigint }) {
           voidReason: run.voidReason,
           rulebookLabel: rulebookById(run.rulebookId)?.label ?? "Unpublished rulebook",
           rulebookId: run.rulebookId,
-          rulebookJson: (() => {
-            const rb = rulebookById(run.rulebookId);
-            return rb ? JSON.stringify(rb, null, 2) : null;
-          })(),
+          rulebookJson: rulebookText(run.rulebookId),
           start: run.start,
           breach: run.breach,
           end: run.end,
@@ -89,5 +94,6 @@ export function VerdictPage(props: { runId: bigint }) {
     setReplay({ start, breach, end });
     setBreachJudged(judged);
   };
-  return <VerdictView data={data} replay={replay} onReplay={() => void onReplay()} breachJudged={breachJudged} />;
+  const lockTxs = data.status === 2 ? lockTxsFromEvidence(EVIDENCE, data) : [];
+  return <VerdictView data={data} replay={replay} onReplay={() => void onReplay()} breachJudged={breachJudged} lockTxs={lockTxs} />;
 }
