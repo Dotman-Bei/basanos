@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10. 2026-11-12 (P5, the book trades ~19 bps above the mark): referee:13 (core: book reads, the evaluator judges closeable equity, book-capped opens, DEMO_LEVERAGE_X 5), referee:14 (the referee judges with the book of the same block; FAIL evidence records it), referee:15 (bot opens from the book, 5x demo, demo-check measures the spread), spike:21 (skeleton opens from the book; the dry-run simulates the open), web:11 (terminal orders from the book, closeable equity, 5x ticket), web:12 (verdict replays the judged equity) and ship:11 (README) added; spike:11 depends on spike:21, referee:10 on referee:14 and referee:15, ship:3 on referee:14, referee:15 and web:11, ship:6 on web:11 and web:12. 2026-11-12 (P6, the SDK's send path ended 'outcome unknown' twice, B18): referee:16 (account-write builders move to @basanos/core/owner-tx, byte-identical to the SDK's encoding; the spike's live-lib re-exports them) and referee:17 (the bot's grant, startRun and opens go viem-direct, read back from the chain, never re-sent; a take that fails after a run started aborts into demo-aborted.json) added; referee:10 and ship:3 depend on referee:17.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10. 2026-11-12 (P5, the book trades ~19 bps above the mark): referee:13 (core: book reads, the evaluator judges closeable equity, book-capped opens, DEMO_LEVERAGE_X 5), referee:14 (the referee judges with the book of the same block; FAIL evidence records it), referee:15 (bot opens from the book, 5x demo, demo-check measures the spread), spike:21 (skeleton opens from the book; the dry-run simulates the open), web:11 (terminal orders from the book, closeable equity, 5x ticket), web:12 (verdict replays the judged equity) and ship:11 (README) added; spike:11 depends on spike:21, referee:10 on referee:14 and referee:15, ship:3 on referee:14, referee:15 and web:11, ship:6 on web:11 and web:12. 2026-11-12 (P6, the SDK's send path ended 'outcome unknown' twice, B18): referee:16 (account-write builders move to @basanos/core/owner-tx, byte-identical to the SDK's encoding; the spike's live-lib re-exports them) and referee:17 (the bot's grant, startRun and opens go viem-direct, read back from the chain, never re-sent; a take that fails after a run started aborts into demo-aborted.json) added; referee:10 and ship:3 depend on referee:17. 2026-11-12 (P7, referee:10's two FAILs: price noise at 5x, staggered entries, a 7.7 s closer): referee:18 (demo v2 + 10x, chosen by a 12 h replay; demo v1 kept), referee:19 (the replay tool), referee:20 (closes capped from the book, one round trip from the push; PASS lock buffer), referee:21 (same-block pair, FAIL on demand after the first PASS, check-pass gate), referee:22 (LIVE rehearsal take 2: the first PASS and certificate) and ship:12 (README) added; ship:3 depends on referee:18, 20, 21, 22; ship:6 on referee:18.",
   "subsystems": [
     "spike",
     "contracts",
@@ -3030,6 +3030,419 @@
       "status": "pending"
     },
     {
+      "id": "referee:18",
+      "subsystem": "referee",
+      "title": "Demo v2 — the demo rulebook and leverage chosen from a replay of real history; the first demo kept as v1 (P7)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:2",
+        "referee:7",
+        "referee:9",
+        "referee:10",
+        "referee:11",
+        "referee:13",
+        "referee:15",
+        "spike:1",
+        "spike:3",
+        "contracts:8",
+        "contracts:10",
+        "web:4",
+        "web:11",
+        "ship:1"
+      ],
+      "effort": "medium",
+      "model_tier": "standard",
+      "files": {
+        "create": [
+          "rulebooks/tokyo-sprint-demo-v1.json"
+        ],
+        "modify": [
+          "rulebooks/tokyo-sprint-demo.json",
+          "packages/core/src/node.ts",
+          "packages/core/src/demo-math.ts",
+          "packages/core/test/demo-closeable.test.ts",
+          "packages/bot/src/demo-check.ts",
+          "packages/bot/test/demo-cost.test.ts",
+          "packages/referee/src/cli.ts",
+          "packages/referee/src/register-rulebook.ts",
+          "apps/web/src/lib/rulebooks.ts",
+          "apps/web/test/order.test.tsx",
+          "packages/ship/src/snapshot-run.ts"
+        ],
+        "test": [
+          "packages/core/test/demo-v2.test.ts",
+          "apps/web/test/rulebooks-v1.test.ts"
+        ]
+      },
+      "provides": [
+        "rulebooks/tokyo-sprint-demo.json (demo v2: profitTargetBps 50, dailyLossBps 150, trailingDrawdownBps 200, maxExposureX 15, minDurationSec 60, timeLimitSec 1200; registered by referee:22)",
+        "rulebooks/tokyo-sprint-demo-v1.json (the first registered demo, byte-identical: id 0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757)",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string; \"tokyo-sprint-demo-v1\": string }",
+        "DEMO_LEVERAGE_X = 10",
+        "RETIRED_RULEBOOKS: readonly Rulebook[] (the first demo, v1, kept so its runs resolve)",
+        "rulebookById(id: Hex): Rulebook | null (current and retired rulebooks)",
+        "CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo|tokyo-sprint-demo-v1> (owner = REFEREE_PK; updates deployments/hideki.json and names each entry after the rulebook file that holds its id)",
+        "CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL: wait for a tighter book and re-run (never a rulebook change; the parameters come from the replay)",
+        "the referee CLI, the web app and the featured-run snapshot resolve runs on demo v1 as well as demo v2"
+      ],
+      "requires": [
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string }",
+        "rulebookId(rb: Rulebook): Hex",
+        "parseRulebook(raw: unknown): Rulebook",
+        "interface Rulebook",
+        "DEMO_LEVERAGE_X = 5",
+        "demoCost(buyAverage: bigint, sellAverage: bigint, leverageX: number, targetBps: number): { spreadBps: number; equityBps: number; ok: boolean }",
+        "roundTripEquityBps(oneWayCostBps: number, leverageX: number): number",
+        "parseTape(raw: unknown): TapePoint[]",
+        "simulateTape(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions): { long: SimSide; short: SimSide; quantity: bigint }",
+        "registerArgs(rb: Rulebook): RegisterArgs",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "RULEBOOKS: readonly Rulebook[]",
+        "rulebookById(id: Hex): Rulebook | null",
+        "Ticket(props: { equity: bigint; mark: bigint; busy: boolean; defaultLeverage?: number; onOrder: (isBid: boolean, quantity: bigint) => void })",
+        "buildFeatured(input: FeaturedInput): FeaturedRun"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/demo-v2.test.ts",
+        "expect": "PASS — `2 passed`."
+      },
+      "commit": "feat(demo): demo v2 - +0.50% target, 1.5%/2% floors, 20 min, 10x, chosen from a 12 h replay; the first demo kept as v1 (P7)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:19",
+      "subsystem": "referee",
+      "title": "The demo replay — real mark and book history through the evaluator, for any candidate demo parameters (P7)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:1",
+        "referee:3",
+        "referee:13",
+        "referee:18",
+        "referee:20",
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6"
+      ],
+      "effort": "low",
+      "model_tier": "standard",
+      "files": {
+        "create": [
+          "packages/bot/src/replay.ts",
+          "packages/bot/src/demo-replay.ts"
+        ],
+        "modify": [],
+        "test": [
+          "packages/bot/test/replay.test.ts"
+        ]
+      },
+      "provides": [
+        "interface Sample { block: bigint; timestamp: bigint; markOk: boolean; mark: bigint; book: BookSides }",
+        "parseSample(line: string): Sample",
+        "interface ReplayOptions { leverageX: number; startEquity: bigint; latencySec: number; lockBufferBps: number; entryDelaySec: number; params: BookParams; baseDecimals: number }",
+        "replaySide(rb: Rulebook, samples: readonly Sample[], entry: number, isLong: boolean, o: ReplayOptions): SideResult | null",
+        "replayPair(rb: Rulebook, samples: readonly Sample[], entry: number, o: ReplayOptions): PairResult | null",
+        "summarize(rb: Rulebook, pairs: readonly PairResult[]): ReplaySummary",
+        "CLI: npx tsx packages/bot/src/demo-replay.ts collect --from <block> --to <block> [--step 10] [--out <file>] | run --history <file> [--every 60] [--out <file>] (read-only; writes docs/evidence/demo-replay.json)"
+      ],
+      "requires": [
+        "averageFill(isBid: boolean, quantity: bigint, book: BookSides): bigint | null",
+        "closeableEquity(totalEquity: bigint, size: bigint, mark: bigint, book: BookSides, baseDecimals: number): bigint | null",
+        "interface BookSides { bids: readonly BookLevel[]; asks: readonly BookLevel[] } (best level first: bids descending, asks ascending)",
+        "evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, market: MarketView): Evaluation (judges closeable equity when market.book is given; omitted, at the mark)",
+        "initRunState(startTime: bigint, startEquity: bigint): RunState",
+        "interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "rulebookId(rb: Rulebook): Hex",
+        "interface Rulebook",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "repoPath(rel: string): string",
+        "BTC_POOL",
+        "MULTICALL3",
+        "multicall3Abi",
+        "perpPoolAbi",
+        "jsonSafe(value: unknown): unknown",
+        "DEMO_LEVERAGE_X = 10",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string; \"tokyo-sprint-demo-v1\": string }",
+        "LOCK_BUFFER_BPS = 10"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/bot -- test/replay.test.ts",
+        "expect": "PASS — `4 passed`."
+      },
+      "commit": "feat(bot): demo replay - real mark and book history through the evaluator, for candidate demo parameters (P7)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:20",
+      "subsystem": "referee",
+      "title": "The closer — closes capped from the book and sent in one round trip from the push; the PASS lock with a buffer (P7)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:3",
+        "referee:4",
+        "referee:5",
+        "referee:6",
+        "referee:7",
+        "referee:13",
+        "referee:14",
+        "referee:18",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6",
+        "contracts:8"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "packages/core/src/book.ts",
+          "packages/referee/src/close.ts",
+          "packages/referee/src/chain.ts",
+          "packages/referee/src/writer.ts",
+          "packages/referee/src/lock.ts",
+          "packages/referee/src/engine.ts",
+          "packages/referee/src/daemon.ts",
+          "packages/referee/src/cli.ts"
+        ],
+        "test": [
+          "packages/referee/test/closer.test.ts"
+        ]
+      },
+      "provides": [
+        "planCloseFromBook(size: bigint, mark: bigint, book: BookSides | null, params: BookParams, slippageBps: number): OrderPlan | null (best ask + slippage to buy, best bid - slippage to sell; the mark ladder as fallback, the more permissive limit wins)",
+        "interface FirstClose { size: bigint; mark: bigint; book: BookSides | null }",
+        "flatten(io: CloseIO, account: Address, first?: FirstClose): Promise<CloseResult> (with first: the first close planned from the push and sent before any read, the sweep after it)",
+        "interface CloseIO { openOrderIds; cancel; position; book; placeClose; levels?(): Promise<BookSides | null> }",
+        "interface FastSender { address: Address; warm(): Promise<void>; send(to: Address, data: Hex, gas: bigint, value?: bigint): Promise<Hex>; resync(): Promise<void> }",
+        "fastSender(io: SenderIO, nowMs?: () => number): FastSender (nonce tracked locally, fees cached; one eth_sendRawTransaction per send)",
+        "makeFastSender(client: PublicClient, wallet: RefereeWallet): FastSender",
+        "readBookParams(client: PublicClient, pool: Address): Promise<BookParams>",
+        "chainCloseIO(client: PublicClient, sender: FastSender, pool: Address, params: BookParams): CloseIO",
+        "makeRegistryWriter(sender: FastSender, client: PublicClient, registry: Address, oracleValue: bigint): RegistryWriter",
+        "LOCK_BUFFER_BPS = 10",
+        "lockClears(judged: bigint | null, startEquity: bigint, targetBps: number, bufferBps?: number): boolean",
+        "interface PushSeen { blockNumber: bigint; judged: bigint | null; size: bigint; mark: bigint; book: BookRead | null }",
+        "interface EngineRun { run: TrackedRun; state: RunState; phase: RunPhase; exposureX: number | null; lastTotal: bigint | null; lastPush: PushSeen | null }",
+        "the referee daemon: FAIL and PASS closes planned from the push and sent in one round trip; the PASS lock from the push's closeable equity plus LOCK_BUFFER_BPS (no SDK quote); DaemonDeps without markets"
+      ],
+      "requires": [
+        "planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null",
+        "CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]",
+        "interface OrderPlan { isBid: boolean; quantity: bigint; price: bigint }",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "interface BookSides { bids: readonly BookLevel[]; asks: readonly BookLevel[] } (best level first: bids descending, asks ascending)",
+        "interface BookRead extends BookSides { blockNumber: bigint }",
+        "readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>",
+        "fillableAt(isBid: boolean, limit: bigint, book: BookSides): bigint",
+        "flatten(io: CloseIO, account: Address): Promise<CloseResult>",
+        "interface CloseIO { openOrderIds(account: Address): Promise<readonly bigint[]>; cancel(account: Address, orderId: bigint): Promise<TxRecord>; position(account: Address): Promise<{ size: bigint; mark: bigint }>; book(): Promise<BookParams>; placeClose(account: Address, plan: OrderPlan): Promise<TxRecord> }",
+        "clearsTarget(predicted: bigint | null, startEquity: bigint, targetBps: number): boolean",
+        "chainCloseIO(client: PublicClient, wallet: RefereeWallet, pool: Address): CloseIO",
+        "makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)",
+        "makePublicClient(url: string): PublicClient",
+        "makeRegistryWriter(wallet: RefereeWallet, client: PublicClient, registry: Address, oracleValue: bigint): RegistryWriter",
+        "interface RegistryWriter { recordFail(runId: bigint, rule: FailRule, breach: BreachRead, evidenceHash: Hex, closeTxs: readonly Hex[]): Promise<TxRecord>; recordPass(runId: bigint): Promise<TxRecord>; recordVoid(runId: bigint, reason: \"Flow\" | \"ForeignMarket\", txHash: Hex | null, evidenceHash: Hex): Promise<TxRecord> }",
+        "failArgs(runId: bigint, rule: FailRule, breach: BreachRead, evidenceHash: Hex, closeTxs: readonly Hex[])",
+        "voidArgs(runId: bigint, reason: \"Flow\" | \"ForeignMarket\", txHash: Hex | null, evidenceHash: Hex)",
+        "class Engine { paused; track(run): boolean; get(runId): EngineRun | undefined; watchedAccounts(): Address[]; retain(activeRunIds: readonly bigint[]): bigint[]; pause(); resume(); finish(runId); release(runId); onSnapshot(snap): Action[]; onAccountLog(account, topic0, txHash, snap): Action[] }",
+        "interface EngineRun { run: TrackedRun; state: RunState; phase: RunPhase; exposureX: number | null; lastTotal: bigint | null }",
+        "type Action = { kind: \"fail\"; runId: bigint; account: Address; rule: FailRule; breach: BreachRead; judged: JudgedRead | null } | { kind: \"lock\"; runId: bigint; account: Address } | { kind: \"void\"; runId: bigint; account: Address; reason: \"Flow\" | \"ForeignMarket\"; txHash: Hex | null }",
+        "runDaemon(d: DaemonDeps): Promise<void>",
+        "interface TrackedRun { runId: bigint; account: Address; rulebookId: Hex; rulebook: Rulebook; startTime: bigint; startEquity: bigint; startBlock: bigint }",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_IOC = 2",
+        "farFutureNs(nowMs?: number): bigint",
+        "perpPoolAbi",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "BTC_POOL",
+        "ORACLE_DEPOSIT = 30_900_000_000_000_000n",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "interface Snapshot { blockNumber: bigint; timestamp: bigint; pool: Address; markOk: boolean; markPrice: bigint; accounts: AccountSnapshot[] }",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "flag(name: \"ORACLE_ENABLED\", env?: NodeJS.ProcessEnv): boolean",
+        "rpcWss(env?: NodeJS.ProcessEnv): string",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string; \"tokyo-sprint-demo-v1\": string }"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/referee -- test/closer.test.ts",
+        "expect": "PASS — `9 passed`."
+      },
+      "commit": "fix(referee): closes capped from the book and sent in one round trip from the push; the PASS lock with a 10 bps buffer (P7)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:21",
+      "subsystem": "referee",
+      "title": "The demo take — both runs start together, the pair opens in the same block, the FAIL on demand comes right after the first PASS (P7)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:3",
+        "referee:6",
+        "referee:8",
+        "referee:12",
+        "referee:13",
+        "referee:15",
+        "referee:16",
+        "referee:17",
+        "referee:18",
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6",
+        "contracts:8"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/bot/src/take.ts",
+          "packages/referee/src/check-pass.ts"
+        ],
+        "modify": [
+          "packages/bot/src/send.ts",
+          "packages/bot/src/actions.ts",
+          "packages/bot/src/demo.ts"
+        ],
+        "test": [
+          "packages/bot/test/take.test.ts",
+          "packages/referee/test/check-pass.test.ts"
+        ]
+      },
+      "provides": [
+        "interface PreparedWrite { label: string; raw: Hex; hash: Hex; nonce: number }",
+        "prepareWrite(s: Sender, label: string, call: UnsignedCall): Promise<PreparedWrite>",
+        "submitWrite(s: Sender, p: PreparedWrite, waitMs?: number): Promise<SendResult>",
+        "interface PairLeg { wallet: AccountWallet; isBid: boolean; quantity: bigint }",
+        "openPair(client: PublicClient, legs: readonly PairLeg[]): Promise<AccountWrite[]> (one book read; both IOCs signed first, then sent back to back)",
+        "waitForPosition(client: PublicClient, account: Address, untilMs: number, pollMs?: number): Promise<bigint | null>",
+        "breachTarget(statuses: readonly TakeStatus[], alreadyBreached: boolean): number | null",
+        "summarizePassTake(rows: readonly PassTakeRow[]): { ok: boolean; passRunId: bigint | null; problems: string[] }",
+        "CLI: npx tsx packages/referee/src/check-pass.ts -> writes docs/evidence/rehearsal-pass.json, prints PASS pass-take (take <n>: run <id> PASSED with its certificate, one FAILED)",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--one-account [--pass-side long|short]] (two funded accounts; both runs start together and the pair opens in the same block, or B right after a human A's long with --a-manual; the FAIL on demand once one run PASSES; writes viem-direct and read back; a take that fails after a run started aborts into docs/evidence/demo-aborted.json, exit 1)"
+      ],
+      "requires": [
+        "sendWrite(s: Sender, label: string, call: UnsignedCall, waitMs?: number): Promise<SendResult> (signs at the pending nonce with ORDER_GAS, sends the raw transaction once, takes the receipt by the hash known before the send; never re-sends)",
+        "interface Sender { address: Address; pendingNonce(): Promise<number>; sign(tx: SignedTx): Promise<Hex>; sendRaw(raw: Hex): Promise<unknown>; waitReceipt(hash: Hex, timeoutMs: number): Promise<Receipt>; receipt(hash: Hex): Promise<Receipt | null> }",
+        "type SendResult = { outcome: \"landed\"; label: string; hash: Hex; nonce: number; tx: TxRecord; reason: null } | { outcome: \"unknown\"; label: string; hash: Hex; nonce: number; tx: null; reason: string }",
+        "effectOf(sent: SendResult, seen: boolean, latestNonce: number): Effect",
+        "interface AccountWrite { sent: SendResult; effect: Effect }",
+        "describeWrite(w: AccountWrite): string",
+        "onFailure(kind: WriteKind | \"error\", runsStarted: number): \"stop\" | \"abort\" | \"note\"",
+        "verdictDeadline(lastStartMs: number, timeLimitSec: number): number",
+        "viemSender(wallet: AccountWallet, client: PublicClient): Sender (signs locally; nonce, raw send and receipt on the standard RPC)",
+        "DEMO_ABORTED = \"docs/evidence/demo-aborted.json\"",
+        "openIoc(client: PublicClient, wallet: AccountWallet, isBid: boolean, quantity: bigint, label?: string): Promise<AccountWrite> (capped from the book; viem-direct; done only if the position size moved; never re-sent)",
+        "ensureGrant(client: PublicClient, wallet: AccountWallet, referee: Address): Promise<AccountWrite | null> (viem-direct; done only when both selectors read authorized)",
+        "startRunAs(client: PublicClient, wallet: AccountWallet, registry: Address, rulebookId: Hex): Promise<AccountWrite & { runId: bigint | null }> (viem-direct; the run read back from activeRunOf)",
+        "type AccountWallet = ReturnType<typeof makeAccountWallet>",
+        "RECEIPT_WAIT_MS = 60_000",
+        "breachQuantity(currentSize: bigint, equity: bigint, targetX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "readBook(client: PublicClient): Promise<BookParams>",
+        "appendDemoTake(take: Record<string, unknown>, path?: string): number",
+        "makeAccountWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)",
+        "preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei?: bigint): Promise<Preflight>",
+        "notReady(pf: Preflight): string[]",
+        "planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps?: number): OrderPlan",
+        "readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>",
+        "ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall",
+        "ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }",
+        "interface UnsignedCall { to: Address; data: Hex; value: bigint }",
+        "DEMO_LEVERAGE_X = 10",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string; \"tokyo-sprint-demo-v1\": string }",
+        "jsonSafe(value: unknown): unknown",
+        "makePublicClient(url: string): PublicClient",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "RULE_NAMES = [\"None\", \"DailyLoss\", \"TrailingDrawdown\", \"MaxExposure\", \"TimeLimit\", \"Liquidated\"]",
+        "BTC_POOL",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_IOC = 2",
+        "farFutureNs(nowMs?: number): bigint",
+        "loadDotEnv(path?: string): boolean",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "repoPath(rel: string): string",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/bot -- test/take.test.ts",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "feat(bot): both runs start together, the pair opens in the same block, the FAIL on demand follows the first PASS; check-pass gate (P7)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:22",
+      "subsystem": "referee",
+      "title": "LIVE — rehearsal take 2: demo v2 registered, the first live PASS and certificate",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:7",
+        "referee:10",
+        "referee:18",
+        "referee:19",
+        "referee:20",
+        "referee:21",
+        "spike:18",
+        "spike:19"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "docs/evidence/rehearsal-pass.json"
+        ],
+        "modify": [
+          "docs/evidence/demo-takes.json",
+          "docs/evidence/runs.json",
+          "deployments/hideki.json"
+        ],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/rehearsal-pass.json (the first live PASS: passRunId, its certificate held by its own account, one FAILED run)",
+        "docs/evidence/demo-takes.json (rehearsal take 2 on demo v2: one PASS, one FAIL)",
+        "demo v2 registered on Hideki (deployments/hideki.json: tokyo-sprint-demo is v2, tokyo-sprint-demo-v1 the first demo)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
+        "CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo|tokyo-sprint-demo-v1> (owner = REFEREE_PK; updates deployments/hideki.json and names each entry after the rulebook file that holds its id)",
+        "CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL: wait for a tighter book and re-run (never a rulebook change; the parameters come from the replay)",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--one-account [--pass-side long|short]] (two funded accounts; both runs start together and the pair opens in the same block, or B right after a human A's long with --a-manual; the FAIL on demand once one run PASSES; writes viem-direct and read back; a take that fails after a run started aborts into docs/evidence/demo-aborted.json, exit 1)",
+        "CLI: npx tsx packages/referee/src/check-pass.ts -> writes docs/evidence/rehearsal-pass.json, prints PASS pass-take (take <n>: run <id> PASSED with its certificate, one FAILED)"
+      ],
+      "gate": {
+        "run": "npx tsx packages/referee/src/check-pass.ts",
+        "expect": "PASS — `PASS pass-take (take <n>: run <id> PASSED with its certificate, one FAILED)`."
+      },
+      "commit": "docs(evidence): rehearsal take 2 - the first live PASS and certificate on Hideki (demo v2)",
+      "human_gate": true,
+      "gate_profile": "wallet",
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
       "id": "web:1",
       "subsystem": "web",
       "title": "`@basanos/design` — vendored kit files and the dealt tokens",
@@ -3843,6 +4256,10 @@
         "referee:14",
         "referee:15",
         "referee:17",
+        "referee:18",
+        "referee:20",
+        "referee:21",
+        "referee:22",
         "web:11"
       ],
       "effort": "medium",
@@ -3863,7 +4280,7 @@
         "FEATURED_RUN_ID (the money-shot PASS run; set in .env)"
       ],
       "requires": [
-        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback; every account write viem-direct and read back; a take that fails after a run started aborts: nothing re-sent, verdicts awaited, recorded in docs/evidence/demo-aborted.json, exit 1)",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--one-account [--pass-side long|short]] (two funded accounts; both runs start together and the pair opens in the same block, or B right after a human A's long with --a-manual; the FAIL on demand once one run PASSES; writes viem-direct and read back; a take that fails after a run started aborts into docs/evidence/demo-aborted.json, exit 1)",
         "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
         "CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json",
         "CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot",
@@ -3983,6 +4400,7 @@
         "web:10",
         "web:11",
         "web:12",
+        "referee:18",
         "landing:3",
         "landing:5",
         "contracts:10"
@@ -4231,6 +4649,43 @@
         "expect": "PASS — `PASS`."
       },
       "commit": "docs(readme): the referee judges closeable equity; the demo runs at 5x (P5)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:12",
+      "subsystem": "ship",
+      "title": "README — demo v2 from the replay, the one-round-trip closer, the close-gap and oracle limitations (P7)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:5",
+        "ship:11",
+        "referee:18",
+        "referee:19",
+        "referee:20",
+        "referee:21"
+      ],
+      "effort": "low",
+      "model_tier": "standard",
+      "files": {
+        "create": [],
+        "modify": [
+          "README.md"
+        ],
+        "test": []
+      },
+      "provides": [
+        "README.md (demo v2 chosen by the replay; the one-round-trip closer and the PASS lock buffer; the close-gap and Price Oracle limitations)"
+      ],
+      "requires": [
+        "README.md (closeable equity in How it works and Roadmap; the 5x demo in Quickstart)"
+      ],
+      "gate": {
+        "run": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-readme.ps1",
+        "expect": "PASS — `PASS`."
+      },
+      "commit": "docs(readme): demo v2 from the replay, the one-round-trip closer, the close-gap and oracle limitations (P7)",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"

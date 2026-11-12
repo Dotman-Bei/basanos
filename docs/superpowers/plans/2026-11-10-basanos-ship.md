@@ -654,13 +654,13 @@ Message: `docs(evidence): featured run = the rehearsal's first real verdict`
 - Modify: `apps/landing/src/featured-verdict.json`
 - Modify: `apps/landing/src/img/verdict.png`
 
-**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2, landing:Task 4, referee:Task 12, referee:Task 14, referee:Task 15, referee:Task 17, web:Task 11
+**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2, landing:Task 4, referee:Task 12, referee:Task 14, referee:Task 15, referee:Task 17, referee:Task 18, referee:Task 20, referee:Task 21, referee:Task 22, web:Task 11
 **Effort:** medium
 **Model tier:** top
 **Provides:** `money shot take in docs/evidence/demo-takes.json (one PASS, one FAIL)`, `FEATURED_RUN_ID (the money-shot PASS run; set in .env)`
-**Requires:** `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback; every account write viem-direct and read back; a take that fails after a run started aborts: nothing re-sent, verdicts awaited, recorded in docs/evidence/demo-aborted.json, exit 1)`, `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json`, `CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot`, `CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json`, `CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>`
+**Requires:** `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--one-account [--pass-side long|short]] (two funded accounts; both runs start together and the pair opens in the same block, or B right after a human A's long with --a-manual; the FAIL on demand once one run PASSES; writes viem-direct and read back; a take that fails after a run started aborts into docs/evidence/demo-aborted.json, exit 1)`, `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json`, `CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot`, `CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json`, `CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>`
 
-**Human-gated (wallet).** This signs with `REFEREE_PK`, `ACCOUNT_A_PK` (pasted into the terminal's challenge wallet for the recording) and `ACCOUNT_B_PK`. Top up all three to about 1 STT first. Both challenge accounts must be funded: their own USDso deposited in their own MarginBank balance (spike:18, spike:19; no voucher). Run it on Nov 14, with demo-studio recording if Step 2.5 runs. No voucher is claimed. If the market is still, the runner's bounded wait breaches B's exposure on demand (spec §5), and the take may end without a PASS: top up and take again. If a write fails after a run started, the demo prints `STOP: take aborted: …` (referee:17). Nothing is re-sent; it waits for the verdicts, so keep terminal 1 running until it exits. It records the take in `docs/evidence/demo-aborted.json` and exits 1: stop and report.
+**Human-gated (wallet).** This signs with `REFEREE_PK`, `ACCOUNT_A_PK` (pasted into the terminal's challenge wallet for the recording) and `ACCOUNT_B_PK`. Top up all three to about 1 STT first. Both challenge accounts must be funded: their own USDso deposited in their own MarginBank balance (spike:18, spike:19; no voucher). Run it on Nov 14, with demo-studio recording if Step 2.5 runs. No voucher is claimed. Set `ORACLE_ENABLED=true` in `.env` for this take: the money shot asks the Price Oracle, best effort (on 3 of 4 tries the Majority-consensus request finalized Failed, and the verdict page then says no reading was recorded). If neither run PASSES within demo v2's 20 minutes (about 4% of takes in the replay), both end FAILED: top up and take again. If a write fails after a run started, the demo prints `STOP: take aborted: …` (referee:17). Nothing is re-sent; it waits for the verdicts, so keep terminal 1 running until it exits. It records the take in `docs/evidence/demo-aborted.json` and exits 1: stop and report.
 
 - [ ] **Step 1: Start the referee (terminal 1, leave it running)**
 Run: `npx tsx packages/referee/src/cli.ts start`
@@ -669,9 +669,9 @@ Expected: `referee watching registry 0x…`.
 - [ ] **Step 2: Take the money shot (terminal 2), with account A opened by a human from the terminal**
 Run: `npx tsx packages/bot/src/demo.ts --a-manual`
 Expected:
-1. The disclosure line, two `run <id>` lines, and `A: open the long from the Basanos terminal now (5x).`
-2. Open the app at `/app/#/challenge`, paste `ACCOUNT_A_PK` into the challenge wallet's import field, and press **Buy / long** at the ticket's default 5× (the terminal caps the IOC from the book and shows the closeable equity the referee judges).
-3. Within about 15 minutes, one run is `Passed` and the other `Failed/<rule>`, and the take is recorded.
+1. The disclosure line, two `run <id>` lines, and `A: open the long from the Basanos terminal now (10x); B opens its short as soon as A's long is seen.`
+2. Open the app at `/app/#/challenge`, paste `ACCOUNT_A_PK` into the challenge wallet's import field, and press **Buy / long** at the ticket's default 10× (the terminal caps the IOC from the book and shows the closeable equity the referee judges).
+3. Within 20 minutes (median about 4), one run PASSES. The demo then pushes the other past the exposure cap (`a run PASSED: exposure breach on …`), so the take ends one `Passed` and one `Failed/<rule>`, and it is recorded.
 
 - [ ] **Step 3: Make the money-shot PASS run the featured run**
 Set `FEATURED_RUN_ID=<the Passed run id>` in `.env`.
@@ -1008,7 +1008,7 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 - Create: `deployments/site.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, Task 10, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, web:Task 11, web:Task 12, landing:Task 3, landing:Task 5, contracts:Task 10
+**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, Task 10, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, web:Task 11, web:Task 12, referee:Task 18, landing:Task 3, landing:Task 5, contracts:Task 10
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`
@@ -1536,3 +1536,89 @@ Expected: PASS — `PASS`.
 
 - [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
 Message: `docs(readme): the referee judges closeable equity; the demo runs at 5x (P5)`
+
+---
+
+### Task 12: README — demo v2 from the replay, the one-round-trip closer, the close-gap and oracle limitations (P7)
+
+**Files:**
+- Modify: `README.md`
+
+**Depends on:** Task 5, Task 11, referee:Task 18, referee:Task 19, referee:Task 20, referee:Task 21
+**Effort:** low
+**Model tier:** standard
+**Provides:** `README.md (demo v2 chosen by the replay; the one-round-trip closer and the PASS lock buffer; the close-gap and Price Oracle limitations)`
+**Requires:** `README.md (closeable equity in How it works and Roadmap; the 5x demo in Quickstart)`
+
+Why (architect P7, 2026-11-12): referee:18 to referee:21 change what the README says the demo is and how the referee closes.
+- **The edits:** five exact text replacements. Every heading stays, so `check-readme` still passes, and each "old" text occurs exactly once in `README.md`.
+- **The limitations, stated honestly:**
+  - the close gap: a FAIL can realize more than its limit, by the move between the verdict and the close;
+  - the Price Oracle's Majority consensus: most verdicts carry no reading.
+
+- [ ] **Step 1: Replace text 1 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+npx tsx packages/bot/src/demo.ts            # terminal 2: two accounts, opposite 5x positions, one PASS and one FAIL
+```
+New:
+```text
+npx tsx packages/bot/src/demo.ts            # terminal 2: two accounts, opposite 10x positions opened together, one PASS and one FAIL
+```
+
+- [ ] **Step 2: Replace text 2 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+- **Rulebook.** `rulebooks/tokyo-sprint.json` and `rulebooks/tokyo-sprint-demo.json` (the demo parameter set, labelled "Tokyo Sprint · Demo" everywhere it appears). The registry stores each rulebook's id (keccak256 of its canonical JSON) and the contract-checked fields.
+```
+New:
+```text
+- **Rulebook.** `rulebooks/tokyo-sprint.json` and `rulebooks/tokyo-sprint-demo.json` (the demo parameter set, labelled "Tokyo Sprint · Demo" everywhere it appears). The registry stores each rulebook's id (keccak256 of its canonical JSON) and the contract-checked fields. The demo's numbers come from data, not guesswork.
+  - **The numbers:** a +0.50% target after 60 s, a 1.5% daily-loss floor, a 2% trailing floor and a 20-minute limit, traded at 10×.
+  - **How they were chosen:** by replaying 12 hours of on-chain mark and book history through the evaluator (`packages/bot/src/demo-replay.ts`, `docs/evidence/demo-replay.json`). An opposite pair opened in the same block saw at least one PASS in 95.6% of 700 windows, against 64.7% for the first demo rulebook (`rulebooks/tokyo-sprint-demo-v1.json`, kept so its runs still resolve).
+```
+
+- [ ] **Step 3: Replace text 3 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+- **Close protocol.** Cancel resting orders, read the position fresh, close with an opposite-side IOC `placeOrderFor`, read back, retry at most three times, sweep. Every transaction is recorded.
+```
+New:
+```text
+- **Close protocol.** Close at once with an opposite-side IOC `placeOrderFor`, then cancel resting orders, read back, retry from fresh reads at most twice more, and sweep. Every transaction is recorded.
+  - **The first close** is planned from the breach block's own position and book: capped at the best ask + 20 bps to buy or the best bid − 20 bps to sell, with the mark ladder as the fallback.
+  - **It costs one round trip:** the transaction is signed locally with a tracked nonce.
+  - **A PASS locks** only once closeable equity clears the target by 10 bps, so the close cannot slip back under it before the registry checks.
+```
+
+- [ ] **Step 4: Replace text 4 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+| `ORACLE_ENABLED` | `true` (this build): sends 0.0309 STT per PASS or FAIL verdict for a Price Oracle reading; most of it is rebated |
+```
+New:
+```text
+| `ORACLE_ENABLED` | `true` (this build): sends 0.0309 STT per PASS or FAIL verdict for a Price Oracle reading, about 98% of it rebated to the registry; best effort (see the limitations) |
+```
+
+- [ ] **Step 5: Replace text 5 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+replay depends on the public RPC's history, after which the page shows the stored reads.
+```
+New:
+```text
+replay depends on the public RPC's history, after which the page shows the stored reads; a FAIL's realized loss can exceed the rule's limit by the price move between the verdict and the close (in the first rehearsal, with a 7 s gap, 5 to 11 bps of equity; the closer now sends within about a second of the price push); the registry asks the Price Oracle with Majority consensus, which needs byte-identical answers, and 3 of 4 requests so far finalized Failed because the validators' answers differ in their source counts and timestamps, so most verdicts carry no oracle reading (`feedback/`).
+```
+
+- [ ] **Step 6: Check the schema (the gate)**
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-readme.ps1`
+Expected: PASS — `PASS`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `docs(readme): demo v2 from the replay, the one-round-trip closer, the close-gap and oracle limitations (P7)`

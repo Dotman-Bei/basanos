@@ -17,6 +17,12 @@
 - Task 10 is human-gated: it signs with `REFEREE_PK`, `ACCOUNT_A_PK` and `ACCOUNT_B_PK`, and it produces the first real verdict runs (`docs/evidence/rehearsal.json`) that the landing plan builds against.
 - The repo path contains a space (tollgate S3). Every command here is run from the repo root.
 - **Tasks 16 and 17 (P6, 2026-11-12)** run before Task 10. The bot's grant, `startRun` and opens leave the SDK's send path for viem-direct sends that are read back from the chain and never re-sent. A take that fails after a run started aborts into `docs/evidence/demo-aborted.json`. Task 16 moves the account-write builders from the spike's `live-lib.ts` into `@basanos/core/owner-tx`; `live-lib.ts` re-exports them.
+- **Tasks 18 to 22 (P7, 2026-11-12)** follow Task 10's two FAILs.
+  - Task 18: demo v2 and 10×, chosen by a replay of 12 hours of history (Task 19's tool).
+  - Task 20: closes capped from the book and sent in one round trip from the push; a PASS lock buffer.
+  - Task 21: a same-block pair, and the FAIL on demand after the first PASS.
+  - Task 22: the live take that must produce the first PASS and certificate before ship:3.
+  - Order: Task 18 first, then 20; Tasks 19 and 21 may run in parallel after it; then Task 22.
 
 ---
 
@@ -6334,3 +6340,3405 @@ Expected: PASS — `6 passed`.
 
 - [ ] **Step 9: Commit (kernel-performed — no agent runs this)**
 Message: `fix(bot): account writes go viem-direct and are read back from the chain; a failed take aborts without re-sending (P6)`
+
+---
+
+### Task 18: Demo v2 — the demo rulebook and leverage chosen from a replay of real history; the first demo kept as v1 (P7)
+
+**Files:**
+- Create: `rulebooks/tokyo-sprint-demo-v1.json`
+- Modify: `rulebooks/tokyo-sprint-demo.json`
+- Modify: `packages/core/src/node.ts`
+- Modify: `packages/core/src/demo-math.ts`
+- Modify: `packages/core/test/demo-closeable.test.ts`
+- Modify: `packages/bot/src/demo-check.ts`
+- Modify: `packages/bot/test/demo-cost.test.ts`
+- Modify: `packages/referee/src/cli.ts`
+- Modify: `packages/referee/src/register-rulebook.ts`
+- Modify: `apps/web/src/lib/rulebooks.ts`
+- Modify: `apps/web/test/order.test.tsx`
+- Modify: `packages/ship/src/snapshot-run.ts`
+- Test: `packages/core/test/demo-v2.test.ts`
+- Test: `apps/web/test/rulebooks-v1.test.ts`
+
+**Depends on:** Task 2, Task 7, Task 9, Task 10, Task 11, Task 13, Task 15, spike:Task 1, spike:Task 3, contracts:Task 8, contracts:Task 10, web:Task 4, web:Task 11, ship:Task 1
+**Effort:** medium
+**Model tier:** standard
+**Provides:** `rulebooks/tokyo-sprint-demo.json (demo v2: profitTargetBps 50, dailyLossBps 150, trailingDrawdownBps 200, maxExposureX 15, minDurationSec 60, timeLimitSec 1200; registered by referee:22)`, `rulebooks/tokyo-sprint-demo-v1.json (the first registered demo, byte-identical: id 0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757)`, `RULEBOOK_FILES: { "tokyo-sprint": string; "tokyo-sprint-demo": string; "tokyo-sprint-demo-v1": string }`, `DEMO_LEVERAGE_X = 10`, `RETIRED_RULEBOOKS: readonly Rulebook[] (the first demo, v1, kept so its runs resolve)`, `rulebookById(id: Hex): Rulebook | null (current and retired rulebooks)`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo|tokyo-sprint-demo-v1> (owner = REFEREE_PK; updates deployments/hideki.json and names each entry after the rulebook file that holds its id)`, `CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL: wait for a tighter book and re-run (never a rulebook change; the parameters come from the replay)`, `the referee CLI, the web app and the featured-run snapshot resolve runs on demo v1 as well as demo v2`
+**Requires:** `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`, `RULEBOOK_FILES: { "tokyo-sprint": string; "tokyo-sprint-demo": string }`, `rulebookId(rb: Rulebook): Hex`, `parseRulebook(raw: unknown): Rulebook`, `interface Rulebook`, `DEMO_LEVERAGE_X = 5`, `demoCost(buyAverage: bigint, sellAverage: bigint, leverageX: number, targetBps: number): { spreadBps: number; equityBps: number; ok: boolean }`, `roundTripEquityBps(oneWayCostBps: number, leverageX: number): number`, `parseTape(raw: unknown): TapePoint[]`, `simulateTape(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions): { long: SimSide; short: SimSide; quantity: bigint }`, `registerArgs(rb: Rulebook): RegisterArgs`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `RULEBOOKS: readonly Rulebook[]`, `rulebookById(id: Hex): Rulebook | null`, `Ticket(props: { equity: bigint; mark: bigint; busy: boolean; defaultLeverage?: number; onOrder: (isBid: boolean, quantity: bigint) => void })`, `buildFeatured(input: FeaturedInput): FeaturedRun`
+
+Why (architect P7, 2026-11-12; guide diagnosis B19; spec §5): the rehearsal's two runs both FAILED DailyLoss.
+- **The cause:** at 5× the demo's 0.50% equity band is 10 bps of BTC price, which BTC crosses in tens of seconds, with the target equal to the floor.
+- **The replay** (referee:19's tool, run by the architect over blocks 47,994,246 to 48,426,246: 12 hours, one sample a second, 43,201 samples, `docs/evidence/demo-replay.json`):
+  - An opposite pair opened in the same block every 60 s and judged by the real evaluator at every sample.
+  - Demo v1 at 5× saw at least one PASS in **64.7%** of 705 windows and both FAIL in 35.3%.
+  - **Demo v2 at 10×** saw at least one PASS in **95.6%** of 700 windows and both FAIL in 4.4%, with closes 3 s after the verdict and a 10 bps lock buffer. The first PASS came at a median of 226 s (p90 703 s), and 0.6% of locks were refused.
+  - The same set at 7 s closes gives 94.9%. A 900 s limit gives 91.2%, and 5× gives 69.7%. v1's 0.50% floors at 10× give 60.7%: at 10×, a 5 bps whipsaw kills both sides.
+  - The replay reproduces the rehearsal itself: B judged −52.92 bps (actual −52.9), realized −59.08 at 7 s (actual −57.8); A judged −54.46 (−54.8), realized −65.52 (−65.7).
+- **Demo v2:**
+  - Keeps the +0.50% target, the 60 s minimum and the 15× exposure cap.
+  - Widens the daily-loss floor to 1.5% and the trailing floor to 2%, and the time limit to 1,200 s.
+  - Runs at `DEMO_LEVERAGE_X` = 10, where the target is a 5 bps price move.
+- **Unchanged:** the standard `tokyo-sprint` rulebook.
+- **New id:** the change gives the demo a new id, which referee:22 registers (owner, about 0.0043 STT).
+- **Demo v1:** the first demo stays byte-identical in `rulebooks/tokyo-sprint-demo-v1.json`, so its id (runs 1 and 2) still resolves in the referee, the web app (`RETIRED_RULEBOOKS`) and the featured-run snapshot.
+- **Registration bookkeeping:** register-rulebook names each recorded entry after the file that holds its id, so `deployments/hideki.json` ends with `tokyo-sprint-demo-v1` and `tokyo-sprint-demo`.
+- **demo-check** no longer recommends raising the target. At 10× a wide spread is a moment, not a parameter: the replay's round trip has a median of 1.57 bps of notional and a p90 of 2.39, and the check fails about 7% of the time (wait and re-run).
+- **Tests that pinned 5× move to 10×:** core `demo-closeable`, bot `demo-cost`, web `order`.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/core/test/demo-v2.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { DEMO_LEVERAGE_X } from "../src/demo-math";
+import { RULEBOOK_FILES, loadRulebook } from "../src/node";
+import { rulebookId } from "../src/rulebook";
+
+// The first demo rulebook as registered on Hideki (deployments/hideki.json, 2026-11-11): runs 1 and 2 use it.
+const DEMO_V1_ID = "0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757";
+
+describe("demo v2 (architect P7, 2026-11-12: parameters from a replay of real history)", () => {
+  it("keeps the first registered demo byte-identical, so its id still resolves the rehearsal's runs", () => {
+    expect(RULEBOOK_FILES["tokyo-sprint-demo-v1"]).toBe("rulebooks/tokyo-sprint-demo-v1.json");
+    expect(rulebookId(loadRulebook("tokyo-sprint-demo-v1"))).toBe(DEMO_V1_ID);
+  });
+  it("keeps the +0.50% target, widens the floors and the time limit, and runs at 10x", () => {
+    const v1 = loadRulebook("tokyo-sprint-demo-v1");
+    const v2 = loadRulebook("tokyo-sprint-demo");
+    expect(v2.label).toBe(v1.label);
+    expect([v2.profitTargetBps, v2.dailyLossBps, v2.trailingDrawdownBps, v2.maxExposureX, v2.minDurationSec, v2.timeLimitSec]).toEqual([50, 150, 200, 15, 60, 1200]);
+    expect([v1.profitTargetBps, v1.dailyLossBps, v1.trailingDrawdownBps, v1.timeLimitSec]).toEqual([50, 50, 75, 900]);
+    expect(rulebookId(v2)).not.toBe(DEMO_V1_ID);
+    expect(DEMO_LEVERAGE_X).toBe(10);
+    expect(DEMO_LEVERAGE_X).toBeLessThan(v2.maxExposureX);
+  });
+});
+```
+
+`apps/web/test/rulebooks-v1.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { rulebookId } from "@basanos/core";
+import { RETIRED_RULEBOOKS, RULEBOOKS, rulebookById } from "../src/lib/rulebooks";
+
+describe("retired rulebooks still resolve (architect P7)", () => {
+  it("offers the standard and demo v2, and still shows the rehearsal's runs on demo v1 with v1's own numbers", () => {
+    expect(RULEBOOKS).toHaveLength(2);
+    expect(RULEBOOKS[1]?.dailyLossBps).toBe(150);
+    const v1 = rulebookById("0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757");
+    expect(v1?.dailyLossBps).toBe(50);
+    expect(v1?.timeLimitSec).toBe(900);
+    expect(RETIRED_RULEBOOKS.map((r) => rulebookId(r))).toEqual(["0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757"]);
+    expect(rulebookById(rulebookId(RULEBOOKS[1]!))?.timeLimitSec).toBe(1200);
+    expect(rulebookById("0x0000000000000000000000000000000000000000000000000000000000000000")).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/core -- test/demo-v2.test.ts`
+Expected: FAIL — `2 failed (2)`: there is no `tokyo-sprint-demo-v1` rulebook yet and `DEMO_LEVERAGE_X` is 5.
+
+- [ ] **Step 3: Keep the first demo as v1 and write demo v2**
+
+`rulebooks/tokyo-sprint-demo-v1.json`:
+```json
+{
+  "schema": "basanos.rulebook/1",
+  "name": "Tokyo Sprint",
+  "variant": "demo",
+  "label": "Tokyo Sprint · Demo",
+  "chainId": 50383,
+  "market": { "symbol": "BTC-PERP", "pool": "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0", "baseDecimals": 8 },
+  "profitTargetBps": 50,
+  "dailyLossBps": 50,
+  "trailingDrawdownBps": 75,
+  "maxExposureX": 15,
+  "minDurationSec": 60,
+  "timeLimitSec": 900,
+  "oracleSymbol": "BTC/USDC:PERP",
+  "voidOn": ["flow", "foreignMarket", "grantRevoked"]
+}
+```
+
+Replace `rulebooks/tokyo-sprint-demo.json` with:
+```json
+{
+  "schema": "basanos.rulebook/1",
+  "name": "Tokyo Sprint",
+  "variant": "demo",
+  "label": "Tokyo Sprint · Demo",
+  "chainId": 50383,
+  "market": { "symbol": "BTC-PERP", "pool": "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0", "baseDecimals": 8 },
+  "profitTargetBps": 50,
+  "dailyLossBps": 150,
+  "trailingDrawdownBps": 200,
+  "maxExposureX": 15,
+  "minDurationSec": 60,
+  "timeLimitSec": 1200,
+  "oracleSymbol": "BTC/USDC:PERP",
+  "voidOn": ["flow", "foreignMarket", "grantRevoked"]
+}
+```
+
+Replace `packages/core/src/node.ts` with:
+```ts
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { parseRulebook, type Rulebook } from "./rulebook";
+
+export * from "./env";
+
+/** Absolute path of a repo-relative path (this file lives at packages/core/src/node.ts). */
+export function repoPath(rel: string): string {
+  return fileURLToPath(new URL(`../../../${rel}`, import.meta.url));
+}
+
+/** `tokyo-sprint-demo` is the current demo rulebook (v2 since architect P7, 2026-11-12). `tokyo-sprint-demo-v1` is the
+ *  first registered demo, kept byte-identical so its id (and the rehearsal's runs 1 and 2) still resolve. */
+export const RULEBOOK_FILES = {
+  "tokyo-sprint": "rulebooks/tokyo-sprint.json",
+  "tokyo-sprint-demo": "rulebooks/tokyo-sprint-demo.json",
+  "tokyo-sprint-demo-v1": "rulebooks/tokyo-sprint-demo-v1.json",
+} as const;
+
+export function loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook {
+  return parseRulebook(JSON.parse(readFileSync(repoPath(RULEBOOK_FILES[name]), "utf8")));
+}
+```
+
+- [ ] **Step 4: Run the demo at 10x**
+
+Replace `packages/core/src/demo-math.ts` with:
+```ts
+import type { Address } from "viem";
+import { quantityForLeverage } from "./close";
+import { evaluate, initRunState, type FailRule } from "./evaluate";
+import type { Rulebook } from "./rulebook";
+import type { AccountSnapshot } from "./snapshot";
+
+export interface TapePoint {
+  block: bigint;
+  ts: bigint;
+  mark: bigint;
+}
+
+/** Tape JSON (bigints as strings); millisecond timestamps are converted to seconds. */
+export function parseTape(raw: unknown): TapePoint[] {
+  const points = ((raw as { points?: unknown[] }).points ?? []) as { block: string; ts: string; mark: string }[];
+  return points.map((p) => {
+    const ts = BigInt(p.ts);
+    return { block: BigInt(p.block), ts: ts > 10_000_000_000n ? ts / 1000n : ts, mark: BigInt(p.mark) };
+  });
+}
+
+export interface SimOptions {
+  leverageX: number;
+  startEquity: bigint;
+  lotSize: bigint;
+  entryCostBps: number;
+  exitCostBps: number;
+}
+
+export interface SimSide {
+  side: "long" | "short";
+  outcome: "target" | "fail" | "unresolved";
+  rule: FailRule | null;
+  atTs: bigint | null;
+}
+
+const ACCOUNT: Address = "0x000000000000000000000000000000000000dEaD";
+
+function simulateSide(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions, qty: bigint, sign: 1n | -1n): SimSide {
+  const side = sign === 1n ? "long" : "short";
+  const first = tape[0];
+  if (!first) return { side, outcome: "unresolved", rule: null, atTs: null };
+  const oneBase = 10n ** BigInt(rb.market.baseDecimals);
+  const entryNotional = (qty * first.mark) / oneBase;
+  const entryCost = (entryNotional * BigInt(Math.round(o.entryCostBps * 100))) / 1_000_000n;
+  let state = initRunState(first.ts, o.startEquity);
+  for (const p of tape) {
+    const pnl = (sign * qty * (p.mark - first.mark)) / oneBase;
+    const total = o.startEquity - entryCost + pnl;
+    const acct: AccountSnapshot = {
+      account: ACCOUNT,
+      equityOk: true,
+      equity: total,
+      lockedCollateral: 0n,
+      totalEquity: total,
+      activePools: [rb.market.pool],
+      size: sign * qty,
+    };
+    const ev = evaluate(rb, state, acct, { timestamp: p.ts, markOk: true, markPrice: p.mark });
+    state = ev.state;
+    if (ev.verdict.kind === "fail") return { side, outcome: "fail", rule: ev.verdict.rule, atTs: p.ts };
+    if (ev.verdict.kind === "target") {
+      const exitCost = (((qty * p.mark) / oneBase) * BigInt(Math.round(o.exitCostBps * 100))) / 1_000_000n;
+      const lockedEquity = total - exitCost;
+      if (lockedEquity * 10_000n >= o.startEquity * BigInt(10_000 + rb.profitTargetBps)) {
+        return { side, outcome: "target", rule: null, atTs: p.ts };
+      }
+    }
+  }
+  return { side, outcome: "unresolved", rule: null, atTs: null };
+}
+
+/** Two opposite accounts opened at the first tape point, judged by the real evaluator; a pass counts only once the lock's close cost still clears the target. */
+export function simulateTape(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions): { long: SimSide; short: SimSide; quantity: bigint } {
+  const first = tape[0];
+  const quantity = first
+    ? quantityForLeverage(o.startEquity, o.leverageX, first.mark, rb.market.baseDecimals, { tickSize: 1n, minQuantity: 0n, lotSize: o.lotSize })
+    : 0n;
+  return { long: simulateSide(rb, tape, o, quantity, 1n), short: simulateSide(rb, tape, o, quantity, -1n), quantity };
+}
+
+/** Fill cost against the mark, in bps of notional (positive = worse than the mark). */
+export function costBpsVsMark(isBid: boolean, reference: bigint, average: bigint): number {
+  const diff = isBid ? average - reference : reference - average;
+  return Number((diff * 1_000_000n) / reference) / 100;
+}
+
+/** A round trip (entry + lock close) costs 2 x one-way notional bps x leverage in equity bps. */
+export function roundTripEquityBps(oneWayCostBps: number, leverageX: number): number {
+  return 2 * oneWayCostBps * leverageX;
+}
+
+/** Spec §5: the round trip may use at most half the demo target; never below the registered 50 bps. */
+export function recommendDemoTargetBps(roundTripEqBps: number): number {
+  return Math.max(50, Math.ceil((2 * roundTripEqBps) / 25) * 25);
+}
+
+/** Demo leverage (architect P7, 2026-11-12; P5 had set 5x). Rules judge closeable equity, so opening costs the spread
+ *  x leverage at once: a median 1.57 bps round trip is about 16 equity bps at 10x, inside the demo v2 rulebook's 150
+ *  bps daily-loss floor. The leverage was chosen with demo v2 from a replay of 12 hours of on-chain mark and book
+ *  history (docs/evidence/demo-replay.json): at 10x the +0.50% target is a 5 bps price move, and an opposite pair opened
+ *  in the same block saw at least one PASS in 95.6% of 700 windows (64.7% for demo v1 at 5x). */
+export const DEMO_LEVERAGE_X = 10;
+
+/** What a closeable-equity run pays at entry, in bps of notional: buying at the ask side and being valued at the bid
+ *  side (or the reverse). The demo-cost input since P5; costBpsVsMark measured the mark-to-book basis instead. */
+export function roundTripSpreadBps(buyAverage: bigint, sellAverage: bigint): number {
+  const mid = (buyAverage + sellAverage) / 2n;
+  if (mid <= 0n) throw new Error("roundTripSpreadBps: prices must be positive");
+  return Number(((buyAverage - sellAverage) * 1_000_000n) / mid) / 100;
+}
+```
+
+Replace `packages/core/test/demo-closeable.test.ts` with:
+```ts
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { DEMO_LEVERAGE_X, parseTape, roundTripEquityBps, roundTripSpreadBps, simulateTape } from "../src/demo-math";
+import { loadRulebook, repoPath } from "../src/node";
+
+const E18 = 10n ** 18n;
+
+describe("the demo at closeable equity (P5 ruling 2026-11-12)", () => {
+  it("measures the round trip as the spread between the two sides, not the distance from the mark", () => {
+    expect(roundTripSpreadBps(73_043_800n * 10n ** 15n, 73_042_200n * 10n ** 15n)).toBe(0.21);
+    expect(roundTripSpreadBps(100_036n * E18, 100_000n * E18)).toBe(3.59);
+    expect(() => roundTripSpreadBps(0n, 0n)).toThrow(/positive/);
+  });
+  it("runs at 10x (P7), where the median replayed round trip costs well under half the demo target", () => {
+    expect(DEMO_LEVERAGE_X).toBe(10);
+    expect(roundTripEquityBps(1.57 / 2, DEMO_LEVERAGE_X)).toBeCloseTo(15.7, 6);
+    expect(roundTripEquityBps(1.57 / 2, DEMO_LEVERAGE_X)).toBeLessThanOrEqual(50 / 2);
+  });
+  it("resolves both opposite accounts on the recorded tape at 10x on demo v2 with a 3.6 bps round trip paid at entry", () => {
+    const tape = parseTape(JSON.parse(readFileSync(repoPath("packages/core/test/fixtures/btc-tape.json"), "utf8")));
+    const demo = loadRulebook("tokyo-sprint-demo");
+    const r = simulateTape(demo, tape, { leverageX: DEMO_LEVERAGE_X, startEquity: 50n * E18, lotSize: 1_000n, entryCostBps: 3.6, exitCostBps: 0 });
+    expect(r.quantity).toBeGreaterThanOrEqual(13_000n);
+    expect([r.long.outcome, r.short.outcome].sort()).toEqual(["fail", "target"]);
+  });
+});
+```
+
+Replace `packages/bot/src/demo-check.ts` with:
+```ts
+// Decides whether the book is fit for a demo take right now (spec §5). Read-only. The demo parameters themselves come
+// from the replay of real history (architect P7, docs/evidence/demo-replay.json), so a FAIL here means "wait for a
+// tighter book and re-run", never "change the rulebook": a wide spread is a moment, not a parameter.
+// Rules judge closeable equity (P5 ruling, 2026-11-12), so a run pays the spread between the two sides of the book at
+// entry and nothing more at the close: the cost is the buy average minus the sell average for the demo size, both
+// walked from ONE book read (one block), at DEMO_LEVERAGE_X. (The distance from the mark is the mark-to-book basis, about 19 bps on 2026-11-12, and is
+// not a cost any more.) Sizes from the demo accounts' real equity (or --equity <USDso>), never from a fixed 1,000
+// USDso, and checks the size against the pool's minimum order (0.00013 BTC on BTC-PERP).
+import { readFileSync } from "node:fs";
+import { BTC_POOL, readSnapshot } from "@basanos/core";
+import { averageFill, readBookLevels } from "@basanos/core/book";
+import { DEMO_LEVERAGE_X, parseTape, simulateTape } from "@basanos/core/demo-math";
+import { loadDotEnv, loadRulebook, repoPath, requireAddress, rpcHttp } from "@basanos/core/node";
+import { makePublicClient } from "@basanos/referee";
+import { readBook } from "./actions";
+import { demoCost, demoEquity, demoSize } from "./sizing";
+
+loadDotEnv();
+const rb = loadRulebook("tokyo-sprint-demo");
+const flagAt = process.argv.indexOf("--equity");
+const equityFlag = flagAt >= 0 ? (process.argv[flagAt + 1] ?? "") : null;
+const client = makePublicClient(rpcHttp());
+const book = await readBook(client);
+const accounts = equityFlag === null ? [requireAddress("ACCOUNT_A_ADDRESS"), requireAddress("ACCOUNT_B_ADDRESS")] : [];
+const snap = await readSnapshot(client, accounts, BTC_POOL);
+let equity: bigint | null;
+try {
+  equity = demoEquity(equityFlag, snap.accounts.map((a) => a.totalEquity));
+} catch (e) {
+  console.log(`FAIL demo-check: ${(e as Error).message}`);
+  process.exit(1);
+}
+if (equity === null) {
+  console.log("FAIL demo-check: accounts A and B hold no equity yet; fund them, or pass --equity <USDso> (for example --equity 50)");
+  process.exit(1);
+}
+const size = demoSize(equity, DEMO_LEVERAGE_X, snap.markPrice, rb.market.baseDecimals, book);
+if (size.problem) {
+  console.log(`FAIL demo-check: ${size.problem}`);
+  process.exit(1);
+}
+const qty = size.qty;
+const levels = await readBookLevels(client, BTC_POOL);
+const buyAverage = levels ? averageFill(true, qty, levels) : null;
+const sellAverage = levels ? averageFill(false, qty, levels) : null;
+if (buyAverage === null || sellAverage === null) {
+  console.log(`FAIL demo-check: the book is too thin to fill the demo size ${qty} on both sides; retry when the book refills, or lower the demo leverage`);
+  process.exit(1);
+}
+const cost = demoCost(buyAverage, sellAverage, DEMO_LEVERAGE_X, rb.profitTargetBps);
+const tape = parseTape(JSON.parse(readFileSync(repoPath("packages/core/test/fixtures/btc-tape.json"), "utf8")));
+const sim = simulateTape(rb, tape, { leverageX: DEMO_LEVERAGE_X, startEquity: equity, lotSize: book.lotSize, entryCostBps: cost.spreadBps, exitCostBps: 0 });
+const tapeOk = sim.long.outcome === "target" || sim.short.outcome === "target";
+console.log(
+  `demo size ${qty} (${DEMO_LEVERAGE_X}x on ${equity} wei of equity, ${equityFlag === null ? "the smaller live equity of A and B" : "from --equity"}); ` +
+    `round trip ${cost.spreadBps} bps of notional at block ${levels?.blockNumber} (buy average ${buyAverage}, sell average ${sellAverage})`,
+);
+console.log(`round trip ${cost.equityBps} equity bps vs half target ${rb.profitTargetBps / 2}: ${cost.ok ? "ok" : "too costly"}`);
+console.log(`tape with costs: long ${sim.long.outcome}, short ${sim.short.outcome}`);
+if (cost.ok && tapeOk) {
+  console.log("PASS demo-check");
+  process.exit(0);
+}
+console.log(
+  `FAIL demo-check: ${cost.ok ? "the tape does not resolve" : `the round trip is ${cost.spreadBps} bps of notional right now`}; ` +
+    "wait a few minutes for a tighter book and re-run (do not edit or re-register the rulebook)",
+);
+process.exit(1);
+```
+
+Replace `packages/bot/test/demo-cost.test.ts` with:
+```ts
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
+import { demoCost } from "../src/sizing";
+
+const E15 = 10n ** 15n;
+const source = (rel: string) => readFileSync(new URL(`../src/${rel}`, import.meta.url), "utf8");
+
+describe("the demo at closeable equity (P5 ruling 2026-11-12; 10x since P7)", () => {
+  it("charges the quoted spread once, at the demo leverage; a spread too wide for 10x waits for a tighter book", () => {
+    expect(DEMO_LEVERAGE_X).toBe(10);
+    expect(demoCost(73_043_800n * E15, 73_042_200n * E15, DEMO_LEVERAGE_X, 50)).toEqual({ spreadBps: 0.21, equityBps: 2.1, ok: true });
+    expect(demoCost(73_053_500n * E15, 73_042_000n * E15, DEMO_LEVERAGE_X, 50)).toEqual({ spreadBps: 1.57, equityBps: 15.7, ok: true });
+    expect(demoCost(73_068_000n * E15, 73_042_000n * E15, DEMO_LEVERAGE_X, 50)).toEqual({ spreadBps: 3.55, equityBps: 35.5, ok: false });
+  });
+  it("sizes every demo order at DEMO_LEVERAGE_X and opens from the book, not the mark", () => {
+    for (const file of ["demo.ts", "bot.ts", "demo-check.ts"]) {
+      expect(source(file), file).toContain("DEMO_LEVERAGE_X");
+      expect(source(file), file).not.toMatch(/\b12x\b|, 12, |"12"/);
+    }
+    expect(source("actions.ts")).toContain("planOpenFromBook(isBid, quantity, levels, params)");
+    expect(source("actions.ts")).not.toContain("planOpen(");
+    expect(source("demo-check.ts")).not.toContain("costBpsVsMark");
+  });
+});
+```
+
+Replace `apps/web/test/order.test.tsx` with:
+```tsx
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { iocPrice, type AccountSnapshot } from "@basanos/core";
+import { closeableEquity, type BookSides } from "@basanos/core/book";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
+import { Ticket } from "../src/components/Ticket";
+import { BTC_BOOK_PARAMS, judgedNow, ticketOrder } from "../src/lib/order";
+
+const E18 = 10n ** 18n;
+const MARK = 72_800n * E18;
+const px = (bps: number): bigint => (MARK * BigInt(1_000_000 + bps * 100)) / 1_000_000n;
+// The measured book (guide, 2026-11-12): best bid +19 bps and best ask +21 bps above the mark.
+const BOOK: BookSides = { bids: [{ price: px(19), quantity: 1_373_000n }], asks: [{ price: px(21), quantity: 1_373_000n }] };
+const acct = (total: bigint, size: bigint, equityOk = true): AccountSnapshot => ({
+  account: "0x00000000000000000000000000000000000000a1",
+  equityOk,
+  equity: total,
+  lockedCollateral: 0n,
+  totalEquity: total,
+  activePools: [],
+  size,
+});
+
+describe("the terminal's market order (P5)", () => {
+  it("caps the IOC from the book, 20 bps past the best opposite level, never from the mark", () => {
+    expect(ticketOrder(true, 342_000n, BOOK)).toEqual({ isBid: true, quantity: 342_000n, price: iocPrice(true, px(21), BTC_BOOK_PARAMS.tickSize, 20) });
+    expect(ticketOrder(false, 342_000n, BOOK).price).toBe(iocPrice(false, px(19), BTC_BOOK_PARAMS.tickSize, 20));
+    expect(() => ticketOrder(true, 342_000n, null)).toThrow(/book could not be read/);
+  });
+  it("shows the equity the referee judges: closeable when holding, marked when flat", () => {
+    expect(judgedNow(acct(50n * E18, 0n), MARK, null)).toBe(50n * E18);
+    expect(judgedNow(acct(50n * E18, 342_000n), MARK, BOOK)).toBe(closeableEquity(50n * E18, 342_000n, MARK, BOOK, 8));
+    expect(judgedNow(acct(50n * E18, 342_000n), MARK, null)).toBeNull();
+    expect(judgedNow(acct(50n * E18, 0n, false), MARK, BOOK)).toBeNull();
+    expect(judgedNow(undefined, MARK, BOOK)).toBeNull();
+  });
+  it("opens the ticket at the demo leverage", () => {
+    const onOrder = vi.fn();
+    render(<Ticket equity={1_000n * E18} mark={74_500n * E18} busy={false} defaultLeverage={DEMO_LEVERAGE_X} onOrder={onOrder} />);
+    fireEvent.click(screen.getByRole("button", { name: "Buy / long" }));
+    expect(onOrder).toHaveBeenCalledWith(true, 13_422_000n);
+  });
+});
+```
+
+- [ ] **Step 5: Resolve demo v1 runs everywhere a run's rulebook is looked up**
+
+Replace `packages/referee/src/cli.ts` with:
+```ts
+import { decodeEventLog, getAddress, type Hex } from "viem";
+import { SomniaMarkets } from "@somnia-chain/markets-sdk";
+import { BTC_POOL, CHAIN, HIDEKI_ADDRESSES, INDEXER_URL, ORACLE_DEPOSIT, basanosRegistryAbi, rulebookId } from "@basanos/core";
+import { RULEBOOK_FILES, flag, loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp, rpcWss } from "@basanos/core/node";
+import { chainCloseIO, makePublicClient, makeRefereeWallet } from "./chain";
+import { runDaemon } from "./daemon";
+import { readActiveRuns, rulebookIndex } from "./runs";
+import { makeRegistryWriter } from "./writer";
+
+loadDotEnv();
+const [cmd, ...rest] = process.argv.slice(2);
+const opt = (name: string): string | undefined => {
+  const i = rest.indexOf(name);
+  return i >= 0 ? rest[i + 1] : undefined;
+};
+const client = makePublicClient(rpcHttp());
+const registry = requireAddress("REGISTRY_ADDRESS");
+// Every registered rulebook it may meet: the standard, the current demo (v2) and the first demo (v1, still registered).
+const rulebooks = [loadRulebook("tokyo-sprint"), loadRulebook("tokyo-sprint-demo"), loadRulebook("tokyo-sprint-demo-v1")];
+
+if (cmd === "start") {
+  const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
+  const markets = new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES });
+  await runDaemon({
+    client,
+    wss: rpcWss(),
+    registry,
+    rulebooks,
+    closeIO: chainCloseIO(client, wallet, BTC_POOL),
+    writer: makeRegistryWriter(wallet, client, registry, flag("ORACLE_ENABLED") ? ORACLE_DEPOSIT : 0n),
+    markets,
+    log: (line) => console.log(`${new Date().toISOString()} ${line}`),
+  });
+} else if (cmd === "enroll") {
+  const target = rest[0];
+  const name = opt("--rulebook") as keyof typeof RULEBOOK_FILES | undefined;
+  if (!target || !name || !(name in RULEBOOK_FILES)) {
+    console.error("usage: cli.ts enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo>");
+    process.exit(2);
+  }
+  const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
+  const hash = await wallet.writeContract({
+    address: registry,
+    abi: basanosRegistryAbi,
+    functionName: "startRun",
+    args: [getAddress(target), rulebookId(loadRulebook(name))],
+  });
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  let runId: bigint | null = null;
+  for (const log of receipt.logs) {
+    try {
+      const ev = decodeEventLog({ abi: basanosRegistryAbi, data: log.data, topics: log.topics as [Hex, ...Hex[]] });
+      if (ev.eventName === "RunStarted") runId = ev.args.runId;
+    } catch {
+      // not a registry event
+    }
+  }
+  console.log(runId === null ? `enroll failed: ${hash}` : `enrolled run ${runId} (${hash})`);
+  process.exit(runId === null ? 1 : 0);
+} else if (cmd === "status") {
+  const runs = await readActiveRuns(client, registry, rulebookIndex(rulebooks));
+  if (runs.length === 0) console.log("no active runs");
+  for (const r of runs) console.log(`run ${r.runId}: ${r.account} on ${r.rulebook.label}, start equity ${r.startEquity} at block ${r.startBlock}`);
+  process.exit(0);
+} else {
+  console.error("usage: cli.ts start | enroll <account> --rulebook <name> | status");
+  process.exit(2);
+}
+```
+
+Replace `packages/referee/src/register-rulebook.ts` with:
+```ts
+// Owner-only (REFEREE_PK): registers a rulebook file's id and contract-checked fields, and records it in
+// deployments/hideki.json. Used for a new demo variant (architect P7: demo v2). Each recorded entry is named after the
+// rulebook file whose id it holds, so the first demo's entry reads tokyo-sprint-demo-v1 once v2 takes its file name.
+import { readFileSync, writeFileSync } from "node:fs";
+import type { Hex } from "viem";
+import { basanosRegistryAbi, registerArgs, rulebookId } from "@basanos/core";
+import { RULEBOOK_FILES, loadDotEnv, loadRulebook, repoPath, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { makePublicClient, makeRefereeWallet } from "./chain";
+
+loadDotEnv();
+const name = process.argv[2] as keyof typeof RULEBOOK_FILES | undefined;
+if (!name || !(name in RULEBOOK_FILES)) {
+  console.error(`usage: register-rulebook.ts <${Object.keys(RULEBOOK_FILES).join("|")}>`);
+  process.exit(2);
+}
+const fileNameOf = (id: Hex): string | undefined =>
+  (Object.keys(RULEBOOK_FILES) as (keyof typeof RULEBOOK_FILES)[]).find((n) => rulebookId(loadRulebook(n)).toLowerCase() === id.toLowerCase());
+const registry = requireAddress("REGISTRY_ADDRESS");
+const client = makePublicClient(rpcHttp());
+const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
+const args = registerArgs(loadRulebook(name));
+const existing = await client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRulebook", args: [args[0]] });
+if (existing.exists) {
+  console.log(`rulebook ${name} (${args[0]}) is already registered`);
+  process.exit(0);
+}
+const tx = await wallet.writeContract({ address: registry, abi: basanosRegistryAbi, functionName: "registerRulebook", args: [...args] });
+const receipt = await client.waitForTransactionReceipt({ hash: tx });
+const depPath = repoPath("deployments/hideki.json");
+const dep = JSON.parse(readFileSync(depPath, "utf8")) as { rulebooks: { name: string; id: Hex; tx: Hex; status: string; gasUsed: string }[] };
+dep.rulebooks = dep.rulebooks.map((r) => ({ ...r, name: fileNameOf(r.id) ?? r.name }));
+dep.rulebooks.push({ name, id: args[0], tx, status: receipt.status, gasUsed: receipt.gasUsed.toString() });
+writeFileSync(depPath, `${JSON.stringify(dep, null, 2)}\n`);
+console.log(`registered ${name} ${args[0]} (${receipt.status}) ${tx}`);
+process.exit(receipt.status === "success" ? 0 : 1);
+```
+
+Replace `apps/web/src/lib/rulebooks.ts` with:
+```ts
+import type { Hex } from "viem";
+import { parseRulebook, rulebookId, type Rulebook } from "@basanos/core";
+import standard from "../../../../rulebooks/tokyo-sprint.json";
+import demo from "../../../../rulebooks/tokyo-sprint-demo.json";
+import demoV1 from "../../../../rulebooks/tokyo-sprint-demo-v1.json";
+
+/** The rulebooks a challenger can take today: the standard and the current demo (v2 since architect P7). */
+export const RULEBOOKS: readonly Rulebook[] = [parseRulebook(standard), parseRulebook(demo)];
+
+/** Registered rulebooks no longer offered, kept so their runs still resolve: the first demo (v1, the rehearsal's runs). */
+export const RETIRED_RULEBOOKS: readonly Rulebook[] = [parseRulebook(demoV1)];
+
+export function rulebookById(id: Hex): Rulebook | null {
+  return [...RULEBOOKS, ...RETIRED_RULEBOOKS].find((rb) => rulebookId(rb).toLowerCase() === id.toLowerCase()) ?? null;
+}
+```
+
+Replace `packages/ship/src/snapshot-run.ts` with:
+```ts
+// Writes docs/evidence/featured-run.json for one real run: argv[2], else FEATURED_RUN_ID, else the rehearsal's first verdict.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import type { Hex } from "viem";
+import { basanosRegistryAbi, rulebookId } from "@basanos/core";
+import { loadDotEnv, loadRulebook, repoPath, requireAddress, rpcHttp } from "@basanos/core/node";
+import { jsonSafe, makePublicClient, readRunsEvidence } from "@basanos/referee";
+import { FEATURED_PATH, buildFeatured } from "./featured";
+
+loadDotEnv();
+const pick = (): bigint => {
+  if (process.argv[2]) return BigInt(process.argv[2]);
+  if (process.env.FEATURED_RUN_ID) return BigInt(process.env.FEATURED_RUN_ID);
+  const reh = repoPath("docs/evidence/rehearsal.json");
+  if (existsSync(reh)) {
+    const id = (JSON.parse(readFileSync(reh, "utf8")) as { firstVerdictRunId?: string }).firstVerdictRunId;
+    if (id) return BigInt(id);
+  }
+  throw new Error("no run id: pass one, set FEATURED_RUN_ID, or run the rehearsal first");
+};
+const runId = pick();
+const registry = requireAddress("REGISTRY_ADDRESS");
+const client = makePublicClient(rpcHttp());
+const run = await client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [runId] });
+const closeTxs = await client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getCloseTxs", args: [runId] });
+const rb = [loadRulebook("tokyo-sprint"), loadRulebook("tokyo-sprint-demo"), loadRulebook("tokyo-sprint-demo-v1")].find(
+  (r) => rulebookId(r).toLowerCase() === run.rulebookId.toLowerCase(),
+);
+if (!rb) throw new Error(`run ${runId} uses a rulebook that is not in rulebooks/`);
+const stored = readRunsEvidence()[runId.toString()];
+const verdictTx = ((stored?.verdictTx as { hash?: Hex } | undefined)?.hash ?? null) as Hex | null;
+const featured = buildFeatured({ registry, runId, run, rulebook: rb, closeTxs, verdictTx });
+mkdirSync(dirname(repoPath(FEATURED_PATH)), { recursive: true });
+writeFileSync(repoPath(FEATURED_PATH), `${JSON.stringify(jsonSafe(featured), null, 2)}\n`);
+console.log(`featured run ${runId}: ${featured.status}${featured.rule ? ` (${featured.rule})` : ""} -> ${FEATURED_PATH}`);
+process.exit(0);
+```
+
+- [ ] **Step 6: Type-check the five workspaces it touches**
+Run: `npm run typecheck -w @basanos/core`
+Run: `npm run typecheck -w @basanos/bot`
+Run: `npm run typecheck -w @basanos/referee`
+Run: `npm run typecheck -w @basanos/web`
+Run: `npm run typecheck -w @basanos/ship`
+Expected: each exits 0 with no `error TS` lines.
+
+- [ ] **Step 7: Run their suites**
+Run: `npm test -w @basanos/core`
+Run: `npm test -w @basanos/bot`
+Run: `npm test -w @basanos/referee`
+Run: `npm test -w @basanos/web`
+Run: `npm test -w @basanos/ship`
+Expected: no failed tests (core `75 passed`, bot `17 passed`, referee `24 passed`, web `39 passed`, ship `11 passed`).
+
+- [ ] **Step 8: Run the new test (the gate)**
+Run: `npm test -w @basanos/core -- test/demo-v2.test.ts`
+Expected: PASS — `2 passed`.
+
+- [ ] **Step 9: Commit (kernel-performed — no agent runs this)**
+Message: `feat(demo): demo v2 - +0.50% target, 1.5%/2% floors, 20 min, 10x, chosen from a 12 h replay; the first demo kept as v1 (P7)`
+
+---
+
+### Task 19: The demo replay — real mark and book history through the evaluator, for any candidate demo parameters (P7)
+
+**Files:**
+- Create: `packages/bot/src/replay.ts`
+- Create: `packages/bot/src/demo-replay.ts`
+- Test: `packages/bot/test/replay.test.ts`
+
+**Depends on:** Task 1, Task 3, Task 13, Task 18, Task 20, spike:Task 1, spike:Task 2, spike:Task 3, spike:Task 4, spike:Task 6
+**Effort:** low
+**Model tier:** standard
+**Provides:** `interface Sample { block: bigint; timestamp: bigint; markOk: boolean; mark: bigint; book: BookSides }`, `parseSample(line: string): Sample`, `interface ReplayOptions { leverageX: number; startEquity: bigint; latencySec: number; lockBufferBps: number; entryDelaySec: number; params: BookParams; baseDecimals: number }`, `replaySide(rb: Rulebook, samples: readonly Sample[], entry: number, isLong: boolean, o: ReplayOptions): SideResult | null`, `replayPair(rb: Rulebook, samples: readonly Sample[], entry: number, o: ReplayOptions): PairResult | null`, `summarize(rb: Rulebook, pairs: readonly PairResult[]): ReplaySummary`, `CLI: npx tsx packages/bot/src/demo-replay.ts collect --from <block> --to <block> [--step 10] [--out <file>] | run --history <file> [--every 60] [--out <file>] (read-only; writes docs/evidence/demo-replay.json)`
+**Requires:** `averageFill(isBid: boolean, quantity: bigint, book: BookSides): bigint | null`, `closeableEquity(totalEquity: bigint, size: bigint, mark: bigint, book: BookSides, baseDecimals: number): bigint | null`, `interface BookSides { bids: readonly BookLevel[]; asks: readonly BookLevel[] } (best level first: bids descending, asks ascending)`, `evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, market: MarketView): Evaluation (judges closeable equity when market.book is given; omitted, at the mark)`, `initRunState(startTime: bigint, startEquity: bigint): RunState`, `interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }`, `quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`, `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`, `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`, `rulebookId(rb: Rulebook): Hex`, `interface Rulebook`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `repoPath(rel: string): string`, `BTC_POOL`, `MULTICALL3`, `multicall3Abi`, `perpPoolAbi`, `jsonSafe(value: unknown): unknown`, `DEMO_LEVERAGE_X = 10`, `RULEBOOK_FILES: { "tokyo-sprint": string; "tokyo-sprint-demo": string; "tokyo-sprint-demo-v1": string }`, `LOCK_BUFFER_BPS = 10`
+
+Why (architect P7, 2026-11-12; spec §5): the guide asked for demo parameters grounded in data. The chain serves historical `getMarkPrice` and `getBookLevels`, so a block range can be replayed for free, read-only.
+- **`collect`** samples one Multicall3 read per sample at past blocks: timestamp, mark and 10 levels of each side. It sends batched JSON-RPC, takes about 6 minutes for 12 hours at one sample a second, and is resumable.
+- **`run`** replays an opposite pair opened in the same block every 60 s through the core evaluator on closeable equity:
+  - a FAIL closed, and a PASS locked, `latencySec` after the verdict at the book of that later sample;
+  - a lock only once closeable equity clears the target by `lockBufferBps`, and refused when the close realizes less than the target.
+- **The candidates** compared in the P7 ruling: demo v1 as rehearsed, demo v2 at 10× (chosen), and its neighbours. `run` writes `docs/evidence/demo-replay.json`.
+- **The architect's run is committed with the P7 ruling:** blocks 47,994,246 to 48,426,246, 43,201 samples; demo v2 at 10× gives at least one PASS in 95.6% of 700 windows.
+- **Validation:** the replay reproduces the rehearsal's two FAILs within 1.3 bps of the judged equity.
+- **Not modeled:** funding (fees are 0 on BTC-PERP).
+- **No gate:** the history is read live, so no gate runs it. The unit test pins the mechanics on synthetic tapes.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/bot/test/replay.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { loadRulebook } from "@basanos/core/node";
+import { after, parseSample, replayPair, replaySide, summarize, type ReplayOptions, type Sample } from "../src/replay";
+
+const E18 = 10n ** 18n;
+const demo = loadRulebook("tokyo-sprint-demo");
+const o: ReplayOptions = {
+  leverageX: 10,
+  startEquity: 50n * E18,
+  latencySec: 3,
+  lockBufferBps: 10,
+  entryDelaySec: 3,
+  params: { tickSize: E18 / 10n, minQuantity: 13_000n, lotSize: 1_000n },
+  baseDecimals: 8,
+};
+// One sample a second; the book sits 19 bps (bids) and 21 bps (asks) above the mark, as measured on 2026-11-12.
+function tape(markBps: (sec: number) => number, seconds = 1_300): Sample[] {
+  const out: Sample[] = [];
+  for (let s = 0; s <= seconds; s++) {
+    const mark = (72_000n * E18 * BigInt(Math.round(1_000_000 + markBps(s) * 100))) / 1_000_000n;
+    const at = (bps: bigint) => (mark * (10_000n + bps)) / 10_000n;
+    out.push({ block: 1_000n + BigInt(s) * 10n, timestamp: 5_000n + BigInt(s), markOk: true, mark, book: { bids: [{ price: at(19n), quantity: 10n ** 8n }], asks: [{ price: at(21n), quantity: 10n ** 8n }] } });
+  }
+  return out;
+}
+
+describe("the demo replay (architect P7)", () => {
+  it("reads the collector's lines and finds the sample a delay later by block", () => {
+    const s = parseSample('{"b":"100","t":"7","ok":true,"m":"5","bid":[["6","1"]],"ask":[["7","2"]]}');
+    expect(s).toEqual({ block: 100n, timestamp: 7n, markOk: true, mark: 5n, book: { bids: [{ price: 6n, quantity: 1n }], asks: [{ price: 7n, quantity: 2n }] } });
+    const t = tape(() => 0, 20);
+    expect(after(t, 2, 3)).toBe(5);
+    expect(after(t, 18, 5)).toBe(-1);
+  });
+  it("passes the long and fails the short in a steady rally, closing each at the book 3 s after its verdict", () => {
+    const t = tape((s) => s * 0.05);
+    const p = replayPair(demo, t, 0, o)!;
+    expect(p.long.outcome).toBe("pass");
+    expect(p.long.atSec).toBeGreaterThanOrEqual(demo.minDurationSec);
+    expect(p.long.realizedBps!).toBeGreaterThanOrEqual(demo.profitTargetBps);
+    expect(p.short.outcome).toBe("fail");
+    expect(p.short.rule).toBe("DailyLoss");
+    expect(p.short.realizedBps!).toBeLessThanOrEqual(-demo.dailyLossBps);
+    expect(summarize(demo, [p])).toMatchObject({ windows: 1, pAnyPass: 1, pOnePassOneFailNatural: 1, pBothFail: 0, pRefused: 0 });
+  });
+  it("refuses a lock whose close slips back under the target, and waits for the buffer before locking", () => {
+    // A long bought at the ask and valued at the bid starts 2 bps of price down, so at 10x the +0.50% target needs the
+    // mark 7 bps up. Here it jumps 7.5 bps at 60 s (closeable +0.55%) and falls 2 bps a second: the close 3 s later
+    // realizes under the target.
+    const spike = tape((s) => (s < 60 ? 0 : 7.5 - (s - 60) * 2));
+    expect(replaySide(demo, spike, 0, true, { ...o, lockBufferBps: 0 })).toMatchObject({ outcome: "refused", rule: "PassRefused" });
+    // Held at 7.4 bps (closeable +0.54%): without a buffer it locks and passes; with 10 bps it never locks.
+    const shy = tape((s) => (s < 60 ? 0 : 7.4));
+    expect(replaySide(demo, shy, 0, true, { ...o, lockBufferBps: 0 })!.outcome).toBe("pass");
+    expect(replaySide(demo, shy, 0, true, o)).toMatchObject({ outcome: "fail", rule: "TimeLimit" });
+  });
+  it("fails both sides of a still market at the time limit", () => {
+    const p = replayPair(demo, tape(() => 0), 0, o)!;
+    expect([p.long.rule, p.short.rule]).toEqual(["TimeLimit", "TimeLimit"]);
+    expect(summarize(demo, [p]).pBothFail).toBe(1);
+    expect(replayPair(demo, tape(() => 0, 100), 0, o)).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/bot -- test/replay.test.ts`
+Expected: FAIL — `Cannot find module '../src/replay'`.
+
+- [ ] **Step 3: The replay**
+
+`packages/bot/src/replay.ts`:
+```ts
+// Demo parameters from real history (architect P7, 2026-11-12). The chain serves historical getMarkPrice and
+// getBookLevels, so a recorded block range can be replayed through the real evaluator: an opposite pair opened in the
+// same block, both judged on closeable equity at every sample, a FAIL closed and a PASS locked `latencySec` after the
+// verdict at the book of that later sample. Pure: demo-replay.ts collects the samples and prints the summary.
+import { BTC_POOL, quantityForLeverage, type AccountSnapshot, type BookParams, type Rulebook } from "@basanos/core";
+import { averageFill, closeableEquity, type BookLevel, type BookSides } from "@basanos/core/book";
+import { evaluate, initRunState, type FailRule } from "@basanos/core/evaluate";
+
+/** One recorded block: its timestamp (seconds), the mark and both sides of the book. */
+export interface Sample {
+  block: bigint;
+  timestamp: bigint;
+  markOk: boolean;
+  mark: bigint;
+  book: BookSides;
+}
+
+/** Ledger blocks are 100 ms apart on Hideki (hidekiTestnet.blockTime), so a delay in seconds is ten blocks a second. */
+export const BLOCKS_PER_SEC = 10n;
+
+/** One line of the collector's JSONL: {"b","t","ok","m","bid":[[price,qty]…],"ask":[[price,qty]…]}. */
+export function parseSample(line: string): Sample {
+  const r = JSON.parse(line) as { b: string; t: string; ok: boolean; m: string; bid: [string, string][]; ask: [string, string][] };
+  const lv = (xs: [string, string][]): BookLevel[] => xs.map(([p, q]) => ({ price: BigInt(p), quantity: BigInt(q) }));
+  return { block: BigInt(r.b), timestamp: BigInt(r.t), markOk: r.ok, mark: BigInt(r.m), book: { bids: lv(r.bid), asks: lv(r.ask) } };
+}
+
+export interface ReplayOptions {
+  leverageX: number;
+  startEquity: bigint;
+  /** Seconds from a verdict to the close that executes it (the referee's breach-to-close latency). */
+  latencySec: number;
+  /** The referee locks a PASS only when closeable equity clears the target by this many equity bps (P7). */
+  lockBufferBps: number;
+  /** Seconds between startRun and the pair's opens (the run's clock starts first). */
+  entryDelaySec: number;
+  params: BookParams;
+  baseDecimals: number;
+}
+
+export type SideOutcome = "pass" | "fail" | "refused" | "open";
+
+export interface SideResult {
+  outcome: SideOutcome;
+  /** The rule that failed it, "PassRefused" when the lock's close slipped under the target, or null. */
+  rule: FailRule | "PassRefused" | null;
+  /** Seconds from startRun to the verdict's close (the PASS or the FAIL), or to the end of the replay. */
+  atSec: number;
+  /** Closeable equity the verdict was judged on, and what the close realized, in equity bps of the start. */
+  judgedBps: number | null;
+  realizedBps: number | null;
+}
+
+export interface PairResult {
+  entryBlock: bigint;
+  long: SideResult;
+  short: SideResult;
+}
+
+const bps = (equity: bigint, start: bigint): number => Number(((equity - start) * 1_000_000n) / start) / 100;
+
+/** The sample `sec` seconds after index i (by block number), or -1 past the end. */
+export function after(samples: readonly Sample[], i: number, sec: number): number {
+  const target = (samples[i]?.block ?? 0n) + BigInt(Math.round(sec * 10));
+  for (let k = i; k < samples.length; k++) if ((samples[k]?.block ?? 0n) >= target) return k;
+  return -1;
+}
+
+/** One side of the pair, opened at sample `entry` with an IOC walked through that block's book, judged at every later
+ *  sample by the real evaluator until a verdict or the time limit. */
+export function replaySide(rb: Rulebook, samples: readonly Sample[], entry: number, isLong: boolean, o: ReplayOptions): SideResult | null {
+  const open = samples[entry];
+  if (!open || !open.markOk) return null;
+  const qty = quantityForLeverage(o.startEquity, o.leverageX, open.mark, o.baseDecimals, o.params);
+  if (qty < o.params.minQuantity) return null;
+  const avg = averageFill(isLong, qty, open.book);
+  if (avg === null) return null;
+  const size = isLong ? qty : -qty;
+  const one = 10n ** BigInt(o.baseDecimals);
+  const startTime = open.timestamp - BigInt(o.entryDelaySec);
+  let state = initRunState(startTime, o.startEquity);
+  const marked = (s: Sample) => o.startEquity + (size * (s.mark - avg)) / one;
+  const closeAt = (j: number): { realized: bigint | null; k: number } => {
+    const k = after(samples, j, o.latencySec);
+    const s = k < 0 ? undefined : samples[k];
+    return { realized: s ? closeableEquity(marked(s), size, s.mark, s.book, o.baseDecimals) : null, k };
+  };
+  const sec = (k: number) => Number((samples[k]?.timestamp ?? startTime) - startTime);
+  for (let j = entry + 1; j < samples.length; j++) {
+    const s = samples[j]!;
+    const total = marked(s);
+    const acct: AccountSnapshot = { account: "0x0000000000000000000000000000000000000001", equityOk: true, equity: total, lockedCollateral: 0n, totalEquity: total, activePools: [BTC_POOL], size };
+    const ev = evaluate(rb, state, acct, { timestamp: s.timestamp, markOk: s.markOk, markPrice: s.mark, book: s.book });
+    state = ev.state;
+    const v = ev.verdict;
+    if (v.kind === "fail") {
+      const { realized, k } = closeAt(j);
+      return { outcome: "fail", rule: v.rule, atSec: sec(k < 0 ? j : k), judgedBps: ev.judgedEquity === null ? null : bps(ev.judgedEquity, o.startEquity), realizedBps: realized === null ? null : bps(realized, o.startEquity) };
+    }
+    if (v.kind === "target" && ev.judgedEquity !== null && ev.judgedEquity * 10_000n >= o.startEquity * BigInt(10_000 + rb.profitTargetBps + o.lockBufferBps)) {
+      const { realized, k } = closeAt(j);
+      const passed = realized !== null && realized * 10_000n >= o.startEquity * BigInt(10_000 + rb.profitTargetBps);
+      return {
+        outcome: passed ? "pass" : "refused",
+        rule: passed ? null : "PassRefused",
+        atSec: sec(k < 0 ? j : k),
+        judgedBps: bps(ev.judgedEquity, o.startEquity),
+        realizedBps: realized === null ? null : bps(realized, o.startEquity),
+      };
+    }
+  }
+  return { outcome: "open", rule: null, atSec: sec(samples.length - 1), judgedBps: null, realizedBps: null };
+}
+
+/** The opposite pair the demo opens in the same block: A long, B short. null when either side cannot open there or
+ *  the replay ends before the time limit. */
+export function replayPair(rb: Rulebook, samples: readonly Sample[], entry: number, o: ReplayOptions): PairResult | null {
+  const lastNeeded = after(samples, entry, rb.timeLimitSec + o.latencySec + 2);
+  if (lastNeeded < 0) return null;
+  const long = replaySide(rb, samples, entry, true, o);
+  const short = replaySide(rb, samples, entry, false, o);
+  if (!long || !short) return null;
+  return { entryBlock: samples[entry]!.block, long, short };
+}
+
+export interface ReplaySummary {
+  windows: number;
+  /** P(at least one PASS): with the demo's FAIL on demand (an exposure breach on the other account once one PASSES),
+   *  this is also P(one PASS + one FAIL). */
+  pAnyPass: number;
+  /** P(one PASS + one FAIL) with no FAIL on demand: the two runs left to the market. */
+  pOnePassOneFailNatural: number;
+  pBothPass: number;
+  pBothFail: number;
+  /** Locks whose close slipped under the target (counted as no PASS). */
+  pRefused: number;
+  medianFirstPassSec: number | null;
+  p90FirstPassSec: number | null;
+  /** How far a FAIL's realized loss went past the daily-loss floor, in equity bps (median and worst). */
+  medianFailOvershootBps: number | null;
+  worstFailOvershootBps: number | null;
+}
+
+const quantile = (xs: number[], q: number): number | null => {
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor(q * s.length))] ?? null;
+};
+const share = (n: number, d: number): number => (d === 0 ? 0 : Math.round((n / d) * 1000) / 1000);
+
+export function summarize(rb: Rulebook, pairs: readonly PairResult[]): ReplaySummary {
+  const n = pairs.length;
+  let any = 0, natural = 0, both = 0, refused = 0;
+  const firstPass: number[] = [];
+  const overshoot: number[] = [];
+  for (const p of pairs) {
+    const passes = [p.long, p.short].filter((s) => s.outcome === "pass");
+    if (passes.length > 0) {
+      any += 1;
+      firstPass.push(Math.min(...passes.map((s) => s.atSec)));
+    }
+    if (passes.length === 2) both += 1;
+    if (passes.length === 1) natural += 1;
+    for (const s of [p.long, p.short]) {
+      if (s.outcome === "refused") refused += 1;
+      if (s.outcome === "fail" && s.rule === "DailyLoss" && s.realizedBps !== null) overshoot.push(-s.realizedBps - rb.dailyLossBps);
+    }
+  }
+  return {
+    windows: n,
+    pAnyPass: share(any, n),
+    pOnePassOneFailNatural: share(natural, n),
+    pBothPass: share(both, n),
+    pBothFail: share(n - any, n),
+    pRefused: share(refused, 2 * n),
+    medianFirstPassSec: quantile(firstPass, 0.5),
+    p90FirstPassSec: quantile(firstPass, 0.9),
+    medianFailOvershootBps: quantile(overshoot, 0.5),
+    worstFailOvershootBps: overshoot.length ? Math.max(...overshoot) : null,
+  };
+}
+```
+
+- [ ] **Step 4: The collector and the candidate table**
+
+`packages/bot/src/demo-replay.ts`:
+```ts
+// Demo parameters from real history (architect P7, 2026-11-12). Read-only and free: the chain serves historical
+// getMarkPrice and getBookLevels, so a block range is sampled through Multicall3 at past blocks and replayed through the
+// real evaluator (replay.ts).
+//   collect --from <block> --to <block> [--step 10] [--out <file>]  samples every `step` blocks (10 = 1 s) into JSONL;
+//                                                                   resumable; default out under node_modules/.cache
+//   run --history <file> [--every 60] [--out <file>]                 replays an opposite pair opened every `every`
+//                                                                   seconds for each candidate, prints the table and
+//                                                                   writes docs/evidence/demo-replay.json
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
+import { BTC_POOL, MULTICALL3, multicall3Abi, perpPoolAbi, rulebookId, type Rulebook } from "@basanos/core";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
+import { loadRulebook, repoPath, rpcHttp } from "@basanos/core/node";
+import { LOCK_BUFFER_BPS, jsonSafe } from "@basanos/referee";
+import { parseSample, replayPair, summarize, type PairResult, type ReplayOptions, type Sample } from "./replay";
+
+const argv = process.argv.slice(2);
+const cmd = argv[0];
+const opt = (name: string): string | undefined => {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : undefined;
+};
+const BOOK_PARAMS = { tickSize: 10n ** 17n, minQuantity: 13_000n, lotSize: 1_000n };
+const DEPTH = 10n;
+
+/** One Multicall3 read per sample: block timestamp, mark, and 10 levels of each side, all at the sample's block. */
+export function sampleCall(): Hex {
+  const calls = [
+    { target: MULTICALL3, allowFailure: true, callData: encodeFunctionData({ abi: multicall3Abi, functionName: "getCurrentBlockTimestamp" }) },
+    { target: BTC_POOL, allowFailure: true, callData: encodeFunctionData({ abi: perpPoolAbi, functionName: "tryGetMarkPrice" }) },
+    { target: BTC_POOL, allowFailure: true, callData: encodeFunctionData({ abi: perpPoolAbi, functionName: "getBookLevels", args: [true, DEPTH] }) },
+    { target: BTC_POOL, allowFailure: true, callData: encodeFunctionData({ abi: perpPoolAbi, functionName: "getBookLevels", args: [false, DEPTH] }) },
+  ];
+  return encodeFunctionData({ abi: multicall3Abi, functionName: "aggregate3", args: [calls] });
+}
+
+/** The JSONL line for one block, or null when any of the four reads failed there. */
+export function sampleLine(block: bigint, result: Hex): string | null {
+  const rs = decodeFunctionResult({ abi: multicall3Abi, functionName: "aggregate3", data: result });
+  if (rs.length !== 4 || !rs.every((r) => r.success)) return null;
+  const ts = decodeFunctionResult({ abi: multicall3Abi, functionName: "getCurrentBlockTimestamp", data: rs[0]!.returnData });
+  const [ok, mark] = decodeFunctionResult({ abi: perpPoolAbi, functionName: "tryGetMarkPrice", data: rs[1]!.returnData });
+  const lv = (data: Hex) =>
+    decodeFunctionResult({ abi: perpPoolAbi, functionName: "getBookLevels", data }).map((x) => [x.price.toString(), x.quantity.toString()]);
+  return JSON.stringify({ b: block.toString(), t: ts.toString(), ok, m: mark.toString(), bid: lv(rs[2]!.returnData), ask: lv(rs[3]!.returnData) });
+}
+
+async function collect(): Promise<void> {
+  const from = BigInt(opt("--from") ?? "0");
+  const to = BigInt(opt("--to") ?? "0");
+  const step = BigInt(opt("--step") ?? "10");
+  if (from <= 0n || to < from || step <= 0n) throw new Error("collect needs --from <block> --to <block> [--step 10]");
+  const out = opt("--out") ?? repoPath(`node_modules/.cache/basanos/replay-${from}-${to}.jsonl`);
+  mkdirSync(dirname(out), { recursive: true });
+  const done = new Set<string>();
+  if (existsSync(out)) for (const line of readFileSync(out, "utf8").split("\n")) if (line) done.add(String((JSON.parse(line) as { b: string }).b));
+  const blocks: bigint[] = [];
+  for (let b = from; b <= to; b += step) if (!done.has(b.toString())) blocks.push(b);
+  console.log(`${blocks.length} samples to read into ${out} (${done.size} already there)`);
+  const data = sampleCall();
+  const BATCH = 20;
+  let next = 0;
+  let written = 0;
+  let failed = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next;
+      next += BATCH;
+      if (i >= blocks.length) return;
+      const slice = blocks.slice(i, i + BATCH);
+      const body = slice.map((b, k) => ({ jsonrpc: "2.0", id: k, method: "eth_call", params: [{ to: MULTICALL3, data }, `0x${b.toString(16)}`] }));
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          const res = await fetch(rpcHttp(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+          const replies = (await res.json()) as { id: number; result?: Hex }[];
+          if (!Array.isArray(replies)) throw new Error("the RPC did not answer the batch");
+          const lines: string[] = [];
+          for (const r of replies) {
+            const b = slice[r.id];
+            const line = b !== undefined && r.result ? sampleLine(b, r.result) : null;
+            if (line) lines.push(line);
+            else failed += 1;
+          }
+          if (lines.length) appendFileSync(out, `${lines.join("\n")}\n`);
+          written += lines.length;
+          break;
+        } catch (e) {
+          if (attempt === 4) {
+            failed += slice.length;
+            console.log(`batch at block ${slice[0]} failed: ${(e as Error).message.slice(0, 120)}`);
+          }
+          await new Promise((r) => setTimeout(r, 1_000 * (attempt + 1)));
+        }
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, () => worker()));
+  console.log(`collected ${written} samples, ${failed} failed -> ${out}`);
+}
+
+interface Candidate {
+  label: string;
+  rulebook: Rulebook;
+  options: ReplayOptions;
+}
+
+/** The candidates the P7 ruling compared: the first demo as rehearsed, the chosen demo v2 at 10x, and its neighbours. */
+export function candidates(): Candidate[] {
+  const v1 = loadRulebook("tokyo-sprint-demo-v1");
+  const v2 = loadRulebook("tokyo-sprint-demo");
+  const o = (leverageX: number, latencySec: number, lockBufferBps: number): ReplayOptions => ({
+    leverageX,
+    startEquity: 50n * 10n ** 18n,
+    latencySec,
+    lockBufferBps,
+    entryDelaySec: 3,
+    params: BOOK_PARAMS,
+    baseDecimals: 8,
+  });
+  const vary = (p: Partial<Rulebook>): Rulebook => ({ ...v2, ...p });
+  return [
+    { label: "demo v1 at 5x, closes 7 s after the verdict (the rehearsal)", rulebook: v1, options: o(5, 7, 0) },
+    { label: "demo v2 at 10x, closes 3 s after the verdict (chosen)", rulebook: v2, options: o(DEMO_LEVERAGE_X, 3, LOCK_BUFFER_BPS) },
+    { label: "demo v2 at 10x, closes 7 s after the verdict", rulebook: v2, options: o(DEMO_LEVERAGE_X, 7, LOCK_BUFFER_BPS) },
+    { label: "demo v2 at 10x, 900 s time limit", rulebook: vary({ timeLimitSec: 900 }), options: o(DEMO_LEVERAGE_X, 3, LOCK_BUFFER_BPS) },
+    { label: "demo v2 at 5x", rulebook: v2, options: o(5, 3, LOCK_BUFFER_BPS) },
+    { label: "demo v2 at 8x", rulebook: v2, options: o(8, 3, LOCK_BUFFER_BPS) },
+    { label: "demo v2 at 12x", rulebook: v2, options: o(12, 3, LOCK_BUFFER_BPS) },
+    { label: "demo v2 with a +0.40% target at 10x", rulebook: vary({ profitTargetBps: 40 }), options: o(DEMO_LEVERAGE_X, 3, LOCK_BUFFER_BPS) },
+    { label: "demo v2 with v1's floors (0.50% daily, 0.75% trailing) at 10x", rulebook: vary({ dailyLossBps: 50, trailingDrawdownBps: 75 }), options: o(DEMO_LEVERAGE_X, 3, LOCK_BUFFER_BPS) },
+  ];
+}
+
+export function replayAll(samples: readonly Sample[], everySec: number, list: readonly Candidate[] = candidates()) {
+  return list.map((c) => {
+    const pairs: PairResult[] = [];
+    for (let i = 0; i < samples.length; i += everySec) {
+      const p = replayPair(c.rulebook, samples, i, c.options);
+      if (p) pairs.push(p);
+    }
+    const r = c.rulebook;
+    return {
+      label: c.label,
+      rulebookId: rulebookId(r),
+      rulebook: { profitTargetBps: r.profitTargetBps, dailyLossBps: r.dailyLossBps, trailingDrawdownBps: r.trailingDrawdownBps, maxExposureX: r.maxExposureX, minDurationSec: r.minDurationSec, timeLimitSec: r.timeLimitSec },
+      leverageX: c.options.leverageX,
+      latencySec: c.options.latencySec,
+      lockBufferBps: c.options.lockBufferBps,
+      summary: summarize(r, pairs),
+    };
+  });
+}
+
+async function run(): Promise<void> {
+  const file = opt("--history");
+  if (!file || !existsSync(file)) throw new Error("run needs --history <file.jsonl> (from collect)");
+  const everySec = Number(opt("--every") ?? "60");
+  const samples = readFileSync(file, "utf8").split("\n").filter(Boolean).map(parseSample).sort((a, b) => (a.block < b.block ? -1 : 1));
+  const first = samples[0];
+  const last = samples.at(-1);
+  if (!first || !last) throw new Error("the history file is empty");
+  const rows = replayAll(samples, everySec);
+  for (const r of rows) {
+    const s = r.summary;
+    console.log(
+      `${r.label}: ${s.windows} windows, P(at least one PASS) ${s.pAnyPass}, P(one PASS + one FAIL, no FAIL on demand) ${s.pOnePassOneFailNatural}, ` +
+        `P(both FAIL) ${s.pBothFail}, refused locks ${s.pRefused}, first PASS median ${s.medianFirstPassSec} s (p90 ${s.p90FirstPassSec} s)`,
+    );
+  }
+  const out = opt("--out") ?? repoPath("docs/evidence/demo-replay.json");
+  const evidence = {
+    evidence: "demo-replay",
+    writtenAt: new Date().toISOString(),
+    history: { fromBlock: first.block, toBlock: last.block, fromTime: first.timestamp, toTime: last.timestamp, samples: samples.length, stepBlocks: samples[1] ? samples[1].block - first.block : 0n },
+    method:
+      "An opposite pair (A long, B short, 50 USDso each) opened in the same block every `everySec` seconds of the history, each IOC walked through that block's book; " +
+      "both runs judged at every sample by the core evaluator on closeable equity; a FAIL closed and a PASS locked `latencySec` after the verdict at the book of that later sample; " +
+      "a lock only once closeable equity clears the target by `lockBufferBps`, and refused when the close realizes less than the target. With the demo's FAIL on demand " +
+      "(the other run pushed past the exposure cap once one PASSES), P(at least one PASS) is also P(one PASS + one FAIL). Funding and fees are not modeled (fees are 0 on BTC-PERP).",
+    everySec,
+    candidates: rows,
+    chosen: rows[1]?.label ?? null,
+  };
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, `${JSON.stringify(jsonSafe(evidence), null, 2)}\n`);
+  console.log(`wrote ${out}`);
+}
+
+const isMain = process.argv[1]?.endsWith("demo-replay.ts") ?? false;
+if (isMain) {
+  if (cmd === "collect") await collect();
+  else if (cmd === "run") await run();
+  else {
+    console.error("usage: demo-replay.ts collect --from <block> --to <block> [--step 10] [--out <file>] | run --history <file> [--every 60] [--out <file>]");
+    process.exit(2);
+  }
+  process.exit(0);
+}
+```
+
+- [ ] **Step 5: Type-check**
+Run: `npm run typecheck -w @basanos/bot`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 6: Run the whole bot suite**
+Run: `npm test -w @basanos/bot`
+Expected: no failed tests.
+
+- [ ] **Step 7: Optional, read-only: reproduce the architect's numbers (about 7 minutes, no key)**
+Run: `npx tsx packages/bot/src/demo-replay.ts collect --from 47994246 --to 48426246 --step 10`
+Run: `npx tsx packages/bot/src/demo-replay.ts run --history node_modules/.cache/basanos/replay-47994246-48426246.jsonl`
+Expected: the second line reads `demo v2 at 10x, closes 3 s after the verdict (chosen): 700 windows, P(at least one PASS) 0.956`. Do not commit the rewritten `docs/evidence/demo-replay.json` unless it is identical apart from `writtenAt`.
+
+- [ ] **Step 8: Run the new test (the gate)**
+Run: `npm test -w @basanos/bot -- test/replay.test.ts`
+Expected: PASS — `4 passed`.
+
+- [ ] **Step 9: Commit (kernel-performed — no agent runs this)**
+Message: `feat(bot): demo replay - real mark and book history through the evaluator, for candidate demo parameters (P7)`
+
+---
+
+### Task 20: The closer — closes capped from the book and sent in one round trip from the push; the PASS lock with a buffer (P7)
+
+**Files:**
+- Modify: `packages/core/src/book.ts`
+- Modify: `packages/referee/src/close.ts`
+- Modify: `packages/referee/src/chain.ts`
+- Modify: `packages/referee/src/writer.ts`
+- Modify: `packages/referee/src/lock.ts`
+- Modify: `packages/referee/src/engine.ts`
+- Modify: `packages/referee/src/daemon.ts`
+- Modify: `packages/referee/src/cli.ts`
+- Test: `packages/referee/test/closer.test.ts`
+
+**Depends on:** Task 3, Task 4, Task 5, Task 6, Task 7, Task 13, Task 14, Task 18, spike:Task 2, spike:Task 3, spike:Task 4, spike:Task 6, contracts:Task 8
+**Effort:** medium
+**Model tier:** top
+**Provides:** `planCloseFromBook(size: bigint, mark: bigint, book: BookSides | null, params: BookParams, slippageBps: number): OrderPlan | null (best ask + slippage to buy, best bid - slippage to sell; the mark ladder as fallback, the more permissive limit wins)`, `interface FirstClose { size: bigint; mark: bigint; book: BookSides | null }`, `flatten(io: CloseIO, account: Address, first?: FirstClose): Promise<CloseResult> (with first: the first close planned from the push and sent before any read, the sweep after it)`, `interface CloseIO { openOrderIds; cancel; position; book; placeClose; levels?(): Promise<BookSides | null> }`, `interface FastSender { address: Address; warm(): Promise<void>; send(to: Address, data: Hex, gas: bigint, value?: bigint): Promise<Hex>; resync(): Promise<void> }`, `fastSender(io: SenderIO, nowMs?: () => number): FastSender (nonce tracked locally, fees cached; one eth_sendRawTransaction per send)`, `makeFastSender(client: PublicClient, wallet: RefereeWallet): FastSender`, `readBookParams(client: PublicClient, pool: Address): Promise<BookParams>`, `chainCloseIO(client: PublicClient, sender: FastSender, pool: Address, params: BookParams): CloseIO`, `makeRegistryWriter(sender: FastSender, client: PublicClient, registry: Address, oracleValue: bigint): RegistryWriter`, `LOCK_BUFFER_BPS = 10`, `lockClears(judged: bigint | null, startEquity: bigint, targetBps: number, bufferBps?: number): boolean`, `interface PushSeen { blockNumber: bigint; judged: bigint | null; size: bigint; mark: bigint; book: BookRead | null }`, `interface EngineRun { run: TrackedRun; state: RunState; phase: RunPhase; exposureX: number | null; lastTotal: bigint | null; lastPush: PushSeen | null }`, `the referee daemon: FAIL and PASS closes planned from the push and sent in one round trip; the PASS lock from the push's closeable equity plus LOCK_BUFFER_BPS (no SDK quote); DaemonDeps without markets`
+**Requires:** `planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null`, `CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]`, `interface OrderPlan { isBid: boolean; quantity: bigint; price: bigint }`, `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`, `interface BookSides { bids: readonly BookLevel[]; asks: readonly BookLevel[] } (best level first: bids descending, asks ascending)`, `interface BookRead extends BookSides { blockNumber: bigint }`, `readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>`, `fillableAt(isBid: boolean, limit: bigint, book: BookSides): bigint`, `flatten(io: CloseIO, account: Address): Promise<CloseResult>`, `interface CloseIO { openOrderIds(account: Address): Promise<readonly bigint[]>; cancel(account: Address, orderId: bigint): Promise<TxRecord>; position(account: Address): Promise<{ size: bigint; mark: bigint }>; book(): Promise<BookParams>; placeClose(account: Address, plan: OrderPlan): Promise<TxRecord> }`, `clearsTarget(predicted: bigint | null, startEquity: bigint, targetBps: number): boolean`, `chainCloseIO(client: PublicClient, wallet: RefereeWallet, pool: Address): CloseIO`, `makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)`, `makePublicClient(url: string): PublicClient`, `makeRegistryWriter(wallet: RefereeWallet, client: PublicClient, registry: Address, oracleValue: bigint): RegistryWriter`, `interface RegistryWriter { recordFail(runId: bigint, rule: FailRule, breach: BreachRead, evidenceHash: Hex, closeTxs: readonly Hex[]): Promise<TxRecord>; recordPass(runId: bigint): Promise<TxRecord>; recordVoid(runId: bigint, reason: "Flow" | "ForeignMarket", txHash: Hex | null, evidenceHash: Hex): Promise<TxRecord> }`, `failArgs(runId: bigint, rule: FailRule, breach: BreachRead, evidenceHash: Hex, closeTxs: readonly Hex[])`, `voidArgs(runId: bigint, reason: "Flow" | "ForeignMarket", txHash: Hex | null, evidenceHash: Hex)`, `class Engine { paused; track(run): boolean; get(runId): EngineRun | undefined; watchedAccounts(): Address[]; retain(activeRunIds: readonly bigint[]): bigint[]; pause(); resume(); finish(runId); release(runId); onSnapshot(snap): Action[]; onAccountLog(account, topic0, txHash, snap): Action[] }`, `interface EngineRun { run: TrackedRun; state: RunState; phase: RunPhase; exposureX: number | null; lastTotal: bigint | null }`, `type Action = { kind: "fail"; runId: bigint; account: Address; rule: FailRule; breach: BreachRead; judged: JudgedRead | null } | { kind: "lock"; runId: bigint; account: Address } | { kind: "void"; runId: bigint; account: Address; reason: "Flow" | "ForeignMarket"; txHash: Hex | null }`, `runDaemon(d: DaemonDeps): Promise<void>`, `interface TrackedRun { runId: bigint; account: Address; rulebookId: Hex; rulebook: Rulebook; startTime: bigint; startEquity: bigint; startBlock: bigint }`, `txRecord(label: string, receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_IOC = 2`, `farFutureNs(nowMs?: number): bigint`, `perpPoolAbi`, `CHAIN (hidekiTestnet, id 50383)`, `BTC_POOL`, `ORACLE_DEPOSIT = 30_900_000_000_000_000n`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `interface Snapshot { blockNumber: bigint; timestamp: bigint; pool: Address; markOk: boolean; markPrice: bigint; accounts: AccountSnapshot[] }`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `flag(name: "ORACLE_ENABLED", env?: NodeJS.ProcessEnv): boolean`, `rpcWss(env?: NodeJS.ProcessEnv): string`, `RULEBOOK_FILES: { "tokyo-sprint": string; "tokyo-sprint-demo": string; "tokyo-sprint-demo-v1": string }`
+
+Why (architect P7, 2026-11-12; guide diagnosis B19; spec §8):
+- **The first rung reverted.** In the rehearsal, B's first close, an IOC buy at mark + 20 bps, reverted because the book sat about 20 bps above the mark. The 50 bps rung filled about 4 s later.
+  - `planCloseFromBook` caps a close like an open: best ask + 20 bps to buy back a short, best bid − 20 bps to sell a long.
+  - The mark ladder stays as the fallback. With no book it is used alone; otherwise the more permissive limit wins.
+  - Retries read the position and the book again, at 50 and 100 bps.
+- **The latency.** The breach-to-close gap was 7.7 s for B (block 48,411,444 to 48,411,521) and 7.1 s for A. The architect's probe (2026-11-12, read-only) found why:
+  - A round trip from the operator's machine is about 0.38 to 0.40 s, with 4.5 s outliers.
+  - The old path made seven sequential RPCs before the close left: open orders, book parameters, position, chain id, nonce, fees, send. The push itself arrives within about 0.6 s of its block.
+- **The fix.** The close is now planned from the push's own position, mark and book of the breach block, and sent at once. The resting-order sweep follows the close.
+  - All referee writes go through one fast sender: the nonce tracked locally, the fees cached (refreshed in the background every 60 s), a local signature (4.7 ms) and one `eth_sendRawTransaction`.
+  - Expected: about 1.1 s from the breach block to the close block, against the ≤ 3 s target.
+  - A failed send forgets the nonce. Each idle refresh adopts the chain's pending nonce when it is ahead (another tool used the key).
+  - Registry writes estimate gas (a refused verdict fails before sending) with 30% headroom.
+- **The PASS lock.** It no longer asks the SDK for a quote. It locks from the closeable equity of the push that raised the target, and only once that clears the target by `LOCK_BUFFER_BPS` = 10.
+  - Reason: the registry checks the realized equity after the close, and a lock whose close slips under the target strands the account flat until the time limit.
+  - In the replay (demo v2, 10×, closes 3 s after the verdict) the buffer kept refused locks at 0.6% with no loss of PASS odds.
+- **Read-only check, 2026-11-12:** from the referee's public address, the book-capped first-rung close for the 10× demo size simulated OK against the live book in 3 of 3 samples, on both sides.
+- **Unchanged:** the old `flatten(io, account)` (cancel first) and `close.test.ts` still hold.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/referee/test/closer.test.ts`:
+```ts
+import { describe, expect, it, vi } from "vitest";
+import type { Address, Hex } from "viem";
+import { planClose, rulebookId, type OrderPlan, type Snapshot } from "@basanos/core";
+import { fillableAt, planCloseFromBook, type BookRead, type BookSides } from "@basanos/core/book";
+import { loadRulebook } from "@basanos/core/node";
+import { flatten, type CloseIO } from "../src/close";
+import { fastSender, type SenderIO } from "../src/chain";
+import { Engine } from "../src/engine";
+import { LOCK_BUFFER_BPS, lockClears } from "../src/lock";
+import type { TrackedRun } from "../src/runs";
+import type { TxRecord } from "../src/tx";
+
+const E18 = 10n ** 18n;
+const A: Address = "0x00000000000000000000000000000000000000a1";
+const PARAMS = { tickSize: E18 / 10n, minQuantity: 13_000n, lotSize: 1_000n };
+// Run 2's breach block (48,411,444): mark 71,417.785, the book about 19-21 bps above it.
+const MARK = 71_417_785n * 10n ** 15n;
+const px = (bps: number): bigint => (MARK * BigInt(1_000_000 + bps * 100)) / 1_000_000n;
+const ABOVE: BookSides = { bids: [{ price: px(19), quantity: 2_800_000n }], asks: [{ price: px(21), quantity: 2_800_000n }] };
+const BELOW: BookSides = { bids: [{ price: px(-21), quantity: 2_800_000n }], asks: [{ price: px(-19), quantity: 2_800_000n }] };
+const rec = (label: string, status: "success" | "reverted" = "success"): TxRecord => ({ label, hash: `0x${"0".repeat(64)}` as Hex, status, gasUsed: 1n, costWei: 1n, explorer: "" });
+
+describe("closes are capped from the book, the mark ladder as the fallback (P7b)", () => {
+  it("buys back a short above the best ask, where the old mark + 20 bps cap could not fill", () => {
+    const plan = planCloseFromBook(-350_000n, MARK, ABOVE, PARAMS, 20) as OrderPlan;
+    expect(plan.isBid).toBe(true);
+    expect(fillableAt(true, plan.price, ABOVE)).toBeGreaterThanOrEqual(350_000n);
+    expect(fillableAt(true, planClose(-350_000n, MARK, PARAMS, 20)!.price, ABOVE)).toBe(0n);
+  });
+  it("takes the more permissive limit on each side and either skew, and the ladder alone without a book", () => {
+    const ladderSell = planClose(350_000n, MARK, PARAMS, 20)!;
+    expect(planCloseFromBook(350_000n, MARK, ABOVE, PARAMS, 20)).toEqual(ladderSell);
+    expect(planCloseFromBook(350_000n, MARK, BELOW, PARAMS, 20)!.price).toBeLessThan(ladderSell.price);
+    expect(fillableAt(false, planCloseFromBook(350_000n, MARK, BELOW, PARAMS, 20)!.price, BELOW)).toBeGreaterThanOrEqual(350_000n);
+    expect(planCloseFromBook(-350_000n, MARK, BELOW, PARAMS, 20)).toEqual(planClose(-350_000n, MARK, PARAMS, 20));
+    expect(planCloseFromBook(-350_000n, MARK, null, PARAMS, 20)).toEqual(planClose(-350_000n, MARK, PARAMS, 20));
+    expect(planCloseFromBook(-350_000n, MARK, { bids: [], asks: [] }, PARAMS, 20)).toEqual(planClose(-350_000n, MARK, PARAMS, 20));
+    expect(planCloseFromBook(500n, MARK, ABOVE, PARAMS, 20)).toBeNull();
+  });
+});
+
+function fakeIO(start: bigint, book: BookSides, fills: (plan: OrderPlan, size: bigint) => bigint) {
+  let size = start;
+  const log: string[] = [];
+  const io: CloseIO = {
+    openOrderIds: async () => (log.push("orders"), [] as bigint[]),
+    cancel: async () => rec("cancel"),
+    position: async () => (log.push("position"), { size, mark: MARK }),
+    book: async () => PARAMS,
+    levels: async () => (log.push("levels"), book),
+    placeClose: async (_a, plan) => {
+      log.push(`close:${plan.isBid ? "buy" : "sell"}:${plan.quantity}`);
+      const after = fills(plan, size);
+      const filled = after !== size;
+      size = after;
+      return rec("close", filled ? "success" : "reverted");
+    },
+  };
+  return { io, log };
+}
+
+describe("the first close leaves before any read (P7b latency)", () => {
+  it("plans the first close from the push and sweeps after it", async () => {
+    const { io, log } = fakeIO(-350_000n, ABOVE, (plan, size) => (fillableAt(true, plan.price, ABOVE) >= plan.quantity ? 0n : size));
+    const r = await flatten(io, A, { size: -350_000n, mark: MARK, book: ABOVE });
+    expect(log[0]).toBe("close:buy:350000");
+    expect(log.slice(1)).toEqual(["orders", "position", "orders", "position"]);
+    expect(r).toMatchObject({ flat: true, attempts: 1, notes: [] });
+  });
+  it("retries from a fresh read and a fresh book when the first close does not fill", async () => {
+    let first = true;
+    const { io, log } = fakeIO(-350_000n, ABOVE, (_plan, size) => {
+      if (first) {
+        first = false;
+        return size;
+      }
+      return 0n;
+    });
+    const r = await flatten(io, A, { size: -350_000n, mark: MARK, book: null });
+    expect(log).toEqual(["close:buy:350000", "orders", "position", "levels", "close:buy:350000", "position", "orders", "position"]);
+    expect(r).toMatchObject({ flat: true, attempts: 2 });
+    expect(r.notes).toEqual(["close attempt 1 at 20 bps reverted"]);
+  });
+});
+
+let chainNonce = 7;
+function senderIO(over: Partial<SenderIO> = {}) {
+  chainNonce = 7;
+  const sent: { nonce: number }[] = [];
+  const io = {
+    address: A,
+    pendingNonce: vi.fn(async () => chainNonce),
+    fees: vi.fn(async () => ({ maxFeePerGas: 12n, maxPriorityFeePerGas: 1n })),
+    sign: vi.fn(async (tx: { nonce: number }) => {
+      sent.push({ nonce: tx.nonce });
+      return `0x${tx.nonce.toString(16).padStart(2, "0")}` as Hex;
+    }),
+    sendRaw: vi.fn(async (raw: Hex) => raw),
+    ...over,
+  };
+  return { io, sent };
+}
+
+describe("the fast sender: one round trip per send (P7b latency)", () => {
+  it("tracks the nonce locally and caches the fees after warm()", async () => {
+    const { io, sent } = senderIO();
+    const s = fastSender(io);
+    await s.warm();
+    for (let i = 0; i < 3; i++) await s.send(A, "0x", 10_000_000n);
+    expect(sent.map((x) => x.nonce)).toEqual([7, 8, 9]);
+    expect(io.pendingNonce).toHaveBeenCalledTimes(1);
+    expect(io.fees).toHaveBeenCalledTimes(1);
+  });
+  it("forgets the nonce after a failed send, and a resync only ever moves it forward", async () => {
+    let fail = true;
+    const { io, sent } = senderIO({
+      sendRaw: vi.fn(async (raw: Hex) => {
+        if (fail) {
+          fail = false;
+          throw new Error("timed out");
+        }
+        return raw;
+      }),
+    });
+    const s = fastSender(io);
+    await expect(s.send(A, "0x", 1n)).rejects.toThrow(/timed out/);
+    await s.send(A, "0x", 1n);
+    expect(io.pendingNonce).toHaveBeenCalledTimes(2);
+    chainNonce = 20;
+    await s.resync();
+    await s.send(A, "0x", 1n);
+    chainNonce = 3;
+    await s.resync();
+    await s.send(A, "0x", 1n);
+    expect(sent.map((x) => x.nonce)).toEqual([7, 7, 20, 21]);
+  });
+  it("refreshes stale fees in the background without delaying a send", async () => {
+    let now = 0;
+    const { io } = senderIO();
+    const s = fastSender(io, () => now);
+    await s.warm();
+    now = 61_000;
+    await s.send(A, "0x", 1n);
+    expect(io.fees).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the PASS lock (P7)", () => {
+  it("locks only 10 bps past the target, from the closeable equity of the push that raised it", () => {
+    expect(LOCK_BUFFER_BPS).toBe(10);
+    expect(lockClears(10_059n * E18, 10_000n * E18, 50)).toBe(false);
+    expect(lockClears(10_060n * E18, 10_000n * E18, 50)).toBe(true);
+    expect(lockClears(null, 10_000n * E18, 50)).toBe(false);
+  });
+  it("keeps that push on the run while the lock acts", () => {
+    const demo = loadRulebook("tokyo-sprint-demo");
+    const run: TrackedRun = { runId: 1n, account: A, rulebookId: rulebookId(demo), rulebook: demo, startTime: 1_000n, startEquity: 50n * E18, startBlock: 100n };
+    const e = new Engine();
+    e.track(run);
+    const snap = (dt: bigint, total: bigint, size: bigint): Snapshot => ({
+      blockNumber: 100n + dt,
+      timestamp: 1_000n + dt,
+      pool: demo.market.pool,
+      markOk: true,
+      markPrice: MARK,
+      accounts: [{ account: A, equityOk: true, equity: total, lockedCollateral: 0n, totalEquity: total, activePools: [demo.market.pool], size }],
+    });
+    const book = (dt: bigint): BookRead => ({ blockNumber: 100n + dt, ...ABOVE });
+    // A long whose closeable equity (bids +19 bps over the mark) clears +0.5% after the 60 s minimum.
+    const total = 50n * E18 + (60n * E18) / 100n;
+    expect(e.onSnapshot(snap(61n, total, 70_000n), book(61n))).toEqual([{ kind: "lock", runId: 1n, account: A }]);
+    const seen = e.get(1n)?.lastPush;
+    expect(seen).toMatchObject({ blockNumber: 161n, size: 70_000n, mark: MARK });
+    expect(seen?.judged).toBeGreaterThan(total);
+    e.onSnapshot(snap(62n, 50n * E18, 70_000n), book(62n));
+    expect(e.get(1n)?.lastPush?.blockNumber).toBe(161n);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/referee -- test/closer.test.ts`
+Expected: FAIL — `planCloseFromBook` and `fastSender` do not exist yet.
+
+- [ ] **Step 3: Plan closes from the book**
+
+Replace `packages/core/src/book.ts` with:
+```ts
+// Closeable equity and book-capped opens (spec §5; architect ruling P5, 2026-11-12). The BTC-PERP book trades about
+// 19 bps above the on-chain mark (guide measurement, 2026-11-12), so equity marked at the mark misstates what an
+// account would hold if it flattened: a long reads low by about the basis x its notional, a short reads high. The
+// rules judge closeable equity instead: the marked equity revalued from the mark to the book levels that would fill
+// the close (bids for a long, asks for a short), read in the same block. Opening IOCs are capped from the book too,
+// since a cap of mark + 20 bps sits below the whole ask side and never fills.
+import { decodeFunctionResult, encodeFunctionData, type Address, type Hex, type PublicClient } from "viem";
+import { multicall3Abi, perpPoolAbi } from "./abi";
+import { alignDown, alignUp, planClose, type BookParams, type OrderPlan } from "./close";
+import { MULTICALL3 } from "./config";
+
+export interface BookLevel {
+  price: bigint;
+  quantity: bigint;
+}
+
+/** Best level first on each side: bids descending, asks ascending (PerpPool.getBookLevels order). */
+export interface BookSides {
+  bids: readonly BookLevel[];
+  asks: readonly BookLevel[];
+}
+
+export interface BookRead extends BookSides {
+  blockNumber: bigint;
+}
+
+/** Levels read per side. 20 levels held 3.3 BTC of bids and 42 BTC of asks on 2026-11-12, against a demo position of
+ *  about 0.003 BTC and at most about 0.03 BTC for 40x of a 50 USDso account. */
+export const BOOK_DEPTH = 20;
+
+/** How far past the best opposite level an opening IOC may fill. The IOC fills at the book's prices; this only caps
+ *  the slippage. */
+export const OPEN_MARGIN_BPS = 20;
+
+interface Row {
+  success: boolean;
+  returnData: Hex;
+}
+
+/** One Multicall3 call: the block number and both sides of the book, read in the same block. */
+export function bookCall(pool: Address, depth: number = BOOK_DEPTH): { to: Address; data: Hex } {
+  const side = (isBid: boolean) => ({
+    target: pool,
+    allowFailure: true,
+    callData: encodeFunctionData({ abi: perpPoolAbi, functionName: "getBookLevels", args: [isBid, BigInt(depth)] }),
+  });
+  const calls = [
+    { target: MULTICALL3, allowFailure: true, callData: encodeFunctionData({ abi: multicall3Abi, functionName: "getBlockNumber" }) },
+    side(true),
+    side(false),
+  ];
+  return { to: MULTICALL3, data: encodeFunctionData({ abi: multicall3Abi, functionName: "aggregate3", args: [calls] }) };
+}
+
+/** The decoded book, or null when the block number or either side could not be read. */
+export function decodeBook(result: Hex): BookRead | null {
+  const rows = decodeFunctionResult({ abi: multicall3Abi, functionName: "aggregate3", data: result }) as readonly Row[];
+  const [blockRow, bidRow, askRow] = rows;
+  if (!blockRow?.success || !bidRow?.success || !askRow?.success) return null;
+  const blockNumber = decodeFunctionResult({ abi: multicall3Abi, functionName: "getBlockNumber", data: blockRow.returnData });
+  const levels = (row: Row): BookLevel[] =>
+    decodeFunctionResult({ abi: perpPoolAbi, functionName: "getBookLevels", data: row.returnData }).map((l) => ({ price: l.price, quantity: l.quantity }));
+  return { blockNumber, bids: levels(bidRow), asks: levels(askRow) };
+}
+
+/** Both sides of the book at `blockNumber` (default: latest); null when the read fails. */
+export async function readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth: number = BOOK_DEPTH): Promise<BookRead | null> {
+  const call = bookCall(pool, depth);
+  try {
+    const res = await client.call({ to: call.to, data: call.data, ...(blockNumber === undefined ? {} : { blockNumber }) });
+    return res.data ? decodeBook(res.data) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The marked equity revalued from the mark to the levels that would fill a close of `size` (signed, raw base units):
+ *  a long sells into the bids, a short buys from the asks. Flat returns totalEquity. null when the levels read cannot
+ *  fill the whole close (the position cannot be priced from this book). */
+export function closeableEquity(totalEquity: bigint, size: bigint, mark: bigint, book: BookSides, baseDecimals: number): bigint | null {
+  if (size === 0n) return totalEquity;
+  const long = size > 0n;
+  let left = long ? size : -size;
+  let diff = 0n;
+  for (const level of long ? book.bids : book.asks) {
+    if (left === 0n) break;
+    const q = level.quantity < left ? level.quantity : left;
+    diff += (level.price - mark) * q;
+    left -= q;
+  }
+  if (left > 0n) return null;
+  const adjust = diff / 10n ** BigInt(baseDecimals);
+  return long ? totalEquity + adjust : totalEquity - adjust;
+}
+
+/** The average price an IOC of `quantity` would fill at, walking the opposite side (asks for a buy, bids for a sell);
+ *  null when the levels read cannot fill it. */
+export function averageFill(isBid: boolean, quantity: bigint, book: BookSides): bigint | null {
+  if (quantity <= 0n) return null;
+  let left = quantity;
+  let cost = 0n;
+  for (const level of isBid ? book.asks : book.bids) {
+    if (left === 0n) break;
+    const q = level.quantity < left ? level.quantity : left;
+    cost += level.price * q;
+    left -= q;
+  }
+  return left > 0n ? null : cost / quantity;
+}
+
+/** Quantity an IOC at `limit` can take from the opposite side: asks at or below a buy limit, bids at or above a sell limit. */
+export function fillableAt(isBid: boolean, limit: bigint, book: BookSides): bigint {
+  let total = 0n;
+  for (const level of isBid ? book.asks : book.bids) {
+    if (isBid ? level.price > limit : level.price < limit) break;
+    total += level.quantity;
+  }
+  return total;
+}
+
+/** An opening IOC capped from the book: best ask + marginBps (rounded up to the tick) to buy, best bid - marginBps
+ *  (rounded down) to sell. Throws when the quantity is below the pool minimum or the opposite side is empty. */
+export function planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps: number = OPEN_MARGIN_BPS): OrderPlan {
+  const q = alignDown(quantity, params.lotSize);
+  if (q < params.minQuantity) throw new Error(`planOpenFromBook: quantity ${q} is below minQuantity ${params.minQuantity}`);
+  const best = (isBid ? book.asks : book.bids)[0];
+  if (!best) throw new Error(`planOpenFromBook: the book has no ${isBid ? "asks" : "bids"} to open against`);
+  const m = BigInt(marginBps);
+  const price = isBid ? alignUp((best.price * (10_000n + m)) / 10_000n, params.tickSize) : alignDown((best.price * (10_000n - m)) / 10_000n, params.tickSize);
+  return { isBid, quantity: q, price };
+}
+
+/** The IOC that closes `size` (signed), capped from the book like an open (architect P7, 2026-11-12): best ask +
+ *  slippageBps to buy back a short, best bid - slippageBps to sell a long, rounded to the tick. The mark ladder
+ *  (planClose) stays the fallback: with no book, or no level on the closing side, it is used alone, and otherwise the
+ *  more permissive of the two limits wins (higher to buy, lower to sell). An IOC fills at the book's prices, so the cap
+ *  only bounds slippage. The rehearsal's first close of a short, a buy at mark + 20 bps, reverted under a book about 19
+ *  bps above the mark. */
+export function planCloseFromBook(size: bigint, mark: bigint, book: BookSides | null, params: BookParams, slippageBps: number): OrderPlan | null {
+  const ladder = planClose(size, mark, params, slippageBps);
+  if (!ladder || !book) return ladder;
+  const best = (ladder.isBid ? book.asks : book.bids)[0];
+  if (!best) return ladder;
+  const s = BigInt(slippageBps);
+  if (ladder.isBid) {
+    const fromBook = alignUp((best.price * (10_000n + s)) / 10_000n, params.tickSize);
+    return { ...ladder, price: fromBook > ladder.price ? fromBook : ladder.price };
+  }
+  const fromBook = alignDown((best.price * (10_000n - s)) / 10_000n, params.tickSize);
+  return { ...ladder, price: fromBook < ladder.price ? fromBook : ladder.price };
+}
+```
+
+- [ ] **Step 4: Send the first close before any read; sweep after it**
+
+Replace `packages/referee/src/close.ts` with:
+```ts
+import type { Address } from "viem";
+import { CLOSE_SLIPPAGE_STEPS_BPS, type BookParams, type OrderPlan } from "@basanos/core";
+import { planCloseFromBook, type BookSides } from "@basanos/core/book";
+import type { TxRecord } from "./tx";
+
+export interface CloseIO {
+  openOrderIds(account: Address): Promise<readonly bigint[]>;
+  cancel(account: Address, orderId: bigint): Promise<TxRecord>;
+  position(account: Address): Promise<{ size: bigint; mark: bigint }>;
+  book(): Promise<BookParams>;
+  placeClose(account: Address, plan: OrderPlan): Promise<TxRecord>;
+  /** Both sides of the book now (P7): retries are capped from it. Absent or null, the mark ladder alone is used. */
+  levels?(): Promise<BookSides | null>;
+}
+
+/** What the push that raised the verdict already holds (architect P7): the position, the mark and the book of the
+ *  breach block. With it the first close is planned and sent before any read. */
+export interface FirstClose {
+  size: bigint;
+  mark: bigint;
+  book: BookSides | null;
+}
+
+export interface CloseResult {
+  flat: boolean;
+  finalSize: bigint;
+  attempts: number;
+  txs: TxRecord[];
+  notes: string[];
+}
+
+/** Spec §8 close protocol (R4), cut to one round trip before the first close (architect P7, 2026-11-12).
+ *  - With `first` (the push's own reads): the first IOC is planned from that block's book and sent at once. The
+ *    resting-order sweep follows it: a resting order can change the position only after the close, so the sweep and
+ *    the read-back that follow catch it.
+ *  - Without `first`: cancel first, as before, then close the fresh position.
+ *  - Every retry reads the position and the book again; at most CLOSE_SLIPPAGE_STEPS_BPS.length attempts in all, each
+ *    capped from the book with the mark ladder as the fallback; a final sweep and read-back. */
+export async function flatten(io: CloseIO, account: Address, first?: FirstClose): Promise<CloseResult> {
+  const txs: TxRecord[] = [];
+  const notes: string[] = [];
+  const sweep = async (label: string): Promise<void> => {
+    for (const id of await io.openOrderIds(account)) txs.push({ ...(await io.cancel(account, id)), label });
+  };
+  const params = await io.book();
+  let attempts = 0;
+  const attempt = async (plan: OrderPlan, slippage: number): Promise<void> => {
+    attempts += 1;
+    const r = await io.placeClose(account, plan);
+    txs.push({ ...r, label: "close" });
+    if (r.status === "reverted") notes.push(`close attempt ${attempts} at ${slippage} bps reverted`);
+  };
+  let steps: readonly number[] = CLOSE_SLIPPAGE_STEPS_BPS;
+  if (first && first.size !== 0n) {
+    const step = CLOSE_SLIPPAGE_STEPS_BPS[0];
+    const plan = planCloseFromBook(first.size, first.mark, first.book, params, step);
+    if (plan) await attempt(plan, step);
+    else notes.push(`residual ${first.size} is below one lot`);
+    steps = CLOSE_SLIPPAGE_STEPS_BPS.slice(1);
+  }
+  await sweep(first ? "sweep" : "cancel");
+  for (const slippage of steps) {
+    const pos = await io.position(account);
+    if (pos.size === 0n) break;
+    const levels = io.levels ? await io.levels() : null;
+    const plan = planCloseFromBook(pos.size, pos.mark, levels, params, slippage);
+    if (!plan) {
+      notes.push(`residual ${pos.size} is below one lot`);
+      break;
+    }
+    await attempt(plan, slippage);
+  }
+  await sweep("sweep");
+  const final = await io.position(account);
+  return { flat: final.size === 0n, finalSize: final.size, attempts, txs, notes };
+}
+```
+
+- [ ] **Step 5: One fast sender for every referee write**
+
+Replace `packages/referee/src/chain.ts` with:
+```ts
+import { createPublicClient, createWalletClient, encodeFunctionData, http, zeroAddress, type Address, type Hex, type PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { CHAIN, ORDER_GAS, ORDER_TYPE_IOC, farFutureNs, perpPoolAbi, readSnapshot, type BookParams } from "@basanos/core";
+import { readBookLevels } from "@basanos/core/book";
+import type { CloseIO } from "./close";
+import { txRecord } from "./tx";
+
+export function makePublicClient(url: string): PublicClient {
+  return createPublicClient({ chain: CHAIN, transport: http(url) }) as unknown as PublicClient;
+}
+
+/** Inferred return type: bound to CHAIN and the referee's account. */
+export function makeRefereeWallet(pk: Hex, url: string) {
+  return createWalletClient({ account: privateKeyToAccount(pk), chain: CHAIN, transport: http(url) });
+}
+
+export type RefereeWallet = ReturnType<typeof makeRefereeWallet>;
+
+/** How long cached fees are trusted before a refresh (they are refreshed in the background when stale). */
+export const FEE_TTL_MS = 60_000;
+
+export interface Fees {
+  maxFeePerGas: bigint;
+  maxPriorityFeePerGas: bigint;
+}
+
+/** The chain calls the fast sender needs; makeFastSender binds them to viem, tests fake them. */
+export interface SenderIO {
+  address: Address;
+  pendingNonce(): Promise<number>;
+  fees(): Promise<Fees>;
+  sign(tx: { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number } & Fees): Promise<Hex>;
+  sendRaw(raw: Hex): Promise<Hex>;
+}
+
+/** The referee's sends in one round trip (architect P7, 2026-11-12). A close used to cost seven sequential RPCs at about
+ *  0.4 s each before it left (open orders, book parameters, position, chain id, nonce, fees, send): 7.7 s from the
+ *  breach block to the first close in the rehearsal. Here the nonce is tracked locally and the fees are cached, so a
+ *  send is a local signature and one eth_sendRawTransaction. All of the referee's writes go through one sender, in the
+ *  daemon's one action queue, so nonces never race. A failed send forgets the nonce; `resync()` adopts the chain's
+ *  pending nonce when it is ahead (a transaction sent by another tool with the same key). */
+export interface FastSender {
+  address: Address;
+  /** Fetches the nonce and the fees ahead of the first send. */
+  warm(): Promise<void>;
+  send(to: Address, data: Hex, gas: bigint, value?: bigint): Promise<Hex>;
+  resync(): Promise<void>;
+}
+
+export function fastSender(io: SenderIO, nowMs: () => number = Date.now): FastSender {
+  let next: number | null = null;
+  let fees: { at: number; value: Fees } | null = null;
+  let inflight = 0;
+  const loadFees = async (): Promise<Fees> => {
+    const value = await io.fees();
+    fees = { at: nowMs(), value };
+    return value;
+  };
+  const currentFees = async (): Promise<Fees> => {
+    if (!fees) return loadFees();
+    if (nowMs() - fees.at > FEE_TTL_MS) void loadFees().catch(() => undefined);
+    return fees.value;
+  };
+  return {
+    address: io.address,
+    warm: async () => {
+      const [n] = await Promise.all([io.pendingNonce(), loadFees()]);
+      next = next === null ? n : Math.max(next, n);
+    },
+    send: async (to, data, gas, value = 0n) => {
+      inflight += 1;
+      try {
+        if (next === null) next = await io.pendingNonce();
+        const nonce = next;
+        next += 1;
+        try {
+          return await io.sendRaw(await io.sign({ to, data, value, gas, nonce, ...(await currentFees()) }));
+        } catch (e) {
+          next = null;
+          throw e;
+        }
+      } finally {
+        inflight -= 1;
+      }
+    },
+    resync: async () => {
+      if (inflight > 0) return;
+      const n = await io.pendingNonce();
+      if (inflight === 0) next = next === null ? n : Math.max(next, n);
+    },
+  };
+}
+
+/** Binds the fast sender to the referee's wallet (local signing) and the public client (standard RPC). Fees: the
+ *  chain's estimate, with maxFeePerGas doubled for headroom; a transaction pays the base fee plus the tip, not the cap. */
+export function makeFastSender(client: PublicClient, wallet: RefereeWallet): FastSender {
+  const address = wallet.account.address;
+  return fastSender({
+    address,
+    pendingNonce: () => client.getTransactionCount({ address, blockTag: "pending" }),
+    fees: async () => {
+      const f = await client.estimateFeesPerGas();
+      return { maxFeePerGas: f.maxFeePerGas * 2n, maxPriorityFeePerGas: f.maxPriorityFeePerGas };
+    },
+    sign: (tx) => wallet.account.signTransaction({ ...tx, chainId: CHAIN.id, type: "eip1559" }),
+    sendRaw: (raw) => client.sendRawTransaction({ serializedTransaction: raw }),
+  });
+}
+
+export async function readBookParams(client: PublicClient, pool: Address): Promise<BookParams> {
+  const p = await client.readContract({ address: pool, abi: perpPoolAbi, functionName: "getOrderBookParameters" });
+  return { tickSize: p.tickSize, minQuantity: p.minQuantity, lotSize: p.lotSize };
+}
+
+/** The close protocol's chain I/O. The pool's tick, minimum and lot are read once at start (they do not change), and
+ *  every write goes through the fast sender. */
+export function chainCloseIO(client: PublicClient, sender: FastSender, pool: Address, params: BookParams): CloseIO {
+  return {
+    // The pool answers getOwnOpenOrders for msg.sender: read as the owner via eth_call `from`, never through Multicall3.
+    openOrderIds: (account) => client.readContract({ address: pool, abi: perpPoolAbi, functionName: "getOwnOpenOrders", account }),
+    cancel: async (account, orderId) => {
+      const hash = await sender.send(pool, encodeFunctionData({ abi: perpPoolAbi, functionName: "cancelOrderFor", args: [account, orderId] }), ORDER_GAS);
+      return txRecord("cancel", await client.waitForTransactionReceipt({ hash }));
+    },
+    position: async (account) => {
+      const snap = await readSnapshot(client, [account], pool);
+      return { size: snap.accounts[0]?.size ?? 0n, mark: snap.markPrice };
+    },
+    book: async () => params,
+    levels: () => readBookLevels(client, pool),
+    placeClose: async (account, plan) => {
+      const data = encodeFunctionData({
+        abi: perpPoolAbi,
+        functionName: "placeOrderFor",
+        args: [account, plan.isBid, 0n, plan.price, plan.quantity, farFutureNs(), ORDER_TYPE_IOC, 0, zeroAddress, 0n],
+      });
+      const hash = await sender.send(pool, data, ORDER_GAS);
+      return txRecord("close", await client.waitForTransactionReceipt({ hash }));
+    },
+  };
+}
+```
+
+Replace `packages/referee/src/writer.ts` with:
+```ts
+import { encodeFunctionData, type Address, type Hex, type PublicClient } from "viem";
+import { RULE_NAMES, basanosRegistryAbi } from "@basanos/core";
+import type { FailRule } from "@basanos/core/evaluate";
+import type { FastSender } from "./chain";
+import type { BreachRead } from "./engine";
+import { txRecord, type TxRecord } from "./tx";
+
+export const ZERO_HASH: Hex = `0x${"0".repeat(64)}`;
+
+export function ruleIndex(rule: FailRule): number {
+  const i = RULE_NAMES.indexOf(rule);
+  if (i <= 0) throw new Error(`unknown rule ${rule}`);
+  return i;
+}
+
+export function voidIndex(reason: "Flow" | "ForeignMarket"): number {
+  return reason === "Flow" ? 1 : 2;
+}
+
+export function failArgs(runId: bigint, rule: FailRule, breach: BreachRead, evidenceHash: Hex, closeTxs: readonly Hex[]) {
+  return [runId, ruleIndex(rule), { ...breach }, evidenceHash, [...closeTxs]] as const;
+}
+
+export function voidArgs(runId: bigint, reason: "Flow" | "ForeignMarket", txHash: Hex | null, evidenceHash: Hex) {
+  return [runId, voidIndex(reason), txHash ?? ZERO_HASH, evidenceHash] as const;
+}
+
+export interface RegistryWriter {
+  recordFail(runId: bigint, rule: FailRule, breach: BreachRead, evidenceHash: Hex, closeTxs: readonly Hex[]): Promise<TxRecord>;
+  recordPass(runId: bigint): Promise<TxRecord>;
+  recordVoid(runId: bigint, reason: "Flow" | "ForeignMarket", txHash: Hex | null, evidenceHash: Hex): Promise<TxRecord>;
+}
+
+/** oracleValue is ORACLE_DEPOSIT when ORACLE_ENABLED=true (cut-order switch), else 0n; only PASS and FAIL carry it.
+ *  Every write goes through the referee's one fast sender (P7), so its nonces never collide with the closes; the gas
+ *  is estimated (a refused verdict reverts here, before anything is sent) with 30% headroom. */
+export function makeRegistryWriter(sender: FastSender, client: PublicClient, registry: Address, oracleValue: bigint): RegistryWriter {
+  const write = async (label: string, data: Hex, value: bigint): Promise<TxRecord> => {
+    const gas = (await client.estimateGas({ account: sender.address, to: registry, data, value })) * 13n / 10n;
+    const hash = await sender.send(registry, data, gas, value);
+    const r = txRecord(label, await client.waitForTransactionReceipt({ hash }));
+    if (r.status !== "success") throw new Error(`${label} reverted: ${r.explorer}`);
+    return r;
+  };
+  return {
+    recordFail: async (runId, rule, breach, evidenceHash, closeTxs) =>
+      write("recordFail", encodeFunctionData({ abi: basanosRegistryAbi, functionName: "recordFail", args: failArgs(runId, rule, breach, evidenceHash, closeTxs) }), oracleValue),
+    recordPass: async (runId) => write("recordPass", encodeFunctionData({ abi: basanosRegistryAbi, functionName: "recordPass", args: [runId] }), oracleValue),
+    recordVoid: async (runId, reason, txHash, evidenceHash) =>
+      write("recordVoid", encodeFunctionData({ abi: basanosRegistryAbi, functionName: "recordVoid", args: voidArgs(runId, reason, txHash, evidenceHash) }), 0n),
+  };
+}
+```
+
+- [ ] **Step 6: Lock from the push with a buffer**
+
+Replace `packages/referee/src/lock.ts` with:
+```ts
+/** The subset of the SDK's PerpCloseQuote the lock needs (client.quotePerpClose, SDK 0.33.0). */
+export type CloseQuoteLike =
+  | { priceable: false }
+  | { priceable: true; isBid: boolean; quantity: bigint; referencePrice: bigint; averagePrice: bigint | null; fillableSize: bigint };
+
+/** Equity after closing at the quoted average instead of the mark; null if the close cannot be priced or fully filled. */
+export function predictClosedEquity(totalEquity: bigint, quote: CloseQuoteLike, baseDecimals: number): bigint | null {
+  if (!quote.priceable) return null;
+  if (quote.quantity === 0n) return totalEquity;
+  if (quote.averagePrice === null || quote.fillableSize < quote.quantity) return null;
+  const diff = quote.isBid ? quote.averagePrice - quote.referencePrice : quote.referencePrice - quote.averagePrice;
+  return totalEquity - (diff * quote.quantity) / 10n ** BigInt(baseDecimals);
+}
+
+export function clearsTarget(predicted: bigint | null, startEquity: bigint, targetBps: number): boolean {
+  return predicted !== null && predicted * 10_000n >= startEquity * BigInt(10_000 + targetBps);
+}
+
+/** How far past the target closeable equity must be before the referee locks a PASS (architect P7, 2026-11-12). The
+ *  lock closes the position and the registry then checks the realized equity against the registered target, so the
+ *  move between the verdict and the close must not take it back under. In the replay of 12 hours of history (demo v2
+ *  at 10x, closes 3 s after the verdict) a 10 bps buffer kept refused locks under 1% at no cost in PASS odds. It is a
+ *  referee execution margin, like close slippage; the rulebook's target is unchanged and stays the registry's check. */
+export const LOCK_BUFFER_BPS = 10;
+
+/** Lock from the closeable equity of the push that raised the target (the same block's book), not from a new quote. */
+export function lockClears(judged: bigint | null, startEquity: bigint, targetBps: number, bufferBps: number = LOCK_BUFFER_BPS): boolean {
+  return clearsTarget(judged, startEquity, targetBps + bufferBps);
+}
+```
+
+Replace `packages/referee/src/engine.ts` with:
+```ts
+import type { Address, Hex } from "viem";
+import type { AccountSnapshot, Snapshot } from "@basanos/core";
+import type { BookRead } from "@basanos/core/book";
+import { classifyMarginBankLog } from "@basanos/core/classify";
+import { evaluate, initRunState, type FailRule, type RunState } from "@basanos/core/evaluate";
+import type { TrackedRun } from "./runs";
+
+export interface BreachRead {
+  blockNumber: bigint;
+  equityOk: boolean;
+  equity: bigint;
+  lockedCollateral: bigint;
+  positionSize: bigint;
+  markOk: boolean;
+  markPrice: bigint;
+}
+
+/** What a snapshot rule judged (spec §5): the closeable equity and the book it was revalued at, read in the breach
+ *  block (book null: valued at the mark). Kept in the run evidence beside the stored reads. */
+export interface JudgedRead {
+  equity: bigint;
+  book: BookRead | null;
+}
+
+export type Action =
+  | { kind: "fail"; runId: bigint; account: Address; rule: FailRule; breach: BreachRead; judged: JudgedRead | null }
+  | { kind: "lock"; runId: bigint; account: Address }
+  | { kind: "void"; runId: bigint; account: Address; reason: "Flow" | "ForeignMarket"; txHash: Hex | null };
+
+export type RunPhase = "watching" | "acting" | "done";
+
+/** The last judged push for a run (architect P7): the closeable equity the rules judged and the position, mark and book
+ *  of that block. A run stops being judged once it acts, so for a lock this is the push that raised the target: the
+ *  daemon locks from it and plans the first close from it, without another read. */
+export interface PushSeen {
+  blockNumber: bigint;
+  judged: bigint | null;
+  size: bigint;
+  mark: bigint;
+  book: BookRead | null;
+}
+
+export interface EngineRun {
+  run: TrackedRun;
+  state: RunState;
+  phase: RunPhase;
+  exposureX: number | null;
+  lastTotal: bigint | null;
+  lastPush: PushSeen | null;
+}
+
+const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+export function breachRead(snap: Snapshot, acct: AccountSnapshot): BreachRead {
+  return {
+    blockNumber: snap.blockNumber,
+    equityOk: acct.equityOk,
+    equity: acct.equity,
+    lockedCollateral: acct.lockedCollateral,
+    positionSize: acct.size,
+    markOk: snap.markOk,
+    markPrice: snap.markPrice,
+  };
+}
+
+export class Engine {
+  private readonly runs = new Map<string, EngineRun>();
+  private pausedFlag = false;
+
+  get paused(): boolean {
+    return this.pausedFlag;
+  }
+
+  track(run: TrackedRun): boolean {
+    const key = run.runId.toString();
+    if (this.runs.has(key)) return false;
+    this.runs.set(key, { run, state: initRunState(run.startTime, run.startEquity), phase: "watching", exposureX: null, lastTotal: null, lastPush: null });
+    return true;
+  }
+
+  get(runId: bigint): EngineRun | undefined {
+    return this.runs.get(runId.toString());
+  }
+
+  watchedAccounts(): Address[] {
+    const out: Address[] = [];
+    for (const r of this.runs.values()) {
+      if (r.phase !== "done" && !out.some((a) => same(a, r.run.account))) out.push(r.run.account);
+    }
+    return out;
+  }
+
+  /** Finishes tracked runs that are no longer active on-chain (e.g. voidRevoked by anyone); returns the ids still live. */
+  retain(activeRunIds: readonly bigint[]): bigint[] {
+    const live = new Set(activeRunIds.map((id) => id.toString()));
+    for (const [key, r] of this.runs) if (!live.has(key) && r.phase === "watching") r.phase = "done";
+    return [...this.runs.values()].filter((r) => r.phase !== "done").map((r) => r.run.runId);
+  }
+
+  pause(): void {
+    this.pausedFlag = true;
+  }
+
+  resume(): void {
+    this.pausedFlag = false;
+  }
+
+  finish(runId: bigint): void {
+    const r = this.get(runId);
+    if (r) r.phase = "done";
+  }
+
+  release(runId: bigint): void {
+    const r = this.get(runId);
+    if (r && r.phase === "acting") r.phase = "watching";
+  }
+
+  /** Judges every watched run on one snapshot. `book` is the book in the same block: rules then judge closeable
+   *  equity, and null pauses runs with an open position. Omitted, equity is valued at the mark. */
+  onSnapshot(snap: Snapshot, book?: BookRead | null): Action[] {
+    if (this.pausedFlag) return [];
+    const actions: Action[] = [];
+    for (const r of this.runs.values()) {
+      if (r.phase !== "watching") continue;
+      const acct = snap.accounts.find((a) => same(a.account, r.run.account));
+      if (!acct) continue;
+      const ev = evaluate(r.run.rulebook, r.state, acct, {
+        timestamp: snap.timestamp,
+        markOk: snap.markOk,
+        markPrice: snap.markPrice,
+        ...(book === undefined ? {} : { book }),
+      });
+      r.state = ev.state;
+      r.exposureX = ev.exposureX;
+      if (acct.equityOk) r.lastTotal = acct.totalEquity;
+      r.lastPush = { blockNumber: snap.blockNumber, judged: ev.judgedEquity, size: acct.size, mark: snap.markPrice, book: book ?? null };
+      const v = ev.verdict;
+      if (v.kind === "fail") {
+        r.phase = "acting";
+        const judged = ev.judgedEquity === null ? null : { equity: ev.judgedEquity, book: book ?? null };
+        actions.push({ kind: "fail", runId: r.run.runId, account: r.run.account, rule: v.rule, breach: breachRead(snap, acct), judged });
+      } else if (v.kind === "void") {
+        r.phase = "acting";
+        actions.push({ kind: "void", runId: r.run.runId, account: r.run.account, reason: "ForeignMarket", txHash: null });
+      } else if (v.kind === "target") {
+        r.phase = "acting";
+        actions.push({ kind: "lock", runId: r.run.runId, account: r.run.account });
+      }
+    }
+    return actions;
+  }
+
+  onAccountLog(account: Address, topic0: Hex | undefined, txHash: Hex | null, snap: Snapshot | null): Action[] {
+    const r = [...this.runs.values()].find((x) => x.phase === "watching" && same(x.run.account, account));
+    if (!r) return [];
+    const cls = classifyMarginBankLog(topic0);
+    if (cls === "flow") {
+      r.phase = "acting";
+      return [{ kind: "void", runId: r.run.runId, account: r.run.account, reason: "Flow", txHash }];
+    }
+    if (cls === "liquidation") {
+      r.phase = "acting";
+      const acct = snap?.accounts.find((a) => same(a.account, account));
+      const breach: BreachRead =
+        snap && acct
+          ? breachRead(snap, acct)
+          : { blockNumber: snap?.blockNumber ?? 0n, equityOk: false, equity: 0n, lockedCollateral: 0n, positionSize: 0n, markOk: false, markPrice: 0n };
+      return [{ kind: "fail", runId: r.run.runId, account: r.run.account, rule: "Liquidated", breach, judged: null }];
+    }
+    // A trading log carries no book, so it is not judged here: the price-feed watch pushes the snapshot and the book
+    // of the same block within about a second, and judges closeable equity (spec §5).
+    return [];
+  }
+}
+```
+
+Replace `packages/referee/src/daemon.ts` with:
+```ts
+import { pad, type Address, type Hex, type PublicClient } from "viem";
+import {
+  BTC_POOL,
+  MARGIN_BANK,
+  PRICE_FEED_SCHEDULER,
+  decodeSnapshot,
+  readSnapshot,
+  snapshotCall,
+  startWatch,
+  type Rulebook,
+  type Snapshot,
+  type WatchHandle,
+} from "@basanos/core";
+import { bookCall, decodeBook, readBookLevels, type BookRead } from "@basanos/core/book";
+import { flatten, type CloseIO } from "./close";
+import { Engine, type Action } from "./engine";
+import { attachVerdictTx, writeRunEvidence } from "./evidence";
+import { LOCK_BUFFER_BPS, lockClears } from "./lock";
+import { readActiveRuns, rulebookIndex } from "./runs";
+import type { TxRecord } from "./tx";
+import type { RegistryWriter } from "./writer";
+
+export interface DaemonDeps {
+  client: PublicClient;
+  wss: string;
+  registry: Address;
+  rulebooks: readonly Rulebook[];
+  closeIO: CloseIO;
+  writer: RegistryWriter;
+  /** The referee's fast sender (P7): its nonce is re-read on each idle refresh, in case another tool used the key. */
+  sender?: { resync(): Promise<void> };
+  log: (line: string) => void;
+  pollMs?: number;
+}
+
+interface Gap {
+  atMs: number;
+  reason: string;
+  lastBlock: string;
+  resumedAtBlock: string | null;
+}
+
+const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+async function retry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      await new Promise((r) => setTimeout(r, 1_000 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
+export async function runDaemon(d: DaemonDeps): Promise<void> {
+  const engine = new Engine();
+  const index = rulebookIndex(d.rulebooks);
+  const gaps: Gap[] = [];
+  const connected = new Set<number>();
+  let watches: WatchHandle[] = [];
+  let watchedKey = "";
+  let lastSnap: Snapshot | null = null;
+  let queue: Promise<void> = Promise.resolve();
+
+  const enqueue = (actions: Action[]): void => {
+    for (const a of actions) {
+      queue = queue
+        .then(() => act(a))
+        .catch((e: unknown) => {
+          d.log(`action error on run ${a.runId}: ${(e as Error).message}`);
+          engine.release(a.runId);
+        });
+    }
+  };
+
+  // Rules judge closeable equity (spec §5), so every judged snapshot comes with the book of the same block; a missing
+  // book pauses runs with an open position until the next push.
+  const onSnap = (snap: Snapshot, book: BookRead | null): void => {
+    lastSnap = snap;
+    enqueue(engine.onSnapshot(snap, book));
+  };
+
+  const bookOf = (raw: Hex | undefined, block: bigint): BookRead | null => {
+    try {
+      const book = raw ? decodeBook(raw) : null;
+      return book && book.blockNumber === block ? book : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const findFlowTx = async (account: Address, block: bigint): Promise<Hex | null> => {
+    const tag = `0x${block.toString(16)}` as Hex;
+    for (const topics of [[null, pad(account)], [null, null, pad(account)]]) {
+      const logs = (await d.client.request({
+        method: "eth_getLogs",
+        params: [{ address: MARGIN_BANK, topics: topics as Hex[], fromBlock: tag, toBlock: tag }],
+      })) as { transactionHash: Hex }[];
+      const first = logs[0];
+      if (first) return first.transactionHash;
+    }
+    return null;
+  };
+
+  const resumeAtHead = async (): Promise<void> => {
+    const accounts = engine.watchedAccounts();
+    if (accounts.length === 0) {
+      engine.resume();
+      return;
+    }
+    const snap = await readSnapshot(d.client, accounts, BTC_POOL);
+    const gap = gaps.at(-1);
+    if (gap && gap.resumedAtBlock === null) gap.resumedAtBlock = snap.blockNumber.toString();
+    engine.resume();
+    d.log(`resumed at block ${snap.blockNumber} after a gap; re-evaluating at head`);
+    onSnap(snap, await readBookLevels(d.client, BTC_POOL, snap.blockNumber));
+  };
+
+  const resubscribe = (): void => {
+    for (const w of watches) w.close();
+    watches = [];
+    connected.clear();
+    const accounts = engine.watchedAccounts();
+    watchedKey = accounts.map((a) => a.toLowerCase()).sort().join(",");
+    if (accounts.length === 0) return;
+    const call = snapshotCall(accounts, BTC_POOL);
+    const topics = accounts.map((a) => pad(a));
+    const decode = (results: Hex[]): Snapshot | null => {
+      const raw = results[0];
+      return raw ? decodeSnapshot(raw, accounts, BTC_POOL) : null;
+    };
+    const handlers = (i: number, onPush: (results: Hex[], logTopics: Hex[]) => void) => ({
+      onPush: (p: { simulationResults: Hex[]; topics: Hex[] }) => onPush(p.simulationResults, p.topics),
+      onConnected: ({ reconnects }: { reconnects: number }) => {
+        connected.add(i);
+        if (reconnects > 0 && connected.size === 3) void resumeAtHead().catch((e: unknown) => d.log(`resume error: ${(e as Error).message}`));
+      },
+      onGap: ({ atMs, reason }: { atMs: number; reason: string }) => {
+        connected.delete(i);
+        if (!engine.paused) {
+          engine.pause();
+          gaps.push({ atMs, reason, lastBlock: lastSnap ? lastSnap.blockNumber.toString() : "none", resumedAtBlock: null });
+          d.log(`gap (${reason}): judging paused`);
+        }
+      },
+    });
+    watches.push(
+      startWatch(
+        d.wss,
+        { address: PRICE_FEED_SCHEDULER, ethCalls: [call, bookCall(BTC_POOL)], pushChangesOnly: true },
+        handlers(0, (results) => {
+          const s = decode(results);
+          if (s) onSnap(s, bookOf(results[1], s.blockNumber));
+        }),
+      ),
+    );
+    for (const position of [1, 2] as const) {
+      const filterTopics = position === 1 ? [null, topics] : [null, null, topics];
+      watches.push(
+        startWatch(
+          d.wss,
+          { address: MARGIN_BANK, topics: filterTopics, ethCalls: [call] },
+          handlers(position, (results, logTopics) => {
+            const s = decode(results);
+            if (s) lastSnap = s;
+            const t = logTopics[position];
+            const account = accounts.find((a) => t !== undefined && same(pad(a), t));
+            if (account) enqueue(engine.onAccountLog(account, logTopics[0], null, s));
+          }),
+        ),
+      );
+    }
+  };
+
+  const act = async (a: Action): Promise<void> => {
+    const er = engine.get(a.runId);
+    if (!er) return;
+    const rb = er.run.rulebook;
+    const base = {
+      runId: a.runId,
+      account: a.account,
+      rulebook: { name: rb.name, variant: rb.variant, label: rb.label, id: er.run.rulebookId },
+      startBlock: er.run.startBlock,
+      startEquity: er.run.startEquity,
+      gaps: gaps.map((g) => ({ ...g })),
+    };
+    if (a.kind === "void") {
+      const txHash = a.txHash ?? (lastSnap ? await findFlowTx(a.account, lastSnap.blockNumber) : null);
+      const hash = writeRunEvidence(a.runId, { ...base, verdict: "VOIDED", reason: a.reason, flowTx: txHash });
+      const tx = await retry(() => d.writer.recordVoid(a.runId, a.reason, txHash, hash));
+      attachVerdictTx(a.runId, tx);
+      engine.finish(a.runId);
+      d.log(`run ${a.runId} VOIDED (${a.reason}) ${tx.explorer}`);
+      return;
+    }
+    if (a.kind === "fail") {
+      d.log(`run ${a.runId} breach ${a.rule} at block ${a.breach.blockNumber}: closing from the breach block's book, then cancelling`);
+      // The first close is planned from the push itself (position, mark, book of the breach block) and sent at once (P7).
+      const close = await flatten(d.closeIO, a.account, { size: a.breach.positionSize, mark: a.breach.markPrice, book: a.judged?.book ?? null });
+      for (const t of close.txs) d.log(`  ${t.label} ${t.status} ${t.explorer}`);
+      const hash = writeRunEvidence(a.runId, { ...base, verdict: "FAILED", rule: a.rule, breach: a.breach, judged: a.judged, close });
+      const tx: TxRecord = await retry(() => d.writer.recordFail(a.runId, a.rule, a.breach, hash, close.txs.map((t) => t.hash)));
+      attachVerdictTx(a.runId, tx);
+      engine.finish(a.runId);
+      d.log(`run ${a.runId} FAILED (${a.rule}) ${tx.explorer}`);
+      return;
+    }
+    // The lock (P7): from the closeable equity of the push that raised the target, with LOCK_BUFFER_BPS of room so the
+    // move before the close cannot take the realized equity back under the registered target; then the first close is
+    // planned from that same push. No new quote, no read before the close.
+    const seen = er.lastPush;
+    if (!seen || !lockClears(seen.judged, er.run.startEquity, rb.profitTargetBps)) {
+      engine.release(a.runId);
+      return;
+    }
+    d.log(`run ${a.runId} target reached (closeable equity ${seen.judged} at block ${seen.blockNumber}, ${LOCK_BUFFER_BPS} bps past the target): locking`);
+    const close = await flatten(d.closeIO, a.account, { size: seen.size, mark: seen.mark, book: seen.book });
+    for (const t of close.txs) d.log(`  ${t.label} ${t.status} ${t.explorer}`);
+    try {
+      const tx = await d.writer.recordPass(a.runId);
+      writeRunEvidence(a.runId, { ...base, verdict: "PASSED", lock: { blockNumber: seen.blockNumber, judgedEquity: seen.judged, bufferBps: LOCK_BUFFER_BPS }, close });
+      attachVerdictTx(a.runId, tx);
+      engine.finish(a.runId);
+      d.log(`run ${a.runId} PASSED ${tx.explorer}`);
+    } catch (e) {
+      d.log(`run ${a.runId} recordPass refused (${(e as Error).message.slice(0, 160)}); the run continues`);
+      engine.release(a.runId);
+    }
+  };
+
+  const refresh = async (): Promise<void> => {
+    if (d.sender) await d.sender.resync();
+    const runs = await readActiveRuns(d.client, d.registry, index);
+    for (const r of runs) if (engine.track(r)) d.log(`tracking run ${r.runId}: ${r.account} on ${r.rulebook.label}`);
+    engine.retain(runs.map((r) => r.runId));
+    const key = engine.watchedAccounts().map((a) => a.toLowerCase()).sort().join(",");
+    if (key !== watchedKey) {
+      resubscribe();
+      // fresh sockets report reconnects === 0, so a pause from an earlier gap would otherwise never lift
+      if (engine.paused) void resumeAtHead().catch((e: unknown) => d.log(`resume error: ${(e as Error).message}`));
+    }
+  };
+
+  await refresh();
+  setInterval(() => {
+    void refresh().catch((e: unknown) => d.log(`refresh error: ${(e as Error).message}`));
+  }, d.pollMs ?? 5_000);
+  d.log(`referee watching registry ${d.registry}`);
+  await new Promise<never>(() => undefined);
+}
+```
+
+Replace `packages/referee/src/cli.ts` with:
+```ts
+import { decodeEventLog, getAddress, type Hex } from "viem";
+import { BTC_POOL, ORACLE_DEPOSIT, basanosRegistryAbi, rulebookId } from "@basanos/core";
+import { RULEBOOK_FILES, flag, loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp, rpcWss } from "@basanos/core/node";
+import { chainCloseIO, makeFastSender, makePublicClient, makeRefereeWallet, readBookParams } from "./chain";
+import { runDaemon } from "./daemon";
+import { readActiveRuns, rulebookIndex } from "./runs";
+import { makeRegistryWriter } from "./writer";
+
+loadDotEnv();
+const [cmd, ...rest] = process.argv.slice(2);
+const opt = (name: string): string | undefined => {
+  const i = rest.indexOf(name);
+  return i >= 0 ? rest[i + 1] : undefined;
+};
+const client = makePublicClient(rpcHttp());
+const registry = requireAddress("REGISTRY_ADDRESS");
+// Every registered rulebook it may meet: the standard, the current demo (v2) and the first demo (v1, still registered).
+const rulebooks = [loadRulebook("tokyo-sprint"), loadRulebook("tokyo-sprint-demo"), loadRulebook("tokyo-sprint-demo-v1")];
+
+if (cmd === "start") {
+  const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
+  // One sender for every referee write (P7): nonce tracked locally, fees cached, both fetched now, before any breach.
+  const sender = makeFastSender(client, wallet);
+  await sender.warm();
+  const params = await readBookParams(client, BTC_POOL);
+  await runDaemon({
+    client,
+    wss: rpcWss(),
+    registry,
+    rulebooks,
+    closeIO: chainCloseIO(client, sender, BTC_POOL, params),
+    writer: makeRegistryWriter(sender, client, registry, flag("ORACLE_ENABLED") ? ORACLE_DEPOSIT : 0n),
+    sender,
+    log: (line) => console.log(`${new Date().toISOString()} ${line}`),
+  });
+} else if (cmd === "enroll") {
+  const target = rest[0];
+  const name = opt("--rulebook") as keyof typeof RULEBOOK_FILES | undefined;
+  if (!target || !name || !(name in RULEBOOK_FILES)) {
+    console.error("usage: cli.ts enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo>");
+    process.exit(2);
+  }
+  const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
+  const hash = await wallet.writeContract({
+    address: registry,
+    abi: basanosRegistryAbi,
+    functionName: "startRun",
+    args: [getAddress(target), rulebookId(loadRulebook(name))],
+  });
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  let runId: bigint | null = null;
+  for (const log of receipt.logs) {
+    try {
+      const ev = decodeEventLog({ abi: basanosRegistryAbi, data: log.data, topics: log.topics as [Hex, ...Hex[]] });
+      if (ev.eventName === "RunStarted") runId = ev.args.runId;
+    } catch {
+      // not a registry event
+    }
+  }
+  console.log(runId === null ? `enroll failed: ${hash}` : `enrolled run ${runId} (${hash})`);
+  process.exit(runId === null ? 1 : 0);
+} else if (cmd === "status") {
+  const runs = await readActiveRuns(client, registry, rulebookIndex(rulebooks));
+  if (runs.length === 0) console.log("no active runs");
+  for (const r of runs) console.log(`run ${r.runId}: ${r.account} on ${r.rulebook.label}, start equity ${r.startEquity} at block ${r.startBlock}`);
+  process.exit(0);
+} else {
+  console.error("usage: cli.ts start | enroll <account> --rulebook <name> | status");
+  process.exit(2);
+}
+```
+
+- [ ] **Step 7: Type-check (the referee runs live in referee:22 and ship:3)**
+Run: `npm run typecheck -w @basanos/core`
+Run: `npm run typecheck -w @basanos/referee`
+Run: `npm run typecheck -w @basanos/bot`
+Expected: each exits 0 with no `error TS` lines.
+
+- [ ] **Step 8: Run the whole referee suite**
+Run: `npm test -w @basanos/referee`
+Expected: no failed tests (`33 passed`).
+
+- [ ] **Step 9: Run the new test (the gate)**
+Run: `npm test -w @basanos/referee -- test/closer.test.ts`
+Expected: PASS — `9 passed`.
+
+- [ ] **Step 10: Commit (kernel-performed — no agent runs this)**
+Message: `fix(referee): closes capped from the book and sent in one round trip from the push; the PASS lock with a 10 bps buffer (P7)`
+
+---
+
+### Task 21: The demo take — both runs start together, the pair opens in the same block, the FAIL on demand comes right after the first PASS (P7)
+
+**Files:**
+- Create: `packages/bot/src/take.ts`
+- Create: `packages/referee/src/check-pass.ts`
+- Modify: `packages/bot/src/send.ts`
+- Modify: `packages/bot/src/actions.ts`
+- Modify: `packages/bot/src/demo.ts`
+- Test: `packages/bot/test/take.test.ts`
+- Test: `packages/referee/test/check-pass.test.ts`
+
+**Depends on:** Task 3, Task 6, Task 8, Task 12, Task 13, Task 15, Task 16, Task 17, Task 18, spike:Task 1, spike:Task 2, spike:Task 3, spike:Task 4, spike:Task 6, contracts:Task 8
+**Effort:** medium
+**Model tier:** top
+**Provides:** `interface PreparedWrite { label: string; raw: Hex; hash: Hex; nonce: number }`, `prepareWrite(s: Sender, label: string, call: UnsignedCall): Promise<PreparedWrite>`, `submitWrite(s: Sender, p: PreparedWrite, waitMs?: number): Promise<SendResult>`, `interface PairLeg { wallet: AccountWallet; isBid: boolean; quantity: bigint }`, `openPair(client: PublicClient, legs: readonly PairLeg[]): Promise<AccountWrite[]> (one book read; both IOCs signed first, then sent back to back)`, `waitForPosition(client: PublicClient, account: Address, untilMs: number, pollMs?: number): Promise<bigint | null>`, `breachTarget(statuses: readonly TakeStatus[], alreadyBreached: boolean): number | null`, `summarizePassTake(rows: readonly PassTakeRow[]): { ok: boolean; passRunId: bigint | null; problems: string[] }`, `CLI: npx tsx packages/referee/src/check-pass.ts -> writes docs/evidence/rehearsal-pass.json, prints PASS pass-take (take <n>: run <id> PASSED with its certificate, one FAILED)`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--one-account [--pass-side long|short]] (two funded accounts; both runs start together and the pair opens in the same block, or B right after a human A's long with --a-manual; the FAIL on demand once one run PASSES; writes viem-direct and read back; a take that fails after a run started aborts into docs/evidence/demo-aborted.json, exit 1)`
+**Requires:** `sendWrite(s: Sender, label: string, call: UnsignedCall, waitMs?: number): Promise<SendResult> (signs at the pending nonce with ORDER_GAS, sends the raw transaction once, takes the receipt by the hash known before the send; never re-sends)`, `interface Sender { address: Address; pendingNonce(): Promise<number>; sign(tx: SignedTx): Promise<Hex>; sendRaw(raw: Hex): Promise<unknown>; waitReceipt(hash: Hex, timeoutMs: number): Promise<Receipt>; receipt(hash: Hex): Promise<Receipt | null> }`, `type SendResult = { outcome: "landed"; label: string; hash: Hex; nonce: number; tx: TxRecord; reason: null } | { outcome: "unknown"; label: string; hash: Hex; nonce: number; tx: null; reason: string }`, `effectOf(sent: SendResult, seen: boolean, latestNonce: number): Effect`, `interface AccountWrite { sent: SendResult; effect: Effect }`, `describeWrite(w: AccountWrite): string`, `onFailure(kind: WriteKind | "error", runsStarted: number): "stop" | "abort" | "note"`, `verdictDeadline(lastStartMs: number, timeLimitSec: number): number`, `viemSender(wallet: AccountWallet, client: PublicClient): Sender (signs locally; nonce, raw send and receipt on the standard RPC)`, `DEMO_ABORTED = "docs/evidence/demo-aborted.json"`, `openIoc(client: PublicClient, wallet: AccountWallet, isBid: boolean, quantity: bigint, label?: string): Promise<AccountWrite> (capped from the book; viem-direct; done only if the position size moved; never re-sent)`, `ensureGrant(client: PublicClient, wallet: AccountWallet, referee: Address): Promise<AccountWrite | null> (viem-direct; done only when both selectors read authorized)`, `startRunAs(client: PublicClient, wallet: AccountWallet, registry: Address, rulebookId: Hex): Promise<AccountWrite & { runId: bigint | null }> (viem-direct; the run read back from activeRunOf)`, `type AccountWallet = ReturnType<typeof makeAccountWallet>`, `RECEIPT_WAIT_MS = 60_000`, `breachQuantity(currentSize: bigint, equity: bigint, targetX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`, `readBook(client: PublicClient): Promise<BookParams>`, `appendDemoTake(take: Record<string, unknown>, path?: string): number`, `makeAccountWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)`, `preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei?: bigint): Promise<Preflight>`, `notReady(pf: Preflight): string[]`, `planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps?: number): OrderPlan`, `readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>`, `ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall`, `ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }`, `interface UnsignedCall { to: Address; data: Hex; value: bigint }`, `DEMO_LEVERAGE_X = 10`, `RULEBOOK_FILES: { "tokyo-sprint": string; "tokyo-sprint-demo": string; "tokyo-sprint-demo-v1": string }`, `jsonSafe(value: unknown): unknown`, `makePublicClient(url: string): PublicClient`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `RUN_STATUS = ["None", "Active", "Passed", "Failed", "Voided"]`, `RULE_NAMES = ["None", "DailyLoss", "TrailingDrawdown", "MaxExposure", "TimeLimit", "Liquidated"]`, `BTC_POOL`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_IOC = 2`, `farFutureNs(nowMs?: number): bigint`, `loadDotEnv(path?: string): boolean`, `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`, `requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `repoPath(rel: string): string`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`
+
+Why (architect P7, 2026-11-12; guide diagnosis B19; spec §9):
+- **Staggered entries.** Opposite positions only anti-correlate if they enter at the same moment. In the rehearsal B's start came 13 s after A's and the opens were 13 s apart, inside a whipsaw, so both lost. In ship:3's `--a-manual` recording a human opens A at any time.
+- **The fix:**
+  - Both runs now start together (`Promise.all`), and the pair opens only after both have started.
+  - `openPair` caps both IOCs from ONE book read, signs both first (`prepareWrite`), then sends both back to back (`submitWrite`), so they land in the same block or the next.
+  - With `--a-manual`, B opens its short as soon as A's long is seen (`waitForPosition`, every 250 ms).
+  - Each open still counts only if its position moved, and nothing is re-sent (P6b).
+- **The second leg.** The replay gives at least one PASS in 95.6% of windows, but the other run's own verdict is a coin flip. So once one run PASSES, `breachTarget` names the other, still Active, and the demo pushes it past the 15× exposure cap: a deterministic FAIL (MaxExposure) that the referee closes like any breach.
+- **The old 10-minute "market still" breach and `--wait-min` are gone:** an early FAIL does not make the PASS more likely.
+- **The new gate.** The PASS path (the referee's lock, the registry's recordPass checks, the certificate mint) has never run on-chain. `check-pass` is the gate for rehearsal take 2 (referee:22): the latest take must be one PASSED run whose certificate (`ownerOf(runId)`) is held by its own account, and one FAILED run.
+
+- [ ] **Step 1: Write the failing tests**
+
+`packages/bot/test/take.test.ts`:
+```ts
+import { readFileSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { keccak256, type Address, type Hex } from "viem";
+import { BTC_POOL, ORDER_GAS, ORDER_TYPE_IOC } from "@basanos/core";
+import { ownerOrderCall } from "@basanos/core/owner-tx";
+import { prepareWrite, submitWrite, type Receipt, type Sender } from "../src/send";
+import { breachTarget } from "../src/take";
+
+const source = (rel: string) => readFileSync(new URL(`../src/${rel}`, import.meta.url), "utf8");
+
+describe("the FAIL on demand comes right after the first PASS (P7)", () => {
+  it("pushes the run still Active once the other has PASSED, once", () => {
+    expect(breachTarget(["Passed", "Active"], false)).toBe(1);
+    expect(breachTarget(["Active", "Passed"], false)).toBe(0);
+    expect(breachTarget(["Passed", "Active"], true)).toBeNull();
+    expect(breachTarget(["Active", "Active"], false)).toBeNull();
+    expect(breachTarget(["Failed", "Active"], false)).toBeNull();
+    expect(breachTarget(["Passed", "Failed"], false)).toBeNull();
+  });
+});
+
+describe("the opposite pair enters together (P7)", () => {
+  it("signs both opens first, then sends both before either receipt comes back", async () => {
+    const order: string[] = [];
+    const release: (() => void)[] = [];
+    const sender = (name: string, nonce: number): Sender => {
+      const raw = `0x${name.charCodeAt(0).toString(16)}` as Hex;
+      return {
+        address: "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1" as Address,
+        pendingNonce: async () => nonce,
+        sign: vi.fn(async (tx) => {
+          order.push(`sign ${name} gas ${tx.gas}`);
+          return raw;
+        }),
+        sendRaw: async () => {
+          order.push(`send ${name}`);
+          return keccak256(raw);
+        },
+        waitReceipt: (hash) =>
+          new Promise<Receipt>((resolve) => {
+            order.push(`wait ${name}`);
+            release.push(() => resolve({ transactionHash: hash, status: "success", gasUsed: 1n, effectiveGasPrice: 1n }));
+          }),
+        receipt: async () => null,
+      };
+    };
+    const call = ownerOrderCall(BTC_POOL, true, 72_000n * 10n ** 18n, 700_000n, ORDER_TYPE_IOC, 3_371_163_205_000_000_000n);
+    const a = sender("A", 6);
+    const b = sender("B", 2);
+    const prepared = await Promise.all([prepareWrite(a, "open long", call), prepareWrite(b, "open short", call)]);
+    expect(prepared.map((p) => p.nonce)).toEqual([6, 2]);
+    const done = Promise.all([submitWrite(a, prepared[0]!), submitWrite(b, prepared[1]!)]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(order).toEqual([`sign A gas ${ORDER_GAS}`, `sign B gas ${ORDER_GAS}`, "send A", "send B", "wait A", "wait B"]);
+    for (const r of release) r();
+    expect((await done).map((s) => s.outcome)).toEqual(["landed", "landed"]);
+  });
+  it("starts both runs before the pair opens, follows a human A, and breaches only after a PASS", () => {
+    const demo = source("demo.ts");
+    expect(demo).toContain("await Promise.all(accounts.map((a) => startRun(a)));");
+    expect(demo).toContain("openPair(client, [");
+    expect(demo).toContain("waitForPosition(client, accA.address, until)");
+    expect(demo).toContain("breachTarget(");
+    expect(demo).not.toContain("--wait-min");
+    expect(demo).not.toContain("market still");
+  });
+});
+```
+
+`packages/referee/test/check-pass.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import type { Address } from "viem";
+import { summarizePassTake, type PassTakeRow } from "../src/check-pass";
+
+const A: Address = "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1";
+const B: Address = "0x1609F6ABE3aD29B45D1F2fdd15a15d17AbB326aD";
+const pass: PassTakeRow = { runId: 3n, account: A, status: 2, rule: 0, holder: A };
+const fail: PassTakeRow = { runId: 4n, account: B, status: 3, rule: 3, holder: null };
+
+describe("the PASS take's gate (P7)", () => {
+  it("wants one PASSED run with its certificate on its own account and one FAILED run", () => {
+    expect(summarizePassTake([pass, fail])).toEqual({ ok: true, passRunId: 3n, problems: [] });
+    expect(summarizePassTake([{ ...pass, holder: null }, fail]).problems).toEqual(["run 3 PASSED but has no certificate"]);
+    expect(summarizePassTake([{ ...pass, holder: B }, fail]).problems[0]).toMatch(/held by/);
+    expect(summarizePassTake([{ ...pass, status: 3 }, fail]).ok).toBe(false);
+    expect(summarizePassTake([pass]).problems).toContain("the latest take has 1 runs, not 2");
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm they fail**
+Run: `npm test -w @basanos/bot -- test/take.test.ts`
+Run: `npm test -w @basanos/referee -- test/check-pass.test.ts`
+Expected: FAIL — `Cannot find module '../src/take'` and `Cannot find module '../src/check-pass'`.
+
+- [ ] **Step 3: Prepare and submit writes separately**
+
+Replace `packages/bot/src/send.ts` with:
+```ts
+// How a challenge account's own writes reach the chain (P6, 2026-11-12). viem-direct, as spike:14 does for account A:
+// the transaction is signed locally with ORDER_GAS and an explicit pending nonce, sent once with
+// eth_sendRawTransaction to the standard RPC (rpcHttp()), and its receipt is taken from the public client. Signing
+// first gives the hash before the send, so a send that fails or times out can still be looked up.
+// The SDK's send path (eth_sendRawTransactionSync on send.hideki…) ended "outcome unknown" with nothing on-chain twice:
+// the voucher claim (2026-11-11) and B's grant in the first rehearsal (2026-11-12). No bot write uses it.
+// Nothing here re-sends. Whether a write took effect is read back from the chain (effectOf), never assumed from the
+// send call: a grant is idempotent, but an open is not, and a blind re-send could double a position.
+import { keccak256, type Address, type Hex } from "viem";
+import { ORDER_GAS } from "@basanos/core";
+import { ownerTx, type UnsignedCall } from "@basanos/core/owner-tx";
+import { txRecord, type TxRecord } from "@basanos/referee";
+
+/** How long a send waits for its receipt before its outcome counts as unknown. Hideki blocks are about 0.1 s apart. */
+export const RECEIPT_WAIT_MS = 60_000;
+
+/** After the last run starts, how long past the rulebook's time limit the demo waits for the verdicts. */
+export const VERDICT_GRACE_SEC = 300;
+
+export type Receipt = Parameters<typeof txRecord>[1];
+export type SignedTx = ReturnType<typeof ownerTx>;
+
+/** The chain calls one send makes. viemSender() in actions.ts binds them to an account wallet and the public client;
+ *  tests fake them. */
+export interface Sender {
+  address: Address;
+  pendingNonce(): Promise<number>;
+  sign(tx: SignedTx): Promise<Hex>;
+  sendRaw(raw: Hex): Promise<unknown>;
+  waitReceipt(hash: Hex, timeoutMs: number): Promise<Receipt>;
+  receipt(hash: Hex): Promise<Receipt | null>;
+}
+
+/** A write that reached a receipt (success or reverted), or one whose outcome is not known yet. */
+export type SendResult =
+  | { outcome: "landed"; label: string; hash: Hex; nonce: number; tx: TxRecord; reason: null }
+  | { outcome: "unknown"; label: string; hash: Hex; nonce: number; tx: null; reason: string };
+
+const short = (e: unknown): string => (e instanceof Error ? e.message : String(e)).split("\n")[0]?.slice(0, 160) ?? "";
+
+/** A signed write not yet sent: its hash is known before the send. */
+export interface PreparedWrite {
+  label: string;
+  raw: Hex;
+  hash: Hex;
+  nonce: number;
+}
+
+/** Signs `call` at the pending nonce with ORDER_GAS. Nothing is sent. */
+export async function prepareWrite(s: Sender, label: string, call: UnsignedCall): Promise<PreparedWrite> {
+  const nonce = await s.pendingNonce();
+  const raw = await s.sign(ownerTx(call, nonce, ORDER_GAS));
+  return { label, raw, hash: keccak256(raw), nonce };
+}
+
+/** Signs `call` at the pending nonce with ORDER_GAS, sends it once, and waits for its receipt by the hash known before
+ *  the send. A failed send still waits, since a timed-out send may have reached the node. Never re-sends. */
+export async function sendWrite(s: Sender, label: string, call: UnsignedCall, waitMs: number = RECEIPT_WAIT_MS): Promise<SendResult> {
+  return submitWrite(s, await prepareWrite(s, label, call), waitMs);
+}
+
+/** Sends a prepared write once and waits for its receipt (P7): the demo signs both opens first, then submits them
+ *  together, so the opposite pair enters in the same block or the next. */
+export async function submitWrite(s: Sender, p: PreparedWrite, waitMs: number = RECEIPT_WAIT_MS): Promise<SendResult> {
+  const { label, raw, hash, nonce } = p;
+  let reason = "";
+  try {
+    await s.sendRaw(raw);
+  } catch (e) {
+    reason = `send failed: ${short(e)}`;
+  }
+  try {
+    return { outcome: "landed", label, hash, nonce, tx: txRecord(label, await s.waitReceipt(hash, waitMs)), reason: null };
+  } catch (e) {
+    if (!reason) reason = `no receipt within ${waitMs / 1000} s: ${short(e)}`;
+  }
+  const late = await s.receipt(hash);
+  if (late) return { outcome: "landed", label, hash, nonce, tx: txRecord(label, late), reason: null };
+  return { outcome: "unknown", label, hash, nonce, tx: null, reason };
+}
+
+export type Effect = "done" | "not-done" | "unknown";
+
+/** Whether a write took effect, from the chain (P6b). `seen` is the effect itself, read back after the send: both
+ *  grant selectors authorized, the account's active run, or its position size moving. Unseen, the write did not
+ *  happen if it has a receipt (it reverted) or its nonce was used by another transaction; otherwise its outcome is
+ *  unknown and it may still land. */
+export function effectOf(sent: SendResult, seen: boolean, latestNonce: number): Effect {
+  if (seen) return "done";
+  if (sent.outcome === "landed" || latestNonce > sent.nonce) return "not-done";
+  return "unknown";
+}
+
+/** One account write and what it did on-chain. */
+export interface AccountWrite {
+  sent: SendResult;
+  effect: Effect;
+}
+
+export function describeWrite(w: AccountWrite): string {
+  const how = w.sent.outcome === "landed" ? `receipt ${w.sent.tx.status}` : w.sent.reason;
+  return `${w.sent.label}: ${w.effect} (${how}; tx ${w.sent.hash}, nonce ${w.sent.nonce})`;
+}
+
+export type WriteKind = "grant" | "start" | "open" | "breach";
+
+/** What a demo take does when a write does not take effect, or anything else throws (P6b):
+ *  - "stop": the take has started no run, so there is nothing to clean up. The demo exits 1, and a re-run starts
+ *    over: the grant and the active run are read before anything is sent, so nothing is sent twice.
+ *  - "abort": the take has started a run. Nothing is re-sent and no run is voided: a void is the referee's verdict on
+ *    a flow, a foreign market or a revoked grant, and none of those happened. Revoking the grant to force one would
+ *    also leave the referee unable to close an open that lands late. The referee keeps judging and ends each run by a
+ *    rule or at its time limit (FAIL TimeLimit), closing any position first. The demo waits for every verdict, checks
+ *    the accounts are flat, records the take in demo-aborted.json, and exits 1.
+ *  - "note": the on-demand exposure top-up did not take effect. The take goes on; its runs still end by a rule or at
+ *    their time limits. */
+export function onFailure(kind: WriteKind | "error", runsStarted: number): "stop" | "abort" | "note" {
+  if (runsStarted === 0) return "stop";
+  return kind === "breach" ? "note" : "abort";
+}
+
+/** When the demo stops waiting for verdicts: the rulebook's time limit plus VERDICT_GRACE_SEC after the last start. */
+export function verdictDeadline(lastStartMs: number, timeLimitSec: number): number {
+  return lastStartMs + (timeLimitSec + VERDICT_GRACE_SEC) * 1_000;
+}
+```
+
+- [ ] **Step 4: Open the pair together, and follow a human A**
+
+Replace `packages/bot/src/actions.ts` with:
+```ts
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { createWalletClient, decodeEventLog, http, type Address, type Hex, type PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { SomniaMarkets } from "@somnia-chain/markets-sdk";
+import {
+  BTC_POOL,
+  CANCEL_ORDER_FOR_SELECTOR,
+  CHAIN,
+  HIDEKI_ADDRESSES,
+  INDEXER_URL,
+  MARGIN_BANK,
+  OPERATOR_REGISTRY,
+  ORDER_TYPE_IOC,
+  PLACE_ORDER_FOR_SELECTOR,
+  STT_WRITE_HEADROOM,
+  alignUp,
+  basanosRegistryAbi,
+  farFutureNs,
+  marginBankAbi,
+  perpPoolAbi,
+  readSnapshot,
+  type BookParams,
+} from "@basanos/core";
+import { planOpenFromBook, readBookLevels } from "@basanos/core/book";
+import { repoPath } from "@basanos/core/node";
+import { grantCall, ownerOrderCall, startRunCall } from "@basanos/core/owner-tx";
+import { jsonSafe } from "@basanos/referee";
+import { effectOf, prepareWrite, sendWrite, submitWrite, type AccountWrite, type SendResult, type Sender } from "./send";
+
+export interface Preflight {
+  account: Address;
+  stt: bigint;
+  sttOk: boolean;
+  voucherClaimed: boolean;
+  /** MarginBank getAccountState().unlockedCollateralBalance: the account's own deposited USDso not locked in a position. */
+  unlockedCollateral: bigint;
+  /** unlockedCollateral at or above what a demo run needs (DEMO_MIN_UNLOCKED unless the caller passes another need). */
+  funded: boolean;
+  flat: boolean;
+  equity: bigint;
+}
+
+/** The least unlocked MarginBank margin a demo run needs: its DEMO_LEVERAGE_X (10x since P7) size must clear the
+ *  0.00013 BTC pool minimum (about 0.95 USDso of equity) with room for costs. */
+export const DEMO_MIN_UNLOCKED = 5n * 10n ** 18n;
+
+/** Inferred return type: bound to CHAIN and the key's account. */
+export function makeAccountWallet(pk: Hex, url: string) {
+  return createWalletClient({ account: privateKeyToAccount(pk), chain: CHAIN, transport: http(url) });
+}
+
+export type AccountWallet = ReturnType<typeof makeAccountWallet>;
+
+/** Read-only: the bot uses the SDK for reads only (the voucher read in preflight). It never hands the SDK a key, so no
+ *  SDK write can leave the bot (P6, 2026-11-12). */
+export function makeMarkets(): SomniaMarkets {
+  return new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES });
+}
+
+/** Binds send.ts to an account wallet, which signs locally, and the public client on the standard RPC (rpcHttp()),
+ *  which gives the nonce, takes the raw transaction and returns the receipt. */
+export function viemSender(wallet: AccountWallet, client: PublicClient): Sender {
+  const address = wallet.account.address;
+  return {
+    address,
+    pendingNonce: () => client.getTransactionCount({ address, blockTag: "pending" }),
+    sign: async (tx) => wallet.signTransaction(await wallet.prepareTransactionRequest(tx)),
+    sendRaw: (raw) => client.sendRawTransaction({ serializedTransaction: raw }),
+    waitReceipt: (hash, timeout) => client.waitForTransactionReceipt({ hash, timeout }),
+    receipt: (hash) => client.getTransactionReceipt({ hash }).catch(() => null),
+  };
+}
+
+/** The latest nonce is read before the effect, so a write that lands between the two reads is seen, not missed. */
+async function settle(client: PublicClient, account: Address, sent: SendResult, seen: () => Promise<boolean>): Promise<AccountWrite> {
+  const latest = await client.getTransactionCount({ address: account, blockTag: "latest" });
+  return { sent, effect: effectOf(sent, await seen(), latest) };
+}
+
+async function positionSize(client: PublicClient, account: Address): Promise<bigint> {
+  const p = await client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getPosition", args: [account, BTC_POOL] });
+  return p.size;
+}
+
+/** Reads only. Never claims a voucher: claim() reverts chain-wide (B14), so an account is ready when it is FUNDED,
+ *  with its own wallet USDso deposited into its own MarginBank balance (spike:18 for A, spike:19 for B). */
+export async function preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei: bigint = DEMO_MIN_UNLOCKED): Promise<Preflight> {
+  const [stt, voucher, snap, state] = await Promise.all([
+    client.getBalance({ address: account }),
+    markets.client.getPerpVoucher(MARGIN_BANK, account),
+    readSnapshot(client, [account], BTC_POOL),
+    client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getAccountState", args: [account] }),
+  ]);
+  const a = snap.accounts[0];
+  return {
+    account,
+    stt,
+    sttOk: stt >= STT_WRITE_HEADROOM,
+    voucherClaimed: voucher?.claimed ?? false,
+    unlockedCollateral: state.unlockedCollateralBalance,
+    funded: state.unlockedCollateralBalance >= needWei,
+    flat: a ? a.size === 0n && a.lockedCollateral === 0n && a.activePools.length === 0 : false,
+    equity: a?.totalEquity ?? 0n,
+  };
+}
+
+/** Why an account cannot start a demo run, or [] when it can. A voucher is never required. */
+export function notReady(pf: Preflight): string[] {
+  const p: string[] = [];
+  if (!pf.sttOk) p.push(`STT ${pf.stt} is below the 0.6 write headroom (top up from the Tokyo faucet)`);
+  if (!pf.funded) {
+    p.push(
+      `unlocked MarginBank margin is ${pf.unlockedCollateral} wei, below what a demo run needs; deposit the account's own wallet USDso first (deposit.ts: spike:18 for A, spike:19 for B)`,
+    );
+  }
+  if (!pf.flat) p.push("the account is not flat (flatten it in the dreamDEX app first)");
+  return p;
+}
+
+export async function readBook(client: PublicClient): Promise<BookParams> {
+  const p = await client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "getOrderBookParameters" });
+  return { tickSize: p.tickSize, minQuantity: p.minQuantity, lotSize: p.lotSize };
+}
+
+/** Grants the referee place + cancel on the BTC pool only, if not already granted (null: nothing sent). viem-direct
+ *  (send.ts, P6); it counts only when the pool reports both selectors authorized. A grant is idempotent, so a re-run
+ *  after a stop re-reads it first. */
+export async function ensureGrant(client: PublicClient, wallet: AccountWallet, referee: Address): Promise<AccountWrite | null> {
+  const owner = wallet.account.address;
+  const has = async (selector: Hex) =>
+    client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [owner, referee, selector] });
+  const granted = async () => (await has(PLACE_ORDER_FOR_SELECTOR)) && (await has(CANCEL_ORDER_FOR_SELECTOR));
+  if (await granted()) return null;
+  const selectors = [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR];
+  const sent = await sendWrite(viemSender(wallet, client), "grant", grantCall(OPERATOR_REGISTRY, BTC_POOL, referee, selectors));
+  return settle(client, owner, sent, granted);
+}
+
+export function runIdFromLogs(logs: readonly { address: Address; data: Hex; topics: readonly Hex[] }[], registry: Address): bigint | null {
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== registry.toLowerCase()) continue;
+    try {
+      const ev = decodeEventLog({ abi: basanosRegistryAbi, data: log.data, topics: log.topics as [Hex, ...Hex[]] });
+      if (ev.eventName === "RunStarted") return ev.args.runId;
+    } catch {
+      // another registry event
+    }
+  }
+  return null;
+}
+
+/** The account itself enrolls (msg.sender == account); the registry reads its start equity in the same tx. viem-direct
+ *  (send.ts, P6). The run is read back from activeRunOf, so it counts once the registry holds it, receipt or not. */
+export async function startRunAs(
+  client: PublicClient,
+  wallet: AccountWallet,
+  registry: Address,
+  rulebookId: Hex,
+): Promise<AccountWrite & { runId: bigint | null }> {
+  const account = wallet.account.address;
+  const activeRun = async () => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "activeRunOf", args: [account] });
+  const before = await activeRun();
+  const sent = await sendWrite(viemSender(wallet, client), "startRun", startRunCall(registry, account, rulebookId));
+  let after = before;
+  const w = await settle(client, account, sent, async () => {
+    after = await activeRun();
+    return after !== 0n && after !== before;
+  });
+  return { ...w, runId: w.effect === "done" ? after : null };
+}
+
+/** Extra size so the account's notional strictly exceeds targetX x equity (the on-demand exposure breach). */
+export function breachQuantity(currentSize: bigint, equity: bigint, targetX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint {
+  const oneBase = 10n ** BigInt(baseDecimals);
+  const abs = currentSize < 0n ? -currentSize : currentSize;
+  const targetNotional = equity * BigInt(targetX);
+  const current = (abs * mark) / oneBase;
+  const neededNotional = targetNotional > current ? targetNotional - current : 0n;
+  const qty = alignUp((neededNotional * oneBase) / mark + 1n, book.lotSize);
+  return qty < book.minQuantity ? book.minQuantity : qty;
+}
+
+/** An opening IOC capped from the book (best ask + 20 bps to buy, best bid - 20 bps to sell), never from the mark:
+ *  the BTC-PERP book trades about 19 bps above the mark, so a mark + 20 bps buy does not fill (P5, 2026-11-12).
+ *  viem-direct (send.ts, P6): it took effect only if the account's position size moved. An open is never re-sent. */
+export async function openIoc(
+  client: PublicClient,
+  wallet: AccountWallet,
+  isBid: boolean,
+  quantity: bigint,
+  label: string = isBid ? "open long" : "open short",
+): Promise<AccountWrite> {
+  const account = wallet.account.address;
+  const params = await readBook(client);
+  const levels = await readBookLevels(client, BTC_POOL);
+  if (!levels) throw new Error("the BTC-PERP book could not be read; no order was sent");
+  const plan = planOpenFromBook(isBid, quantity, levels, params);
+  const before = await positionSize(client, account);
+  const order = ownerOrderCall(BTC_POOL, isBid, plan.price, plan.quantity, ORDER_TYPE_IOC, farFutureNs());
+  const sent = await sendWrite(viemSender(wallet, client), label, order);
+  return settle(client, account, sent, async () => (await positionSize(client, account)) !== before);
+}
+
+/** One leg of an opposite pair: the account, its side and its size. */
+export interface PairLeg {
+  wallet: AccountWallet;
+  isBid: boolean;
+  quantity: bigint;
+}
+
+/** Opens an opposite pair together (architect P7, 2026-11-12). Opposite positions only anti-correlate if they enter
+ *  at the same moment: in the rehearsal the two opens landed 13 s apart, inside a whipsaw, and both lost. Both IOCs are
+ *  capped from ONE book read, both are signed first, then both are sent back to back, so they land in the same block or
+ *  the next. Each leg counts only if its position moved (P6b); nothing is re-sent. */
+export async function openPair(client: PublicClient, legs: readonly PairLeg[]): Promise<AccountWrite[]> {
+  const params = await readBook(client);
+  const levels = await readBookLevels(client, BTC_POOL);
+  if (!levels) throw new Error("the BTC-PERP book could not be read; no order was sent");
+  const ready = await Promise.all(
+    legs.map(async (leg) => {
+      const plan = planOpenFromBook(leg.isBid, leg.quantity, levels, params);
+      const account = leg.wallet.account.address;
+      const sender = viemSender(leg.wallet, client);
+      const before = await positionSize(client, account);
+      const order = ownerOrderCall(BTC_POOL, leg.isBid, plan.price, plan.quantity, ORDER_TYPE_IOC, farFutureNs());
+      return { account, sender, before, prepared: await prepareWrite(sender, leg.isBid ? "open long" : "open short", order) };
+    }),
+  );
+  const sent = await Promise.all(ready.map((r) => submitWrite(r.sender, r.prepared)));
+  return Promise.all(ready.map(async (r, i) => settle(client, r.account, sent[i]!, async () => (await positionSize(client, r.account)) !== r.before)));
+}
+
+/** The --a-manual follower (P7): polls the account's position every `pollMs` until it is open, so the scripted side opens
+ *  right after the human's fill. Returns the size, or null once `untilMs` passes. */
+export async function waitForPosition(client: PublicClient, account: Address, untilMs: number, pollMs = 250): Promise<bigint | null> {
+  for (;;) {
+    const size = await positionSize(client, account);
+    if (size !== 0n) return size;
+    if (Date.now() > untilMs) return null;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+}
+
+export const DEMO_TAKES = "docs/evidence/demo-takes.json";
+
+/** Takes that aborted after a run started (P6b). Kept apart from DEMO_TAKES, which check-rehearsal and the money-shot
+ *  check judge: an aborted take's runs end FAIL TimeLimit without a close, and must not fail a later good take. */
+export const DEMO_ABORTED = "docs/evidence/demo-aborted.json";
+
+export function appendDemoTake(take: Record<string, unknown>, path: string = repoPath(DEMO_TAKES)): number {
+  const all = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as unknown[]) : [];
+  const n = all.length + 1;
+  all.push(jsonSafe({ take: n, ...take }));
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(all, null, 2)}\n`);
+  return n;
+}
+```
+
+- [ ] **Step 5: The FAIL on demand after the first PASS**
+
+`packages/bot/src/take.ts`:
+```ts
+// The demo take's second leg (architect P7, 2026-11-12). The replay of 12 hours of real history (demo v2 at 10x, an
+// opposite pair opened in the same block) gives at least one PASS in about 95% of windows, but the other run's own
+// verdict is a coin flip. So once one run has PASSED, the demo pushes the other, still Active, past the exposure cap: a
+// deterministic FAIL (MaxExposure) that the referee closes like any breach. The take is then one PASS and one FAIL.
+import { RUN_STATUS } from "@basanos/core";
+
+export type TakeStatus = (typeof RUN_STATUS)[number];
+
+/** The index of the run to push past the exposure cap: the one still Active once another has PASSED; null otherwise
+ *  (no PASS yet, nothing left Active, or the breach already sent). */
+export function breachTarget(statuses: readonly TakeStatus[], alreadyBreached: boolean): number | null {
+  if (alreadyBreached) return null;
+  const passed = statuses.indexOf("Passed");
+  if (passed < 0) return null;
+  const other = statuses.findIndex((s, i) => i !== passed && s === "Active");
+  return other < 0 ? null : other;
+}
+```
+
+Replace `packages/bot/src/demo.ts` with:
+```ts
+// The demo runner. Primary: both builder-operated accounts take Tokyo Sprint · Demo (demo v2) with opposite positions
+// at DEMO_LEVERAGE_X (10x; rules judge closeable equity, spec §5). Architect P7, 2026-11-12, from a replay of 12 hours
+// of real history: both runs start together, and the pair opens in the same block (openPair: one book read, both IOCs
+// signed first, sent back to back), or, with --a-manual, B opens as soon as A's long is seen. Once one run PASSES, the
+// other, still Active, is pushed past the 15x exposure cap: a FAIL on demand (take.ts). Fallback (--one-account, only
+// if account B cannot be funded): account A takes two runs in sequence. Run 1 is a FAIL on demand: a long, then size
+// past the cap. Run 2 is the PASS attempt (--pass-side long|short), held until the referee locks the target or a rule
+// ends it. A PASS is not guaranteed with one account, which is why the two-account demo is primary. Accounts must be
+// FUNDED (own USDso deposited, spike:18 / spike:19); no voucher. The referee daemon (packages/referee/src/cli.ts start)
+// must already be running in another terminal.
+// Every account write (grant, startRun, opens) is viem-direct (send.ts, P6) and read back from the chain before the
+// take goes on. When one does not take effect, or anything throws (onFailure, P6b): before the take has started a run
+// it stops, and a re-run starts over; once a run has started the take aborts. Nothing is re-sent and no run is voided:
+// the referee ends each run by a rule or at its time limit, the demo waits for every verdict, checks the accounts are
+// flat, records the take in docs/evidence/demo-aborted.json (never demo-takes.json) and exits 1.
+import type { Address, Hex } from "viem";
+import { BTC_POOL, RULE_NAMES, RUN_STATUS, basanosRegistryAbi, explorerTx, quantityForLeverage, readSnapshot, rulebookId, type BookParams } from "@basanos/core";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
+import { loadDotEnv, loadRulebook, repoPath, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { makePublicClient, type TxRecord } from "@basanos/referee";
+import {
+  DEMO_ABORTED,
+  appendDemoTake,
+  breachQuantity,
+  ensureGrant,
+  makeAccountWallet,
+  makeMarkets,
+  notReady,
+  openIoc,
+  openPair,
+  preflight,
+  readBook,
+  startRunAs,
+  waitForPosition,
+  type AccountWallet,
+} from "./actions";
+import { VERDICT_GRACE_SEC, describeWrite, onFailure, verdictDeadline, type AccountWrite, type WriteKind } from "./send";
+import { breachTarget } from "./take";
+
+loadDotEnv();
+const argv = process.argv.slice(2);
+const manualA = argv.includes("--a-manual");
+const oneAccount = argv.includes("--one-account");
+const passSide = argv[argv.indexOf("--pass-side") + 1] === "short" ? "short" : "long";
+const client = makePublicClient(rpcHttp());
+const registry = requireAddress("REGISTRY_ADDRESS");
+const referee = requireAddress("REFEREE_ADDRESS");
+const rb = loadRulebook("tokyo-sprint-demo");
+const id: Hex = rulebookId(rb);
+const markets = makeMarkets();
+const mode = oneAccount ? "one-account" : "two-account";
+const txs: TxRecord[] = [];
+const notes: string[] = [];
+const started: { runId: bigint; account: Address }[] = [];
+let lastStartMs = 0;
+const say = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+say(
+  oneAccount
+    ? "Basanos demo (one-account fallback): account A is a burner operated by the builder; run 1 FAIL by exposure, run 2 the PASS attempt."
+    : "Basanos demo: both challenge accounts are burners operated by the builder (A human-driven, B scripted).",
+);
+interface Account {
+  name: string;
+  wallet: AccountWallet;
+  address: Address;
+}
+const accounts: Account[] = (oneAccount ? (["ACCOUNT_A_PK"] as const) : (["ACCOUNT_A_PK", "ACCOUNT_B_PK"] as const)).map((name) => {
+  const wallet = makeAccountWallet(requirePrivateKey(name), rpcHttp());
+  return { name, wallet, address: wallet.account.address };
+});
+
+class WriteFailed extends Error {
+  constructor(
+    readonly kind: WriteKind,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Keeps the write's receipt, and throws unless the write took effect on-chain. */
+function check(kind: WriteKind, w: AccountWrite | null): void {
+  if (!w) return;
+  if (w.sent.tx) txs.push(w.sent.tx);
+  if (w.effect !== "done") throw new WriteFailed(kind, describeWrite(w));
+}
+
+const statusOf = async (runId: bigint) => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [runId] });
+type Run = Awaited<ReturnType<typeof statusOf>>;
+const label = (r: Run | undefined) => (r ? `${RUN_STATUS[r.status] ?? r.status}${r.rule ? `/${RULE_NAMES[r.rule]}` : ""}` : "?");
+const activeRunOf = async (account: Address) => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "activeRunOf", args: [account] });
+
+async function startRun(a: Account): Promise<bigint> {
+  const { runId, ...w } = await startRunAs(client, a.wallet, registry, id);
+  check("start", w);
+  if (runId === null) throw new WriteFailed("start", describeWrite(w));
+  started.push({ runId, account: a.address });
+  lastStartMs = Date.now();
+  say(`${a.name} run ${runId} on ${rb.label}: ${w.sent.tx?.explorer ?? explorerTx(w.sent.hash)}`);
+  return runId;
+}
+
+/** Polls every 2 s until every run has left Active; null once `until` passes with one still Active. */
+async function waitVerdicts(runIds: readonly bigint[], until: number, onTick?: (rs: Run[]) => Promise<void>): Promise<Run[] | null> {
+  for (;;) {
+    const rs = await Promise.all(runIds.map((r) => statusOf(r)));
+    say(`runs ${runIds.join(", ")}: ${rs.map((r) => label(r)).join(" | ")}`);
+    if (rs.every((r) => r.status !== 1)) return rs;
+    if (Date.now() > until) return null;
+    if (onTick) await onTick(rs);
+    await sleep(2_000);
+  }
+}
+
+async function flatAll(addresses: readonly Address[], waitMs: number): Promise<boolean> {
+  const unique = [...new Set(addresses)];
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const s = await readSnapshot(client, unique, BTC_POOL);
+    if (s.accounts.every((a) => a.size === 0n && a.lockedCollateral === 0n && a.activePools.length === 0)) return true;
+    if (Date.now() > until) return false;
+    await sleep(3_000);
+  }
+}
+
+/** The on-demand exposure breach: size past the 15x cap. If it does not take effect it is noted, never re-sent, and
+ *  the take goes on (onFailure "note"). */
+async function topUp(a: Account, book: BookParams): Promise<boolean> {
+  const s = await readSnapshot(client, [a.address], BTC_POOL);
+  const p = s.accounts[0];
+  if (!p || p.size === 0n) return false;
+  try {
+    check("breach", await openIoc(client, a.wallet, p.size > 0n, breachQuantity(p.size, p.totalEquity, 16, s.markPrice, 8, book), "exposure top-up"));
+    return true;
+  } catch (e) {
+    if (onFailure("breach", started.length) !== "note") throw e;
+    const why = e instanceof Error ? e.message : String(e);
+    notes.push(`exposure top-up did not take effect: ${why}`);
+    say(`note: the exposure top-up did not take effect (${why}); nothing is re-sent and the runs go on`);
+    return false;
+  }
+}
+
+function runRows(final: readonly (Run | undefined)[]) {
+  return started.map((r, i) => ({ runId: r.runId, account: r.account, status: RUN_STATUS[final[i]?.status ?? 0], rule: RULE_NAMES[final[i]?.rule ?? 0] }));
+}
+
+async function twoAccountTake(): Promise<void> {
+  const [accA, accB] = accounts;
+  if (!accA || !accB) throw new Error("two accounts expected");
+  // Both runs start together, and the pair opens only once both have started (P7).
+  await Promise.all(accounts.map((a) => startRun(a)));
+  started.sort((x, y) => accounts.findIndex((a) => a.address === x.account) - accounts.findIndex((a) => a.address === y.account));
+  const book = await readBook(client);
+  const snap = await readSnapshot(client, accounts.map((a) => a.address), BTC_POOL);
+  const qtyA = quantityForLeverage(snap.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
+  const qtyB = quantityForLeverage(snap.accounts[1]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
+  const until = verdictDeadline(lastStartMs, rb.timeLimitSec);
+  if (manualA) {
+    say(`A: open the long from the Basanos terminal now (${DEMO_LEVERAGE_X}x); B opens its short as soon as A's long is seen.`);
+    const sizeA = await waitForPosition(client, accA.address, until);
+    if (sizeA === null) throw new Error("account A opened no position before the time limit");
+    check("open", await openIoc(client, accB.wallet, false, qtyB));
+    say(`A long ${sizeA} seen; B short ${qtyB} at ${DEMO_LEVERAGE_X}x`);
+  } else {
+    const opens = await openPair(client, [
+      { wallet: accA.wallet, isBid: true, quantity: qtyA },
+      { wallet: accB.wallet, isBid: false, quantity: qtyB },
+    ]);
+    for (const w of opens) if (w.sent.tx) txs.push(w.sent.tx);
+    const failed = opens.find((w) => w.effect !== "done");
+    if (failed) throw new WriteFailed("open", opens.map((w) => describeWrite(w)).join("; "));
+    say(`A long ${qtyA} and B short ${qtyB} at ${DEMO_LEVERAGE_X}x, sent together`);
+  }
+  // The FAIL on demand (take.ts): once one run PASSES, the other, still Active, is pushed past the exposure cap.
+  let breached = false;
+  const final = await waitVerdicts(started.map((r) => r.runId), until, async (rs) => {
+    const i = breachTarget(rs.map((r) => RUN_STATUS[r.status] ?? "None"), breached);
+    const target = i === null ? undefined : accounts[i];
+    if (!target) return;
+    breached = true;
+    say(`a run PASSED: exposure breach on ${target.name} (FAIL on demand)`);
+    await topUp(target, book);
+  });
+  if (!final) throw new Error(`a run is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after the last start; check the referee terminal`);
+  const flat = await flatAll(started.map((r) => r.account), 120_000);
+  const take = appendDemoTake({ at: new Date().toISOString(), mode, rulebook: { id, label: rb.label }, runs: runRows(final), breachedOnDemand: breached, flatAfter: flat, notes, txs });
+  say(`take ${take} recorded in docs/evidence/demo-takes.json`);
+  for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+  if (!flat) {
+    say("STOP: an account still holds a position after its verdict; check the referee terminal");
+    process.exit(1);
+  }
+}
+
+async function oneAccountTake(): Promise<void> {
+  const [accA] = accounts;
+  if (!accA) throw new Error("account A expected");
+  const book = await readBook(client);
+  // Run 1: FAIL on demand by exposure.
+  const r1 = await startRun(accA);
+  const s1 = await readSnapshot(client, [accA.address], BTC_POOL);
+  check("open", await openIoc(client, accA.wallet, true, quantityForLeverage(s1.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s1.markPrice, 8, book)));
+  if (await topUp(accA, book)) say("run 1: size added past the 15x exposure cap (FAIL on demand)");
+  const v1 = await waitVerdicts([r1], verdictDeadline(lastStartMs, rb.timeLimitSec));
+  if (!v1) throw new Error(`run 1 is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after its start; check the referee terminal`);
+  if (!(await flatAll([accA.address], 5 * 60_000))) throw new Error("account A is not flat 5 min after run 1's verdict");
+  // Run 2: the PASS attempt.
+  const r2 = await startRun(accA);
+  say(`run 2 (${r2}): ${passSide} ${DEMO_LEVERAGE_X}x`);
+  const s2 = await readSnapshot(client, [accA.address], BTC_POOL);
+  check("open", await openIoc(client, accA.wallet, passSide === "long", quantityForLeverage(s2.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s2.markPrice, 8, book)));
+  const v2 = await waitVerdicts([r2], verdictDeadline(lastStartMs, rb.timeLimitSec));
+  if (!v2) throw new Error(`run 2 is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after its start; check the referee terminal`);
+  const flat = await flatAll([accA.address], 120_000);
+  const rows = runRows([...v1, ...v2]);
+  const take = appendDemoTake({
+    at: new Date().toISOString(),
+    mode,
+    rulebook: { id, label: rb.label },
+    runs: rows.map((r, i) => (i === 1 ? { ...r, side: passSide } : r)),
+    breachedOnDemand: true,
+    flatAfter: flat,
+    notes,
+    txs,
+  });
+  say(`take ${take} recorded in docs/evidence/demo-takes.json (one-account fallback)`);
+  for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+  if (!flat) {
+    say("STOP: account A still holds a position after its verdict; check the referee terminal");
+    process.exit(1);
+  }
+}
+
+/** P6b, once the take has started a run: nothing is re-sent and no run is voided. The referee ends each run by a rule
+ *  or at its time limit; the demo waits for the verdicts, checks the accounts, records the take apart, and exits 1. */
+async function abortTake(reason: string): Promise<never> {
+  const ids = started.map((r) => r.runId);
+  say(`STOP: take aborted: ${reason}`);
+  say(
+    `Nothing is re-sent and no run is voided. The referee keeps judging run(s) ${ids.join(", ")} and ends each by a rule or at ` +
+      `its ${rb.timeLimitSec} s time limit, closing any position first. Keep the referee running until this exits.`,
+  );
+  const final = await waitVerdicts(ids, verdictDeadline(lastStartMs, rb.timeLimitSec));
+  const flat = await flatAll(started.map((r) => r.account), 120_000);
+  const stillActive: string[] = [];
+  for (const a of accounts) {
+    const r = await activeRunOf(a.address);
+    if (r !== 0n) stillActive.push(`${a.name} run ${r}`);
+  }
+  const n = appendDemoTake(
+    { at: new Date().toISOString(), mode, rulebook: { id, label: rb.label }, aborted: reason, runs: runRows(final ?? []), flatAfter: flat, stillActive, notes, txs },
+    repoPath(DEMO_ABORTED),
+  );
+  say(`aborted take ${n} recorded in ${DEMO_ABORTED} (not demo-takes.json, which check-rehearsal judges)`);
+  for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+  if (!final || stillActive.length > 0) say(`STOP: still Active after the time limit + ${VERDICT_GRACE_SEC} s: ${stillActive.join(", ") || ids.join(", ")}; check the referee terminal`);
+  if (!flat) say("STOP: an account still holds a position after its verdict; check the referee terminal");
+  process.exit(1);
+}
+
+try {
+  // Every account passes preflight before anything is sent.
+  for (const a of accounts) {
+    const pf = await preflight(client, markets, a.address);
+    say(`${a.name} ${a.address}: stt ${pf.stt} unlocked margin ${pf.unlockedCollateral} flat ${pf.flat} equity ${pf.equity}`);
+    const problems = notReady(pf);
+    if (problems.length > 0) {
+      say(`STOP: ${a.name} is not ready: ${problems.join("; ")}. No voucher is ever claimed here.`);
+      process.exit(1);
+    }
+  }
+  for (const a of accounts) {
+    const g = await ensureGrant(client, a.wallet, referee);
+    check("grant", g);
+    if (g) say(`${a.name} granted the referee place + cancel on BTC-PERP: ${g.sent.tx?.explorer ?? explorerTx(g.sent.hash)}`);
+  }
+  if (oneAccount) await oneAccountTake();
+  else await twoAccountTake();
+  process.exit(0);
+} catch (e) {
+  const reason = e instanceof Error ? e.message : String(e);
+  const step = onFailure(e instanceof WriteFailed ? e.kind : "error", started.length);
+  if (step === "stop") {
+    say(`STOP: ${reason}. The take started no run, so nothing needs cleaning up, and nothing was re-sent. Re-run demo.ts once the cause is fixed.`);
+    process.exit(1);
+  }
+  await abortTake(reason);
+}
+```
+
+- [ ] **Step 6: The PASS take's gate**
+
+`packages/referee/src/check-pass.ts`:
+```ts
+// The gate of the rehearsal's PASS take (architect P7, 2026-11-12): the latest take in docs/evidence/demo-takes.json is
+// one PASSED run whose certificate is minted to its own account, and one FAILED run. The live PASS path (the referee's
+// lock, the registry's recordPass checks, the certificate mint) had never run before this take. Read-only; writes
+// docs/evidence/rehearsal-pass.json.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import type { Address } from "viem";
+import { RULE_NAMES, RUN_STATUS, basanosRegistryAbi } from "@basanos/core";
+import { loadDotEnv, repoPath, requireAddress, rpcHttp } from "@basanos/core/node";
+import { makePublicClient } from "./chain";
+import { jsonSafe } from "./evidence";
+
+export interface PassTakeRow {
+  runId: bigint;
+  account: Address;
+  status: number;
+  rule: number;
+  /** ownerOf(runId), or null when no certificate exists for the run. */
+  holder: Address | null;
+}
+
+export function summarizePassTake(rows: readonly PassTakeRow[]): { ok: boolean; passRunId: bigint | null; problems: string[] } {
+  const problems: string[] = [];
+  const passed = rows.filter((r) => r.status === 2);
+  const failed = rows.filter((r) => r.status === 3);
+  if (rows.length !== 2) problems.push(`the latest take has ${rows.length} runs, not 2`);
+  if (passed.length !== 1) problems.push(`${passed.length} PASSED runs in the latest take, not 1`);
+  if (failed.length !== 1) problems.push(`${failed.length} FAILED runs in the latest take, not 1`);
+  for (const p of passed) {
+    if (p.holder === null) problems.push(`run ${p.runId} PASSED but has no certificate`);
+    else if (p.holder.toLowerCase() !== p.account.toLowerCase()) problems.push(`run ${p.runId}'s certificate is held by ${p.holder}, not ${p.account}`);
+  }
+  return { ok: problems.length === 0, passRunId: passed[0]?.runId ?? null, problems };
+}
+
+const isMain = process.argv[1]?.endsWith("check-pass.ts") ?? false;
+if (isMain) {
+  loadDotEnv();
+  const takesPath = repoPath("docs/evidence/demo-takes.json");
+  const takes = existsSync(takesPath) ? (JSON.parse(readFileSync(takesPath, "utf8")) as { take: number; runs: { runId: string }[] }[]) : [];
+  const last = takes.at(-1);
+  if (!last) {
+    console.log("FAIL pass-take (docs/evidence/demo-takes.json has no take; run the demo first)");
+    process.exit(1);
+  }
+  const registry = requireAddress("REGISTRY_ADDRESS");
+  const client = makePublicClient(rpcHttp());
+  const rows: PassTakeRow[] = [];
+  for (const r of last.runs) {
+    const runId = BigInt(r.runId);
+    const run = await client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [runId] });
+    let holder: Address | null = null;
+    try {
+      holder = await client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "ownerOf", args: [runId] });
+    } catch {
+      holder = null;
+    }
+    rows.push({ runId, account: run.account, status: run.status, rule: run.rule, holder });
+  }
+  const s = summarizePassTake(rows);
+  const out = {
+    evidence: "rehearsal-pass",
+    writtenAt: new Date().toISOString(),
+    registry,
+    take: last.take,
+    passRunId: s.passRunId,
+    runs: rows.map((r) => ({ ...r, statusName: RUN_STATUS[r.status], ruleName: RULE_NAMES[r.rule] })),
+    problems: s.problems,
+  };
+  mkdirSync(dirname(repoPath("docs/evidence/rehearsal-pass.json")), { recursive: true });
+  writeFileSync(repoPath("docs/evidence/rehearsal-pass.json"), `${JSON.stringify(jsonSafe(out), null, 2)}\n`);
+  for (const p of s.problems) console.log(`FAIL ${p}`);
+  console.log(s.ok ? `PASS pass-take (take ${last.take}: run ${s.passRunId} PASSED with its certificate, one FAILED)` : "FAIL pass-take");
+  process.exit(s.ok ? 0 : 1);
+}
+```
+
+- [ ] **Step 7: Type-check (the demo runs live in referee:22 and ship:3)**
+Run: `npm run typecheck -w @basanos/bot`
+Run: `npm run typecheck -w @basanos/referee`
+Expected: each exits 0 with no `error TS` lines.
+
+- [ ] **Step 8: Run the bot and referee suites**
+Run: `npm test -w @basanos/bot`
+Run: `npm test -w @basanos/referee`
+Run: `npm test -w @basanos/referee -- test/check-pass.test.ts`
+Expected: no failed tests; `check-pass.test.ts` shows `1 passed`.
+
+- [ ] **Step 9: Run the new bot test (the gate)**
+Run: `npm test -w @basanos/bot -- test/take.test.ts`
+Expected: PASS — `3 passed`.
+
+- [ ] **Step 10: Commit (kernel-performed — no agent runs this)**
+Message: `feat(bot): both runs start together, the pair opens in the same block, the FAIL on demand follows the first PASS; check-pass gate (P7)`
+
+---
+
+### Task 22: LIVE — rehearsal take 2: demo v2 registered, the first live PASS and certificate
+
+**Files:**
+- Create: `docs/evidence/rehearsal-pass.json`
+- Modify: `docs/evidence/demo-takes.json`
+- Modify: `docs/evidence/runs.json`
+- Modify: `deployments/hideki.json`
+
+**Depends on:** Task 7, Task 10, Task 18, Task 19, Task 20, Task 21, spike:Task 18, spike:Task 19
+**Effort:** medium
+**Model tier:** top
+**Provides:** `docs/evidence/rehearsal-pass.json (the first live PASS: passRunId, its certificate held by its own account, one FAILED run)`, `docs/evidence/demo-takes.json (rehearsal take 2 on demo v2: one PASS, one FAIL)`, `demo v2 registered on Hideki (deployments/hideki.json: tokyo-sprint-demo is v2, tokyo-sprint-demo-v1 the first demo)`
+**Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo|tokyo-sprint-demo-v1> (owner = REFEREE_PK; updates deployments/hideki.json and names each entry after the rulebook file that holds its id)`, `CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL: wait for a tighter book and re-run (never a rulebook change; the parameters come from the replay)`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--one-account [--pass-side long|short]] (two funded accounts; both runs start together and the pair opens in the same block, or B right after a human A's long with --a-manual; the FAIL on demand once one run PASSES; writes viem-direct and read back; a take that fails after a run started aborts into docs/evidence/demo-aborted.json, exit 1)`, `CLI: npx tsx packages/referee/src/check-pass.ts -> writes docs/evidence/rehearsal-pass.json, prints PASS pass-take (take <n>: run <id> PASSED with its certificate, one FAILED)`
+
+**Human-gated (wallet).** This signs with `REFEREE_PK` (the demo v2 registration, about 0.0043 STT, then closes and verdicts) and with `ACCOUNT_A_PK` and `ACCOUNT_B_PK` (startRun, the two opens, the exposure top-up). Before it starts:
+- A, B and the referee each hold at least 0.6 STT. After take 1, by the guide's figures, that is about 50.9, 0.96 and 1.55.
+- Both accounts are flat and funded.
+- No other tool uses `REFEREE_PK` while the referee runs.
+- No voucher is ever claimed.
+
+Why (architect P7, 2026-11-12): referee:10's two runs both FAILED, and the PASS path (the referee's lock, the registry's recordPass checks, the certificate mint) has never run on-chain. This take exercises it on demo v2, before the recorded money shot (ship:3). The replay gives this take about a 96% chance of one PASS, and the FAIL on demand then makes the other run a FAIL. The take ends when one run PASSES, a median of about 4 minutes, and takes at most 20 minutes.
+
+**Oracle:** set `ORACLE_ENABLED=false` in `.env` for this take. A Price Oracle request sends 0.0309 STT per verdict, and about 98% of it is rebated to the registry. The registry's Majority-consensus request finalized Failed on 3 of 4 tries, so a reading is unlikely anyway (see `feedback/`). ship:3 sets it back to `true`.
+
+- [ ] **Step 1: Register demo v2 (owner; before the referee starts, so its nonce is fresh)**
+Run: `npx tsx packages/referee/src/register-rulebook.ts tokyo-sprint-demo`
+Expected: `registered tokyo-sprint-demo 0x… (success) 0x…`. `deployments/hideki.json` now lists `tokyo-sprint-demo-v1` (the first demo's id) and `tokyo-sprint-demo` (v2).
+
+- [ ] **Step 2: Check the book**
+Run: `npx tsx packages/bot/src/demo-check.ts`
+Expected: `PASS demo-check`. On a FAIL, wait a few minutes and re-run. Do not edit or re-register the rulebook.
+
+- [ ] **Step 3: Start the referee (terminal 1, leave it running)**
+Run: `npx tsx packages/referee/src/cli.ts start`
+Expected: `referee watching registry 0x…`.
+
+- [ ] **Step 4: Run one take (terminal 2)**
+Run: `npx tsx packages/bot/src/demo.ts`
+Expected:
+- the disclosure line, then two `run <id> on Tokyo Sprint · Demo` lines;
+- `A long … and B short … at 10x, sent together`, then `runs …` lines every 2 s;
+- within 20 minutes (median about 4), terminal 1 shows `target reached (closeable equity … 10 bps past the target): locking`, the close tx and `PASSED`;
+- terminal 2 then shows `a run PASSED: exposure breach on … (FAIL on demand)`, and terminal 1 shows the other run `FAILED (MaxExposure)`, unless a rule ended it first;
+- the take ends `take <n> recorded in docs/evidence/demo-takes.json`.
+
+Stop and report, with no second take without a new GO:
+- on any `STOP:` line (as in referee:10);
+- if both runs FAIL (about 4% of takes in the replay; the take is still recorded);
+- on a referee `recordPass refused` line.
+
+- [ ] **Step 5: Stop the referee and check the take (the gate)**
+
+Stop terminal 1 with Ctrl+C.
+Run: `npx tsx packages/referee/src/check-pass.ts`
+Expected: PASS — `PASS pass-take (take <n>: run <id> PASSED with its certificate, one FAILED)`.
+
+- [ ] **Step 6: Commit (kernel-performed — no agent runs this)**
+Message: `docs(evidence): rehearsal take 2 - the first live PASS and certificate on Hideki (demo v2)`
