@@ -29,12 +29,24 @@ export type Action =
 
 export type RunPhase = "watching" | "acting" | "done";
 
+/** The last judged push for a run (architect P7): the closeable equity the rules judged and the position, mark and book
+ *  of that block. A run stops being judged once it acts, so for a lock this is the push that raised the target: the
+ *  daemon locks from it and plans the first close from it, without another read. */
+export interface PushSeen {
+  blockNumber: bigint;
+  judged: bigint | null;
+  size: bigint;
+  mark: bigint;
+  book: BookRead | null;
+}
+
 export interface EngineRun {
   run: TrackedRun;
   state: RunState;
   phase: RunPhase;
   exposureX: number | null;
   lastTotal: bigint | null;
+  lastPush: PushSeen | null;
 }
 
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
@@ -62,7 +74,7 @@ export class Engine {
   track(run: TrackedRun): boolean {
     const key = run.runId.toString();
     if (this.runs.has(key)) return false;
-    this.runs.set(key, { run, state: initRunState(run.startTime, run.startEquity), phase: "watching", exposureX: null, lastTotal: null });
+    this.runs.set(key, { run, state: initRunState(run.startTime, run.startEquity), phase: "watching", exposureX: null, lastTotal: null, lastPush: null });
     return true;
   }
 
@@ -121,6 +133,7 @@ export class Engine {
       r.state = ev.state;
       r.exposureX = ev.exposureX;
       if (acct.equityOk) r.lastTotal = acct.totalEquity;
+      r.lastPush = { blockNumber: snap.blockNumber, judged: ev.judgedEquity, size: acct.size, mark: snap.markPrice, book: book ?? null };
       const v = ev.verdict;
       if (v.kind === "fail") {
         r.phase = "acting";

@@ -1,5 +1,4 @@
 import { pad, type Address, type Hex, type PublicClient } from "viem";
-import type { SomniaMarkets } from "@somnia-chain/markets-sdk";
 import {
   BTC_POOL,
   MARGIN_BANK,
@@ -16,7 +15,7 @@ import { bookCall, decodeBook, readBookLevels, type BookRead } from "@basanos/co
 import { flatten, type CloseIO } from "./close";
 import { Engine, type Action } from "./engine";
 import { attachVerdictTx, writeRunEvidence } from "./evidence";
-import { clearsTarget, predictClosedEquity } from "./lock";
+import { LOCK_BUFFER_BPS, lockClears } from "./lock";
 import { readActiveRuns, rulebookIndex } from "./runs";
 import type { TxRecord } from "./tx";
 import type { RegistryWriter } from "./writer";
@@ -28,7 +27,8 @@ export interface DaemonDeps {
   rulebooks: readonly Rulebook[];
   closeIO: CloseIO;
   writer: RegistryWriter;
-  markets: SomniaMarkets;
+  /** The referee's fast sender (P7): its nonce is re-read on each idle refresh, in case another tool used the key. */
+  sender?: { resync(): Promise<void> };
   log: (line: string) => void;
   pollMs?: number;
 }
@@ -197,8 +197,9 @@ export async function runDaemon(d: DaemonDeps): Promise<void> {
       return;
     }
     if (a.kind === "fail") {
-      d.log(`run ${a.runId} breach ${a.rule} at block ${a.breach.blockNumber}: cancelling and closing`);
-      const close = await flatten(d.closeIO, a.account);
+      d.log(`run ${a.runId} breach ${a.rule} at block ${a.breach.blockNumber}: closing from the breach block's book, then cancelling`);
+      // The first close is planned from the push itself (position, mark, book of the breach block) and sent at once (P7).
+      const close = await flatten(d.closeIO, a.account, { size: a.breach.positionSize, mark: a.breach.markPrice, book: a.judged?.book ?? null });
       for (const t of close.txs) d.log(`  ${t.label} ${t.status} ${t.explorer}`);
       const hash = writeRunEvidence(a.runId, { ...base, verdict: "FAILED", rule: a.rule, breach: a.breach, judged: a.judged, close });
       const tx: TxRecord = await retry(() => d.writer.recordFail(a.runId, a.rule, a.breach, hash, close.txs.map((t) => t.hash)));
@@ -207,19 +208,20 @@ export async function runDaemon(d: DaemonDeps): Promise<void> {
       d.log(`run ${a.runId} FAILED (${a.rule}) ${tx.explorer}`);
       return;
     }
-    const quote = await d.markets.client.quotePerpClose({ pool: rb.market.pool, marginBank: MARGIN_BANK, account: a.account });
-    const total = lastSnap?.accounts.find((x) => same(x.account, a.account))?.totalEquity ?? 0n;
-    const predicted = predictClosedEquity(total, quote, rb.market.baseDecimals);
-    if (!clearsTarget(predicted, er.run.startEquity, rb.profitTargetBps)) {
+    // The lock (P7): from the closeable equity of the push that raised the target, with LOCK_BUFFER_BPS of room so the
+    // move before the close cannot take the realized equity back under the registered target; then the first close is
+    // planned from that same push. No new quote, no read before the close.
+    const seen = er.lastPush;
+    if (!seen || !lockClears(seen.judged, er.run.startEquity, rb.profitTargetBps)) {
       engine.release(a.runId);
       return;
     }
-    d.log(`run ${a.runId} target reached (predicted closed equity ${predicted}): locking`);
-    const close = await flatten(d.closeIO, a.account);
+    d.log(`run ${a.runId} target reached (closeable equity ${seen.judged} at block ${seen.blockNumber}, ${LOCK_BUFFER_BPS} bps past the target): locking`);
+    const close = await flatten(d.closeIO, a.account, { size: seen.size, mark: seen.mark, book: seen.book });
     for (const t of close.txs) d.log(`  ${t.label} ${t.status} ${t.explorer}`);
     try {
       const tx = await d.writer.recordPass(a.runId);
-      writeRunEvidence(a.runId, { ...base, verdict: "PASSED", predictedClosedEquity: predicted, close });
+      writeRunEvidence(a.runId, { ...base, verdict: "PASSED", lock: { blockNumber: seen.blockNumber, judgedEquity: seen.judged, bufferBps: LOCK_BUFFER_BPS }, close });
       attachVerdictTx(a.runId, tx);
       engine.finish(a.runId);
       d.log(`run ${a.runId} PASSED ${tx.explorer}`);
@@ -230,6 +232,7 @@ export async function runDaemon(d: DaemonDeps): Promise<void> {
   };
 
   const refresh = async (): Promise<void> => {
+    if (d.sender) await d.sender.resync();
     const runs = await readActiveRuns(d.client, d.registry, index);
     for (const r of runs) if (engine.track(r)) d.log(`tracking run ${r.runId}: ${r.account} on ${r.rulebook.label}`);
     engine.retain(runs.map((r) => r.runId));

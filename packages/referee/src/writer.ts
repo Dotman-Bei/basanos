@@ -1,7 +1,7 @@
-import type { Address, Hex, PublicClient } from "viem";
+import { encodeFunctionData, type Address, type Hex, type PublicClient } from "viem";
 import { RULE_NAMES, basanosRegistryAbi } from "@basanos/core";
 import type { FailRule } from "@basanos/core/evaluate";
-import type { RefereeWallet } from "./chain";
+import type { FastSender } from "./chain";
 import type { BreachRead } from "./engine";
 import { txRecord, type TxRecord } from "./tx";
 
@@ -31,31 +31,22 @@ export interface RegistryWriter {
   recordVoid(runId: bigint, reason: "Flow" | "ForeignMarket", txHash: Hex | null, evidenceHash: Hex): Promise<TxRecord>;
 }
 
-/** oracleValue is ORACLE_DEPOSIT when ORACLE_ENABLED=true (cut-order switch), else 0n; only PASS and FAIL carry it. */
-export function makeRegistryWriter(wallet: RefereeWallet, client: PublicClient, registry: Address, oracleValue: bigint): RegistryWriter {
-  const done = async (label: string, hash: Hex): Promise<TxRecord> => {
+/** oracleValue is ORACLE_DEPOSIT when ORACLE_ENABLED=true (cut-order switch), else 0n; only PASS and FAIL carry it.
+ *  Every write goes through the referee's one fast sender (P7), so its nonces never collide with the closes; the gas
+ *  is estimated (a refused verdict reverts here, before anything is sent) with 30% headroom. */
+export function makeRegistryWriter(sender: FastSender, client: PublicClient, registry: Address, oracleValue: bigint): RegistryWriter {
+  const write = async (label: string, data: Hex, value: bigint): Promise<TxRecord> => {
+    const gas = (await client.estimateGas({ account: sender.address, to: registry, data, value })) * 13n / 10n;
+    const hash = await sender.send(registry, data, gas, value);
     const r = txRecord(label, await client.waitForTransactionReceipt({ hash }));
     if (r.status !== "success") throw new Error(`${label} reverted: ${r.explorer}`);
     return r;
   };
   return {
     recordFail: async (runId, rule, breach, evidenceHash, closeTxs) =>
-      done(
-        "recordFail",
-        await wallet.writeContract({
-          address: registry,
-          abi: basanosRegistryAbi,
-          functionName: "recordFail",
-          args: failArgs(runId, rule, breach, evidenceHash, closeTxs),
-          value: oracleValue,
-        }),
-      ),
-    recordPass: async (runId) =>
-      done("recordPass", await wallet.writeContract({ address: registry, abi: basanosRegistryAbi, functionName: "recordPass", args: [runId], value: oracleValue })),
+      write("recordFail", encodeFunctionData({ abi: basanosRegistryAbi, functionName: "recordFail", args: failArgs(runId, rule, breach, evidenceHash, closeTxs) }), oracleValue),
+    recordPass: async (runId) => write("recordPass", encodeFunctionData({ abi: basanosRegistryAbi, functionName: "recordPass", args: [runId] }), oracleValue),
     recordVoid: async (runId, reason, txHash, evidenceHash) =>
-      done(
-        "recordVoid",
-        await wallet.writeContract({ address: registry, abi: basanosRegistryAbi, functionName: "recordVoid", args: voidArgs(runId, reason, txHash, evidenceHash) }),
-      ),
+      write("recordVoid", encodeFunctionData({ abi: basanosRegistryAbi, functionName: "recordVoid", args: voidArgs(runId, reason, txHash, evidenceHash) }), 0n),
   };
 }

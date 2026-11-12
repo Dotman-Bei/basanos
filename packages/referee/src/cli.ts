@@ -1,8 +1,7 @@
 import { decodeEventLog, getAddress, type Hex } from "viem";
-import { SomniaMarkets } from "@somnia-chain/markets-sdk";
-import { BTC_POOL, CHAIN, HIDEKI_ADDRESSES, INDEXER_URL, ORACLE_DEPOSIT, basanosRegistryAbi, rulebookId } from "@basanos/core";
+import { BTC_POOL, ORACLE_DEPOSIT, basanosRegistryAbi, rulebookId } from "@basanos/core";
 import { RULEBOOK_FILES, flag, loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp, rpcWss } from "@basanos/core/node";
-import { chainCloseIO, makePublicClient, makeRefereeWallet } from "./chain";
+import { chainCloseIO, makeFastSender, makePublicClient, makeRefereeWallet, readBookParams } from "./chain";
 import { runDaemon } from "./daemon";
 import { readActiveRuns, rulebookIndex } from "./runs";
 import { makeRegistryWriter } from "./writer";
@@ -20,15 +19,18 @@ const rulebooks = [loadRulebook("tokyo-sprint"), loadRulebook("tokyo-sprint-demo
 
 if (cmd === "start") {
   const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
-  const markets = new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES });
+  // One sender for every referee write (P7): nonce tracked locally, fees cached, both fetched now, before any breach.
+  const sender = makeFastSender(client, wallet);
+  await sender.warm();
+  const params = await readBookParams(client, BTC_POOL);
   await runDaemon({
     client,
     wss: rpcWss(),
     registry,
     rulebooks,
-    closeIO: chainCloseIO(client, wallet, BTC_POOL),
-    writer: makeRegistryWriter(wallet, client, registry, flag("ORACLE_ENABLED") ? ORACLE_DEPOSIT : 0n),
-    markets,
+    closeIO: chainCloseIO(client, sender, BTC_POOL, params),
+    writer: makeRegistryWriter(sender, client, registry, flag("ORACLE_ENABLED") ? ORACLE_DEPOSIT : 0n),
+    sender,
     log: (line) => console.log(`${new Date().toISOString()} ${line}`),
   });
 } else if (cmd === "enroll") {

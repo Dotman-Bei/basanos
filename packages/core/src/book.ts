@@ -6,7 +6,7 @@
 // since a cap of mark + 20 bps sits below the whole ask side and never fills.
 import { decodeFunctionResult, encodeFunctionData, type Address, type Hex, type PublicClient } from "viem";
 import { multicall3Abi, perpPoolAbi } from "./abi";
-import { alignDown, alignUp, type BookParams, type OrderPlan } from "./close";
+import { alignDown, alignUp, planClose, type BookParams, type OrderPlan } from "./close";
 import { MULTICALL3 } from "./config";
 
 export interface BookLevel {
@@ -128,4 +128,24 @@ export function planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSid
   const m = BigInt(marginBps);
   const price = isBid ? alignUp((best.price * (10_000n + m)) / 10_000n, params.tickSize) : alignDown((best.price * (10_000n - m)) / 10_000n, params.tickSize);
   return { isBid, quantity: q, price };
+}
+
+/** The IOC that closes `size` (signed), capped from the book like an open (architect P7, 2026-11-12): best ask +
+ *  slippageBps to buy back a short, best bid - slippageBps to sell a long, rounded to the tick. The mark ladder
+ *  (planClose) stays the fallback: with no book, or no level on the closing side, it is used alone, and otherwise the
+ *  more permissive of the two limits wins (higher to buy, lower to sell). An IOC fills at the book's prices, so the cap
+ *  only bounds slippage. The rehearsal's first close of a short, a buy at mark + 20 bps, reverted under a book about 19
+ *  bps above the mark. */
+export function planCloseFromBook(size: bigint, mark: bigint, book: BookSides | null, params: BookParams, slippageBps: number): OrderPlan | null {
+  const ladder = planClose(size, mark, params, slippageBps);
+  if (!ladder || !book) return ladder;
+  const best = (ladder.isBid ? book.asks : book.bids)[0];
+  if (!best) return ladder;
+  const s = BigInt(slippageBps);
+  if (ladder.isBid) {
+    const fromBook = alignUp((best.price * (10_000n + s)) / 10_000n, params.tickSize);
+    return { ...ladder, price: fromBook > ladder.price ? fromBook : ladder.price };
+  }
+  const fromBook = alignDown((best.price * (10_000n - s)) / 10_000n, params.tickSize);
+  return { ...ladder, price: fromBook < ladder.price ? fromBook : ladder.price };
 }
