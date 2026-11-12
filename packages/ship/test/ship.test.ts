@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SITE_URL } from "../src/base-url";
 import { checkFeedbackText } from "../src/check-feedback";
 import { moneyShotOk } from "../src/check-money-shot";
 import { renderEvidenceIndex } from "../src/evidence-index";
@@ -45,7 +46,7 @@ describe("buildFeatured", () => {
 
 describe("buildPosts", () => {
   it("writes three posts that tag @DreamDEXSomnia, fit 280 characters and say nothing forbidden", () => {
-    const posts = buildPosts(featured, "https://basanos.vercel.app");
+    const posts = buildPosts(featured, SITE_URL);
     expect(posts).toHaveLength(3);
     for (const p of posts) {
       expect(p).toContain("@DreamDEXSomnia");
@@ -54,7 +55,7 @@ describe("buildPosts", () => {
     }
     expect(posts.some((p) => p.includes(TRUST_LINE))).toBe(true);
     expect(posts.some((p) => p.includes("operated by the builder"))).toBe(true);
-    expect(posts[0]).toContain("https://basanos.vercel.app/app/#/run/3");
+    expect(posts[0]).toContain("https://basanos.suitz.xyz/app/#/run/3");
   });
   it("leaves a marked placeholder when the site URL is not known yet", () => {
     expect(buildPosts(featured, null)[0]).toContain("TBD-post-build:vercel-url");

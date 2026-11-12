@@ -73,7 +73,7 @@ deployed on Vercel. Chain: Somnia Tokyo testnet (Hideki, chain 50383).
 - GitHub repository (required by the form):
   TBD-post-build:public-repo-url
 - Live site (landing at `/`, terminal at `/app/#/challenge`):
-  TBD-post-build:vercel-url
+  https://basanos.suitz.xyz
 - Featured verdict page (a real run):
   TBD-post-build:featured-verdict-url
 - Demo video (optional on the form; "demo" is named in the judging criteria):

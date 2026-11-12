@@ -5,7 +5,7 @@ Prop-firm challenges for dreamDEX perps: a published rulebook, a referee that cl
 
 ## Demo
 
-- Live site (landing, terminal at `/app/#/challenge`): TBD-post-build:vercel-url
+- Live site (landing, terminal at `/app/#/challenge`): https://basanos.suitz.xyz
 - Featured verdict, a real run on Somnia Tokyo testnet: TBD-post-build:featured-verdict-url
 - Demo video: TBD-post-build:demo-video-url
 - Screenshot of the featured verdict page: TBD-post-build:verdict-screenshot
