@@ -1,5 +1,10 @@
-// The certificates' base URL: the live site's certificate route. deployments/hideki.json starts with the
-// constructor's placeholder; ship:6 sets the real one with setBaseUrl and reads baseUrl() back.
+// The live site and the certificates' base URL. The site is the user's own domain on their own Vercel account (P9):
+// the landing at /, the app at /app/. deployments/hideki.json starts with the constructor's placeholder; ship:6 sets
+// the real route with setBaseUrl and reads baseUrl() back.
+export const SITE_DOMAIN = "basanos.suitz.xyz";
+export const SITE_URL = `https://${SITE_DOMAIN}`;
+
+/** The constructor's placeholder, kept only to detect "not set yet" (basanos.vercel.app is someone else's site). */
 export const PLACEHOLDER_BASE_URL = "https://basanos.vercel.app/app/#/cert/";
 
 /** The certificate route on the deployed site (https only; any path on the site URL is dropped). */
