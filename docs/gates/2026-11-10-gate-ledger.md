@@ -68,7 +68,7 @@ P1–P3 feed the Nov 11 tripwire (spike:11 needs ACCOUNT_A's voucher and the ref
 | spike:12 | LIVE: one Price Oracle request on Tokyo testnet (about 0.031 STT), `wallet` | A | orchestrator-pause, **run by the concierge on the user's explicit go (2026-11-11)** | concierge (user consent for spike:12 only) | `REFEREE_PK` + STT | **run**: gate prints `PASS g1d-oracle`. On-chain outcome **Failed** (RequestFinalized status 3), no prices. The evidence file records `Pending` (read-back bug), so it is left uncommitted for the orchestrator (see Evidence) |
 | spike:16 P1 | LIVE: oracle probe P1, one symbol `BTC/USDC:PERP`, 4-argument `createRequest` (Majority), about 0.031 STT (outside the manifest; runbook in spike:16) | A | **run by the concierge on the user's explicit go (2026-11-11, P1 only; P2 needs a separate go)** | concierge | `REFEREE_PK` + STT | **run**: `PASS g1d-probe-p1`. Request 7782661 **Success** (status 2), 2 of 3 validators answered, answers IDENTICAL, BTC/USDC:PERP 73,735.85 (6 sources). Evidence left uncommitted for the orchestrator (see Evidence) |
 | contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | **DONE 2026-11-11 ~14:40 WAT by the concierge (user go: faucet top-up + contracts:10, 0.6 STT cap)**: `PASS deployment`. Registry **`0xf5D8099239200DF961E0910A42C105214D1E9370`**, deploy block 47503978, tx `0x0046bcd4…3190`; rulebooks `tokyo-sprint` `0x2b322b0c…3223` and `tokyo-sprint-demo` `0x59e93903…0757` registered. Spent 0.31665231 STT; referee 1.6778143 STT. `.env` += `REGISTRY_ADDRESS`, `ORACLE_ENABLED=true`. `deployments/hideki.json` left uncommitted for the orchestrator. (First go ~14:30 stopped at the 0.3 STT cap; see Evidence) |
-| referee:10 | LIVE: referee rehearsal (Nov 12), the first real verdicts, `wallet` | A in principle | orchestrator-pause | user + guide | all three burners funded; `REGISTRY_ADDRESS` | **guide GO 2026-11-12 ~15:00 WAT (referee:10 only, one take); STOPPED, take aborted before any run**: preflight + `PASS demo-check` clean; the demo crashed on B's operator grant with `TransactionOutcomeUnknownError` (send WS timeout); the tx never landed, nothing changed on-chain, runCount still 0 (see Evidence) |
+| referee:10 | LIVE: referee rehearsal (Nov 12), the first real verdicts, `wallet` | A in principle | orchestrator-pause | user + guide | all three burners funded; `REGISTRY_ADDRESS` | **DONE 2026-11-12 ~15:57 WAT: PASS rehearsal (first verdict run 1)** on the second GO (P6, viem-direct bot writes): run 1 (A) and run 2 (B) both FAILED (DailyLoss), both flat. Both verdict oracle stamps finalized Failed (status 3, Majority answers not identical). The first GO (~15:00 WAT) aborted before any run: B's grant hit an SDK send timeout and never landed (see Evidence) |
 | ship:3 | LIVE: money shot (one PASS, one FAIL) + `FEATURED_RUN_ID`, `wallet` | A in principle | orchestrator-pause | user + guide | as referee:10 | pending (not this seat) |
 | ship:6 | LIVE: deploy to Vercel + `setBaseUrl`, `deploy` | B (Vercel account) | orchestrator-pause | user + guide | `VERCEL_TOKEN` (C4), `REFEREE_PK` + STT | pending (not this seat) |
 
@@ -655,3 +655,91 @@ retry and did not start a second take (GO step 6).
 **For the user and guide:** the failure is a transient send-endpoint timeout in the SDK path, not a plan or rulebook
 problem. A new take needs a new GO. Before the second take, re-check B's grant and nonce, because the signed grant might
 still land.
+
+### referee:10 re-run: the rehearsal, take 1. PASS rehearsal 2026-11-12 ~15:57 WAT (second guide GO, referee:10 only)
+
+**`PASS rehearsal (first verdict run 1)`.** Both runs reached a verdict in under 90 s, both **FAILED (DailyLoss)**.
+The referee cancelled, closed and wrote both verdicts, and both accounts are flat. The GO covered referee:10 only, one
+take: no ship:3 or ship:6, no voucher, no USDso moved between accounts, no margin deposit or withdrawal, nothing
+re-sent by hand.
+- **Sync:** `git fetch origin main` then `git merge --ff-only origin/main` was already up to date at `768b4e3`, which
+  contains P6 (`da5d2bd`, `b34f730`: the bot's account writes go viem-direct, are read back from the chain and are never
+  re-sent). `package-lock.json` is unchanged, so `npm install` was not run.
+- **Preflight (read-only, block 48409874):** identical to the first attempt.
+  - Registry `runCount` 0, no active runs.
+  - A: flat, 49.999025 USDso unlocked, 50.961693066 STT, nonce 6.
+  - B: flat, 50 USDso unlocked, 0.995308612 STT, nonce 2. B's grant to the referee was false for both selectors.
+  - Referee: 1.6662837865982 STT, nonce 9.
+  - The stale grant `0x5eeb2d31…` from the first attempt **never landed** (no tx, no receipt, B's pending nonce 2).
+  - `ORACLE_ENABLED=true`.
+- **`demo-check`:** `PASS demo-check`. Demo size 350000 (5x on 49.999 USDso). The round trip is 1.8 bps of notional
+  at block 48410572, or 9 equity bps against half the target (25). Tape with costs: long fail, short target.
+- **Referee:** `cli.ts start` ran in the background, logging to the scratch folder outside the repo, as PIDs node 9876,
+  tsx 19536 and npx 26740. It printed `referee watching registry 0xf5D8…9370` at 14:55:16Z.
+- **Demo:** `demo.ts` ran in the background and exited 0 at 14:57:25Z with
+  `take 1 recorded in docs/evidence/demo-takes.json` (two-account, flatAfter true, breachedOnDemand false, no notes).
+- **Clean-up:** I stopped the referee by those exact PIDs, and none remain.
+- **Gate:** `npx tsx packages/referee/src/check-rehearsal.ts` → `PASS rehearsal (first verdict run 1)`, no problems.
+
+| run | account | status / rule | start block | breach block | end block | duration | close txs | verdict tx |
+|---|---|---|---|---|---|---|---|---|
+| 1 | A (long 350000, 5x) | **Failed / DailyLoss** | 48411141 | 48411742 | 48411968 | 83 s | 1 | [`0x50ae1ed6…01add`](https://explorer.testnet.somnia.network/tokyo/tx/0x50ae1ed65e86ebca00643ca78754f8bf6bfe233630c7c58cf6418ea30db01add) |
+| 2 | B (short 350000, 5x) | **Failed / DailyLoss** | 48411269 | 48411444 | 48411612 | 34 s | 2 (first reverted) | [`0x2a4e5418…3aca7`](https://explorer.testnet.somnia.network/tokyo/tx/0x2a4e54184986a2b554d24bedc4fd7e7ab4ed31f6d221220ab2fbab61c663aca7) |
+
+**Transactions, in order (all receipts read back):**
+
+| tx | signer | nonce | block | status | gas used | STT (incl. value) | hash |
+|---|---|---|---|---|---|---|---|
+| grant (place + cancel to the referee) | B | 2 | 48411066 | success | 558,405 | 0.00335043 | [`0x6afa8ffd…845a3`](https://explorer.testnet.somnia.network/tokyo/tx/0x6afa8ffdb0357c3defcca50f1f2dcdf189d94e85b906f914ad2947e8ab3845a3) |
+| startRun → run 1 | A | 6 | 48411141 | success | 2,580,130 | 0.01548078 | [`0x1c02e9a3…a18fb`](https://explorer.testnet.somnia.network/tokyo/tx/0x1c02e9a3e9cfc5f2921f95bf599ff63543dc6644d8a9c9726a3ca7a6e87a18fb) |
+| startRun → run 2 | B | 3 | 48411269 | success | 2,180,130 | 0.01308078 | [`0xaafa5382…1ad393`](https://explorer.testnet.somnia.network/tokyo/tx/0xaafa538299f7fb918cde9acb5c058565f115aa68f14598c0f4dd2b79351ad393) |
+| open short 350000 | B | 4 | 48411321 | success | 3,219,106 | 0.019314636 | [`0x2f10f723…0e4ea`](https://explorer.testnet.somnia.network/tokyo/tx/0x2f10f723743be9df0cf99c058938f03d13d2296dd99aebd361efae34c4a0e4ea) |
+| open long 350000 | A | 7 | 48411446 | success | 1,762,880 | 0.01057728 | [`0x582deebd…2b413`](https://explorer.testnet.somnia.network/tokyo/tx/0x582deebd1acd578a85c87723b75fd166660dbc4eb220f91f130d6a50d502b413) |
+| close B, attempt 1 | referee | 9 | 48411521 | **reverted** | 117,474 | 0.000704844 | [`0xe9883410…c9b12`](https://explorer.testnet.somnia.network/tokyo/tx/0xe9883410fa04938c3bed7caaf5775faebf663c778c02281d2623f9af7aeb9b12) |
+| close B, attempt 2 | referee | 10 | 48411560 | success | 1,677,674 | 0.010066044 | [`0x3089ec9f…9868a`](https://explorer.testnet.somnia.network/tokyo/tx/0x3089ec9f59af2f8e4f23f379a017403e2f0e9134a44a3e4799702ce075c9868a) |
+| verdict run 2 (+ oracle 0.0309) | referee | 11 | 48411612 | success | 3,198,912 | 0.050093472 | [`0x2a4e5418…3aca7`](https://explorer.testnet.somnia.network/tokyo/tx/0x2a4e54184986a2b554d24bedc4fd7e7ab4ed31f6d221220ab2fbab61c663aca7) |
+| close A | referee | 12 | 48411813 | success | 1,693,601 | 0.010161606 | [`0x911cf71f…5f283`](https://explorer.testnet.somnia.network/tokyo/tx/0x911cf71f696e4479ff82ff65ce70261e4c9e54da81a4f5d3392c5f27ebe5f283) |
+| verdict run 1 (+ oracle 0.0309) | referee | 13 | 48411968 | success | 2,977,294 | 0.048763764 | [`0x50ae1ed6…01add`](https://explorer.testnet.somnia.network/tokyo/tx/0x50ae1ed65e86ebca00643ca78754f8bf6bfe233630c7c58cf6418ea30db01add) |
+
+Both verdict txs emit `RunFailed(rule 1 = DailyLoss)` and `OracleRequested` (run 2 → request 7968013, run 1 →
+7968086). The registry's `getCloseTxs` lists exactly the close hashes above.
+
+**STT spent (each drop equals the sum of that signer's receipts exactly):**
+- **A:** 0.02605806 (50.961693066 → 50.935635006, nonce 6 → 8).
+- **B:** 0.035745846 (0.995308612 → 0.959562766, nonce 2 → 5).
+- **Referee:** 0.11978973 (1.6662837865982 → 1.5464940565982, nonce 9 → 14), of which 0.0618 is the two oracle
+  deposits.
+- No account came near the 0.6 STT stop.
+
+**Post-state (on-chain, read-only):**
+- Registry `runCount` 2, no active runs.
+- **A:** BTC position 0, open orders 0, unlocked 49.671425 USDso, locked 0, active pools 0.
+- **B:** BTC position 0, open orders 0, unlocked 49.71125 USDso, locked 0, active pools 0.
+- No certificate: neither run PASSED.
+- B's operator grant to the referee now stands, as A's does.
+
+**Findings for the guide and architect** (reported only; I changed nothing):
+1. **Both verdicts' oracle stamps failed.** Each `RequestFinalized` came one block after its verdict with
+   **status 3 (Failed)**:
+   - Run 2's finalize tx is `0xe4d6459267bcd394d782cd7e9cf0449293a7e915c4ca586e8239cb23f2f53c26` (block 48411613); run
+     1's is `0xd3065e2692bf98f5950a84aff335ea016f8053a444c643d95d6471814b5fa74a` (block 48411974).
+   - The registry's `handleOracle` ran without reverting and set `oracleDone`, but recorded no price (`oraclePrice` 0,
+     no `OracleRecorded`).
+   - From the callback (`debug_traceTransaction`): all 3 validators answered with status 2 (Success), but **Majority
+     needs byte-identical answers, and they differed** (`answersIdentical false`, threshold 2).
+   - Run 2: the same price, 71,414.35, but `numSources` 6/7/7 and `lastUpdated` …965/…967/…974 ms.
+   - Run 1: prices 71,300.85 / 71,297.35 / 71,307.85, `numSources` 7/6/6.
+   - In spike:16 P1 the answers happened to be identical. The millisecond timestamp makes that rare.
+   - The verdicts themselves stand: the oracle is a stamp, and `_requestOracle` never reverts a verdict.
+2. **The demo rulebook's 50 bps daily loss is hit within seconds at 5x.**
+   - Realized round trips were about **66 equity bps for A** (49.999025 → 49.671425 USDso) and **58 for B**
+     (50 → 49.71125). demo-check predicted 9 equity bps (1.8 bps of book spread).
+   - The difference likely includes fees and the referee's IOC close slippage, which demo-check's spread-only cost
+     does not count.
+   - Run 2's recorded breach read shows mark equity *above* start (50.2059), while the referee judged a DailyLoss
+     breach. That is consistent with rules judging closeable equity, not mark equity.
+   - Result: this take cannot produce the PASS that ship:3 needs. Whether the target, the loss limit, the leverage or
+     the cost model changes is a plan decision.
+3. **B's first close reverted** (`0xe9883410…`, 117k gas), and the referee's next attempt filled.
+
+`docs/evidence/runs.json`, `demo-takes.json` and `rehearsal.json` are left uncommitted for the orchestrator.
