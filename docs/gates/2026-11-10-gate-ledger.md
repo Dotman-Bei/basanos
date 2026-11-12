@@ -438,3 +438,52 @@ nonce 0. Both still had an unclaimed voucher. A's 100 USDso and 51 STT did not c
 **Post-state:** A holds **50 USDso**, 50.998422978 STT, **nonce 1**. B holds **50 USDso** in its wallet. MarginBank
 equity is unchanged (0 for both): wallet USDso is not trading equity until it is deposited.
 **Note for later gates:** any voucher claim for A must now use nonce 1, not the nonce 0 in the P3 retry plan.
+
+### spike:18: deposit A's own wallet USDso into A's own MarginBank balance (50 USDso). DONE 2026-11-12 ~12:30 WAT (guide GO, spike:18 only)
+
+The GO covered spike:18 only: no spike:11, no spike:19, no voucher claim, nothing moved between accounts.
+- **Sync:** `git fetch origin main` then `git merge --ff-only origin/main` was already up to date at `7a6d834`, since
+  this working tree is shared. `package-lock.json` has not changed since `62e1287`, so `npm install` was not run.
+- **Read first:** `packages/spike/src/deposit.ts`. It uses only the account's own key, refuses to run while the
+  account has an active run, sends with `ORDER_GAS` (10M gas limit) and an explicit pending nonce, and writes
+  `docs/evidence/deposit-a.json`.
+
+**1. `npx tsx packages/spike/src/deposit.ts --account A --amount 50 --dry-run`** (exit 0)
+```
+deposit A: owner 0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1, wallet 50 USDso, allowance 0, unlocked margin 0 USDso, STT 50998422978000000000, active run 0
+plan: approve, then deposit 50 USDso into account A's own MarginBank balance
+dry-run: no transaction sent
+```
+Clean on every point the GO named, and no STOP.
+
+**Cost check (read-only, no key; cap 0.1 STT):**
+- Approve: `eth_estimateGas` 1,390,901 gas at 6 gwei, so 0.0083 STT.
+- Deposit: could not be estimated before the approve. Overriding the allowance failed because USDso's allowance slot
+  is neither a plain mapping at slots 0–10 nor the OZ v5 ERC-7201 layout. Bounded instead by the script's 10M gas
+  limit, at most 0.06 STT. Every receipt this campaign has charged gas used, not the limit.
+- **Upper bound ≈ 0.068 STT**, under the cap.
+
+**2. `npx tsx packages/spike/src/deposit.ts --account A --amount 50`** (live, exit 0)
+```
+deposit A: OK — unlocked margin 0 -> 50 USDso (+50); wallet 50 -> 0 USDso
+  approve success https://explorer.testnet.somnia.network/tokyo/tx/0x82186f7088b3ae58626d8690582ea99c71166795b8a46409a3016df55dc81b3f
+  deposit success https://explorer.testnet.somnia.network/tokyo/tx/0x58dcd6a3b88fad8fd3a30bc9e4e5a90c2f3627e1304acbd666d8748d5f57bc9c
+```
+
+| Tx | Hash | Block | Nonce | Gas used (limit 10M) | Cost |
+|---|---|---|---|---|---|
+| approve (USDso → MarginBank, 50) | `0x82186f7088b3ae58626d8690582ea99c71166795b8a46409a3016df55dc81b3f` | 48291606 | 1 | 260,601 | 0.001563606 STT |
+| deposit (MarginBank, 50 USDso) | `0x58dcd6a3b88fad8fd3a30bc9e4e5a90c2f3627e1304acbd666d8748d5f57bc9c` | 48291625 | 2 | 521,297 | 0.003127782 STT |
+
+**STT spent: 0.004691388**, exactly the drop in A's STT balance.
+
+**3. Gate: `npx tsx packages/spike/src/deposit.ts --account A --check`** → **`PASS deposit-a`** (exit 0).
+
+**Concierge read-back (read-only):**
+- Both receipts: status success, from A, at 6 gwei.
+- **A:** wallet USDso **0**, allowance to MarginBank **0**, MarginBank `unlockedCollateralBalance` **50**,
+  `lockedCollateral` 0, active perp pools 0. STT 50.99373159, **nonce 3**.
+- **B** (untouched): wallet USDso 50, allowance 0, unlocked 0, STT 1, nonce 0.
+
+**Evidence:** `docs/evidence/deposit-a.json` is left **UNCOMMITTED** for the orchestrator.
+**Note for later gates:** A's next nonce is 3, and both A and B still have an unclaimed voucher.
