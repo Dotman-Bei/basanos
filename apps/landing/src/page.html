@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en" data-type="software" data-radius="sharp" data-buttons="solid" data-ground="sand" data-motion>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="page-type" content="software">
+<meta name="site-kind" content="software">
+<title>Basanos — prop-firm challenges for dreamDEX perps</title>
+<meta name="description" content="A published rulebook, a referee that closes on a breach, and a verdict anyone can replay. Somnia Tokyo testnet, paper USDso.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wdth,wght@85..100,400..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/system.css">
+<link rel="stylesheet" href="assets/motion/motion.css">
+<link rel="stylesheet" href="assets/layout/layout.css">
+<link rel="stylesheet" href="assets/layout/demo.css">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/landing.css">
+<script>document.documentElement.classList.add('mo-js');setTimeout(()=>document.documentElement.classList.add('mo-safe'),2500)</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap">
+    <a class="nav__logo" href="#top"><span class="mark" data-mark="ring" aria-hidden="true"></span>Basanos</a>
+    <nav class="nav__links" aria-label="Main">
+      <div class="nav__item"><a class="nav__link" href="#steps">Rulebook</a></div>
+      <div class="nav__item"><a class="nav__link" href="#verdict">Verdict</a></div>
+      <div class="nav__item"><a class="nav__link" href="#replay">Replay</a></div>
+      <div class="nav__item"><a class="nav__link" href="#testnet">Testnet</a></div>
+    </nav>
+    <div class="nav__actions">
+      <a class="btn btn--primary" href="/app/#/challenge">Take a challenge</a>
+    </div>
+  </div>
+</header>
+<main id="top">
+  <section class="hero hero--collage" aria-labelledby="hero-h">
+    <div class="wrap"><div class="hero-text grid hero__grid">
+      <div class="hero__text span-5">
+        <h1 id="hero-h">Prop-firm challenges for dreamDEX perps traders</h1>
+        <p class="hero__lead">Take a published rulebook on your perps account. A referee closes it on a breach, and the verdict lands on-chain, with a certificate on a pass. {{trustLine}}</p>
+        <div class="btn-row"><a class="btn btn--primary" href="/app/#/challenge">Take a challenge</a><a class="btn btn--secondary" href="{{verdictHref}}">Replay a real verdict</a></div>
+        <p class="hero__proof">Run {{runId}} on {{label}}: {{headline}} at block {{endBlock}}, Somnia Tokyo testnet.</p>
+      </div>
+      <div class="hero__art span-6 start-7" role="img" aria-label="The Basanos verdict for run {{runId}}: {{headline}}, start equity {{startEquity}} and end equity {{endEquity}} paper USDso">
+        <div class="ly-piece ly-piece--main d-win" aria-hidden="true">
+          <div class="d-win__bar"><span class="d-win__dots"><i></i><i></i><i></i></span><span>Basanos · Run {{runId}} · {{label}}</span></div>
+          <div class="d-win__body">
+            <div class="d-side">
+              <span><i></i>Terminal</span><span class="is-on"><i></i>Verdict</span><span><i></i>Certificate</span>
+              <span class="d-side__label">Rulebook</span><span><i></i>{{label}}</span>
+            </div>
+            <div class="d-main">
+              <div class="d-main__head"><h4>{{headline}}</h4><span class="d-btn">Replay</span></div>
+              <div class="d-tabs"><span class="is-on">Reads</span><span>Rules</span><span>Transactions</span></div>
+              <div class="d-rows">
+                <div class="d-row"><span class="d-thumb"></span><div><b>Start equity</b><small>read by the registry · block {{startBlock}}</small></div><span class="num">{{startEquity}}</span><span class="d-chip">Chain-checked</span></div>
+                <div class="d-row"><span class="d-thumb"></span><div><b>End equity</b><small>read by the registry · block {{endBlock}}</small></div><span class="num">{{endEquity}}</span><span class="d-chip">Chain-checked</span></div>
+                <div class="d-row"><span class="d-thumb"></span><div><b>Profit target</b><small>contract-checked at mint</small></div><span class="num">{{targetPct}}</span><span class="d-chip">Rule</span></div>
+                <div class="d-row"><span class="d-thumb"></span><div><b>Daily-loss floor</b><small>referee-enforced, replayable</small></div><span class="num">{{dailyPct}}</span><span class="d-chip">Rule</span></div>
+                <!-- oracle-row --><div class="d-row"><span class="d-thumb"></span><div><b>Price Oracle at the verdict</b><small>Somnia Agents · recorded on-chain</small></div><span class="num">{{oracleLine}}</span><span class="d-chip">Cross-check</span></div><!-- /oracle-row -->
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ly-piece ly-piece--note d-card" aria-hidden="true">
+          <div class="d-card__row"><h5>Run {{runId}}</h5><span class="d-chip">{{headline}}</span></div>
+          <div class="d-note__line"><i>✓</i><span><b>{{resultLine}}</b></span></div>
+          <div class="d-note__line"><i>✓</i><span>Verdict tx <b>{{verdictTxShort}}</b></span></div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <section id="steps" style="--h: 1" aria-labelledby="steps-h">
+    <div class="wrap">
+      <h2 id="steps-h">Rulebook, referee, verdict</h2>
+      <div class="grid landing-cards">
+        <article class="card span-4">
+          <h3>A published rulebook</h3>
+          <p>{{label}}: a {{targetPct}} target after {{minDurationSec}} s, a {{dailyPct}} daily floor, a {{trailingPct}} trailing floor and exposure under {{exposureX}}x equity, within {{timeLimitMin}} minutes. Its id is the hash of its JSON.</p>
+        </article>
+        <article class="card span-4">
+          <h3>A referee that can only close</h3>
+          <p>The account grants the referee place and cancel on BTC-PERP, never withdraw. It watches every price write with Somnia Reactivity and closes the position with real perps orders on a breach.</p>
+        </article>
+        <article class="card span-4">
+          <h3>A verdict and a certificate</h3>
+          <p>The registry reads the start and end equity itself. A pass mints a non-transferable certificate only after the chain shows the target was met. {{trustLine}}</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="verdict" style="--h: 1" aria-labelledby="verdict-h">
+    <div class="wrap">
+      <h2 id="verdict-h">A real verdict from Somnia Tokyo testnet</h2>
+      <div class="grid">
+        <div class="span-7"><div class="frame landing-shot"><img src="img/verdict.png" alt="The Basanos verdict page for run {{runId}}" width="1440" height="900"></div></div>
+        <div class="span-5">
+          <dl class="rows">
+            <div><dt>Run</dt><dd>Run {{runId}} on {{label}}</dd></div>
+            <div><dt>Result</dt><dd>{{headline}}</dd></div>
+            <div><dt>Equity</dt><dd>{{startEquity}} to {{endEquity}} paper USDso</dd></div>
+            <div><dt>Referee closes</dt><dd>{{closeCount}}, first <a class="link" href="{{closeTxUrl}}">{{closeTxShort}}</a></dd></div>
+            <div><dt>Verdict transaction</dt><dd><a class="link" href="{{verdictTxUrl}}">{{verdictTxShort}}</a></dd></div>
+          </dl>
+          <div class="btn-row"><a class="btn btn--primary" href="{{verdictHref}}">Open the verdict</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="replay" style="--h: 1" aria-labelledby="replay-h">
+    <div class="wrap">
+      <h2 id="replay-h">Replay any verdict</h2>
+      <p class="measure">Every stored read names its block. The verdict page re-runs the same calls at that block on the public Somnia RPC and shows whether the chain still agrees; once the RPC no longer serves that block, it shows the values stored on-chain.</p>
+      <dl class="rows">
+        <div><dt>MarginBank.tryGetAccountEquity(account)</dt><dd>equity</dd></div>
+        <div><dt>MarginBank.getAccountState(account)</dt><dd>locked collateral</dd></div>
+        <div><dt>MarginBank.getPosition(account, pool)</dt><dd>position size</dd></div>
+        <div><dt>PerpPool.tryGetMarkPrice()</dt><dd>mark price</dd></div>
+      </dl>
+      <div class="btn-row"><a class="btn btn--primary" href="{{verdictHref}}">Replay run {{runId}}</a></div>
+    </div>
+  </section>
+
+  <section id="testnet" style="--h: 1" aria-labelledby="testnet-h">
+    <div class="wrap">
+      <h2 id="testnet-h">Testnet only, paper USDso</h2>
+      <p class="measure">{{testnetNotice}}</p>
+      <p class="measure">{{demoDisclosure}}</p>
+      <p class="measure">Path rules are enforced by the referee and shown by replay; they are not checked by the contract. A pause in the referee's watch pauses judging. The known limits are listed in the README.</p>
+    </div>
+  </section>
+
+  <section id="name" style="--h: 1" aria-labelledby="name-h">
+    <div class="wrap">
+      <h2 id="name-h">Basanos, the touchstone</h2>
+      <p class="measure">Basanos is the Greek word for the touchstone, the dark stone a metal was rubbed on to test its purity against a known standard. A Basanos challenge works the same way: a fixed, published standard, an impartial judge, and a result anyone can test again.</p>
+    </div>
+  </section>
+</main>
+<footer class="closing">
+  <div class="wrap">
+    <h2 class="closing__title">Take the Tokyo Sprint</h2>
+    <div class="btn-row"><a class="btn btn--primary btn--xl" href="/app/#/challenge">Take a challenge</a></div>
+    <p class="legal">Basanos · 2026 · Somnia Tokyo testnet · <a class="link" href="https://github.com/Dotman-Bei/basanos">Source on GitHub</a></p>
+  </div>
+</footer>
+<script type="module" src="assets/system.js"></script>
+<script type="module" src="assets/layout/layout.js"></script>
+<script type="module" src="assets/motion/motion.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+/* Page CSS only where the kit allows it (docs/design/frontend.md §4 step 5): the screenshot frame and card spacing. */
+.landing-cards { margin-top: var(--s-7, 48px); }
+.landing-shot { overflow: hidden; border: 1px solid color-mix(in srgb, var(--p-ink) 13%, transparent); border-radius: var(--r-lg, 8px); }
+.landing-shot img { display: block; width: 100%; height: auto; }
+.rows dt { font-size: 13px; font-weight: 500; color: var(--p-muted); }
+.rows dd { margin: 0 0 var(--s-3, 12px); font-size: 16px; overflow-wrap: anywhere; }
+.legal { font-size: 13px; color: var(--p-muted); margin-top: var(--s-6, 32px); }
