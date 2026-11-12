@@ -26,7 +26,7 @@ cd basanos
 npm install
 cp .env.example .env   # fill in three testnet burner keys and REGISTRY_ADDRESS / REFEREE_ADDRESS
 npx tsx packages/referee/src/cli.ts start   # terminal 1: the referee
-npx tsx packages/bot/src/demo.ts            # terminal 2: two accounts, opposite 5x positions, one PASS and one FAIL
+npx tsx packages/bot/src/demo.ts            # terminal 2: two accounts, opposite 10x positions opened together, one PASS and one FAIL
 ```
 
 ## Built at dreamDEX Perps Builder Bounty
@@ -35,11 +35,16 @@ Built for the dreamDEX Perps Builder Bounty (Somnia × dreamDEX, DoraHacks), MVP
 
 ## How it works
 
-- **Rulebook.** `rulebooks/tokyo-sprint.json` and `rulebooks/tokyo-sprint-demo.json` (the demo parameter set, labelled "Tokyo Sprint · Demo" everywhere it appears). The registry stores each rulebook's id (keccak256 of its canonical JSON) and the contract-checked fields.
+- **Rulebook.** `rulebooks/tokyo-sprint.json` and `rulebooks/tokyo-sprint-demo.json` (the demo parameter set, labelled "Tokyo Sprint · Demo" everywhere it appears). The registry stores each rulebook's id (keccak256 of its canonical JSON) and the contract-checked fields. The demo's numbers come from data, not guesswork.
+  - **The numbers:** a +0.50% target after 60 s, a 1.5% daily-loss floor, a 2% trailing floor and a 20-minute limit, traded at 10×.
+  - **How they were chosen:** by replaying 12 hours of on-chain mark and book history through the evaluator (`packages/bot/src/demo-replay.ts`, `docs/evidence/demo-replay.json`). An opposite pair opened in the same block saw at least one PASS in 95.6% of 700 windows, against 64.7% for the first demo rulebook (`rulebooks/tokyo-sprint-demo-v1.json`, kept so its runs still resolve).
 - **Start (chain-checked).** `startRun` reads MarginBank in the transaction: the account must be flat and must have granted the referee place and cancel on BTC-PERP; the start equity is stored with its block.
 - **Referee.** Off-chain Somnia Reactivity: `somnia_watch` on price writes and on the account's MarginBank logs, each push carrying a Multicall3 snapshot of block, time, mark and equity. A watch gap pauses judging; the referee re-reads at head before it resumes. Money flows void a run; liquidations fail it.
 - **Closeable equity.** Every rule judges the equity a close would leave: the MarginBank equity revalued from the mark to the book levels that would fill the close (bids for a long, asks for a short), read in the same block, since the price watch carries the book with each snapshot. On BTC-PERP the book trades about 19 bps above the mark, so equity at the mark alone would show a fresh long an instant loss and a fresh short a phantom gain; closeable equity charges only the spread actually crossed. A position the book cannot price pauses judging.
-- **Close protocol.** Cancel resting orders, read the position fresh, close with an opposite-side IOC `placeOrderFor`, read back, retry at most three times, sweep. Every transaction is recorded.
+- **Close protocol.** Close at once with an opposite-side IOC `placeOrderFor`, then cancel resting orders, read back, retry from fresh reads at most twice more, and sweep. Every transaction is recorded.
+  - **The first close** is planned from the breach block's own position and book: capped at the best ask + 20 bps to buy or the best bid − 20 bps to sell, with the mark ladder as the fallback.
+  - **It costs one round trip:** the transaction is signed locally with a tracked nonce.
+  - **A PASS locks** only once closeable equity clears the target by 10 bps, so the close cannot slip back under it before the registry checks.
 - **Verdicts.** FAIL and VOID are recorded by the referee with the raw reads (block, equity, locked collateral, size, mark) and an evidence hash of the bundle in `docs/evidence/runs.json`; a FAIL's bundle also carries the closeable equity it was judged on and the book it was revalued at. PASS is checked by the registry at mint: flat, equity at or above the target, minimum time, time limit, grant still held. Each PASS or FAIL verdict also asks Somnia's Price Oracle for the BTC perp median, inside `try`, so a failed request never blocks a verdict; the verdict page shows the reading only when one was recorded.
 - **Replay.** The verdict page re-runs every stored read at its block, and for a FAIL re-reads the book at the breach block to show the closeable equity the rule judged; past the public RPC's history it shows the values stored on-chain.
 
@@ -65,7 +70,7 @@ npx tsx packages/referee/src/cli.ts status # active runs in the registry
 | `ACCOUNT_B_PK`, `ACCOUNT_B_ADDRESS` | the scripted bot's account |
 | `REGISTRY_ADDRESS` | the deployed BasanosRegistry |
 | `HIDEKI_RPC_HTTP`, `HIDEKI_RPC_WSS` | optional RPC overrides |
-| `ORACLE_ENABLED` | `true` (this build): sends 0.0309 STT per PASS or FAIL verdict for a Price Oracle reading; most of it is rebated |
+| `ORACLE_ENABLED` | `true` (this build): sends 0.0309 STT per PASS or FAIL verdict for a Price Oracle reading, about 98% of it rebated to the registry; best effort (see the limitations) |
 | `FEATURED_RUN_ID` | the run the landing page shows |
 | `VITE_REGISTRY_ADDRESS`, `VITE_REFEREE_ADDRESS` | public values baked into the app build |
 
@@ -95,7 +100,7 @@ Keys stay in the git-ignored `.env`; the app build refuses any `VITE_*_PK` varia
 
 ## Roadmap
 
-Known limitations: path rules are referee-enforced and replayable, not contract-checked; a referee watch gap pauses judging, and a breach that recovers inside a gap is not seen (gaps are logged in the evidence); a position the book read cannot price (an empty side, or a size beyond the 20 levels read) pauses judging for that snapshot; the referee's grant could also open orders, so every referee order is public evidence and its code is open; self-trading against a second account at the band edge can manufacture a pass (anti-collusion forensics are out of scope); replay depends on the public RPC's history, after which the page shows the stored reads.
+Known limitations: path rules are referee-enforced and replayable, not contract-checked; a referee watch gap pauses judging, and a breach that recovers inside a gap is not seen (gaps are logged in the evidence); a position the book read cannot price (an empty side, or a size beyond the 20 levels read) pauses judging for that snapshot; the referee's grant could also open orders, so every referee order is public evidence and its code is open; self-trading against a second account at the band edge can manufacture a pass (anti-collusion forensics are out of scope); replay depends on the public RPC's history, after which the page shows the stored reads; a FAIL's realized loss can exceed the rule's limit by the price move between the verdict and the close (in the first rehearsal, with a 7 s gap, 5 to 11 bps of equity; the closer now sends within about a second of the price push); the registry asks the Price Oracle with Majority consensus, which needs byte-identical answers, and 3 of 4 requests so far finalized Failed because the validators' answers differ in their source counts and timestamps, so most verdicts carry no oracle reading (`feedback/`).
 
 Next: the registry checks every breach on-chain before the close; an on-chain Reactivity judge; anyone-callable expiry; multi-market rulebooks; anti-collusion forensics.
 
