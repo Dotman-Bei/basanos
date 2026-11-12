@@ -177,3 +177,15 @@ Synced to `8cec5fe` (manifest 77 tasks). spike:18's evidence (`docs/evidence/dep
 | ship:11 | executor-high / sonnet | 6c1da30 | check-readme PASS; README fragments verbatim from plan |
 
 Workspace: 197 tests (core 69, referee 24, spike 33, web 38, ship 11, bot 11, landing 11); typecheck 0 errors; web build `check-env: no VITE_*_PK variables`. Remaining ready: spike:11, spike:19 (human gates).
+
+## Resume — after spike:11 PASS (2026-11-12)
+
+| Task | Executor / model | Commit | Gate re-run / checks |
+|---|---|---|---|
+| spike:11 evidence | (concierge run) | 2245d29 | `check-evidence g1a-close` → PASS; ok, final size 0, 5 txs success, cap 40x (market), sendPath viem, no key material |
+| contracts:11 | (orchestrator, read-only; ACCOUNT_A_ADDRESS only) | 3e2558a | `preview-live.ts` → PASS r5-preview; block 48372484, code 0, equity 49.999025 = SDK, locked 0, size 0, match true |
+| spike:13 | executor-high / sonnet | f8ab424 | PASS spec §3a filled; spike 35; both code files SAME as plan; spec diff 8 lines in the named rows |
+
+**Plan-bug (recorded, not fixed):** spike:13's `fillSpec` writes the G1(a) summary string into the spec's "Measured STT cost per tx" row instead of the `costs` figures. The evidence has them: total 0.0436 STT (grant 0.00335, open 0.0189, rest 0.00979, cancel 0.00102, close 0.0105). Also `summarize("g1d-oracle")` would return only "Failed" (no top-level `symbols`); harmless, that row was hand-filled.
+
+Workspace: 199 tests (core 69, referee 24, spike 35, web 38, ship 11, bot 11, landing 11); typecheck 0 errors. Remaining ready: spike:19 (human gate).
