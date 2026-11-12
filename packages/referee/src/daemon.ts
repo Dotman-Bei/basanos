@@ -12,6 +12,7 @@ import {
   type Snapshot,
   type WatchHandle,
 } from "@basanos/core";
+import { bookCall, decodeBook, readBookLevels, type BookRead } from "@basanos/core/book";
 import { flatten, type CloseIO } from "./close";
 import { Engine, type Action } from "./engine";
 import { attachVerdictTx, writeRunEvidence } from "./evidence";
@@ -75,9 +76,20 @@ export async function runDaemon(d: DaemonDeps): Promise<void> {
     }
   };
 
-  const onSnap = (snap: Snapshot): void => {
+  // Rules judge closeable equity (spec §5), so every judged snapshot comes with the book of the same block; a missing
+  // book pauses runs with an open position until the next push.
+  const onSnap = (snap: Snapshot, book: BookRead | null): void => {
     lastSnap = snap;
-    enqueue(engine.onSnapshot(snap));
+    enqueue(engine.onSnapshot(snap, book));
+  };
+
+  const bookOf = (raw: Hex | undefined, block: bigint): BookRead | null => {
+    try {
+      const book = raw ? decodeBook(raw) : null;
+      return book && book.blockNumber === block ? book : null;
+    } catch {
+      return null;
+    }
   };
 
   const findFlowTx = async (account: Address, block: bigint): Promise<Hex | null> => {
@@ -104,7 +116,7 @@ export async function runDaemon(d: DaemonDeps): Promise<void> {
     if (gap && gap.resumedAtBlock === null) gap.resumedAtBlock = snap.blockNumber.toString();
     engine.resume();
     d.log(`resumed at block ${snap.blockNumber} after a gap; re-evaluating at head`);
-    onSnap(snap);
+    onSnap(snap, await readBookLevels(d.client, BTC_POOL, snap.blockNumber));
   };
 
   const resubscribe = (): void => {
@@ -138,10 +150,10 @@ export async function runDaemon(d: DaemonDeps): Promise<void> {
     watches.push(
       startWatch(
         d.wss,
-        { address: PRICE_FEED_SCHEDULER, ethCalls: [call], pushChangesOnly: true },
+        { address: PRICE_FEED_SCHEDULER, ethCalls: [call, bookCall(BTC_POOL)], pushChangesOnly: true },
         handlers(0, (results) => {
           const s = decode(results);
-          if (s) onSnap(s);
+          if (s) onSnap(s, bookOf(results[1], s.blockNumber));
         }),
       ),
     );
@@ -188,7 +200,7 @@ export async function runDaemon(d: DaemonDeps): Promise<void> {
       d.log(`run ${a.runId} breach ${a.rule} at block ${a.breach.blockNumber}: cancelling and closing`);
       const close = await flatten(d.closeIO, a.account);
       for (const t of close.txs) d.log(`  ${t.label} ${t.status} ${t.explorer}`);
-      const hash = writeRunEvidence(a.runId, { ...base, verdict: "FAILED", rule: a.rule, breach: a.breach, close });
+      const hash = writeRunEvidence(a.runId, { ...base, verdict: "FAILED", rule: a.rule, breach: a.breach, judged: a.judged, close });
       const tx: TxRecord = await retry(() => d.writer.recordFail(a.runId, a.rule, a.breach, hash, close.txs.map((t) => t.hash)));
       attachVerdictTx(a.runId, tx);
       engine.finish(a.runId);
