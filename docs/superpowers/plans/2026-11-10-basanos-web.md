@@ -2312,3 +2312,351 @@ Expected: PASS — `29 passed`.
 
 - [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
 Message: `fix(web): the oracle line states only what was recorded; ORACLE_ENABLED=true by default`
+
+---
+
+### Task 10: The kit's header markup and plain empty states (applies `docs/design/frontend.md`)
+
+**Files:**
+- Modify: `apps/web/src/App.tsx`
+- Modify: `apps/web/src/pages/Home.tsx`
+- Modify: `apps/web/src/pages/Verdict.tsx`
+- Test: `apps/web/test/nav.test.tsx`
+
+**Depends on:** Task 2, Task 6, Task 7, Task 9, Task 5, contracts:Task 8, Task 3, Task 4
+**Effort:** medium
+**Provides:** `Header(props: { current?: Route["name"] }) (the kit header: header.nav > .wrap.nav__bar > .nav__logo, .nav__links, .nav__actions, .nav__toggle)`, `RunList(props: { runs: { runId: bigint; status: number }[] | null })`, `READING_TEXT, NO_RUNS_TEXT, NO_REGISTRY_TEXT, READ_FAILED_TEXT (plain empty-state copy)`, `runMissing(run: { status: number; account: string }): boolean`, `RunNotFound(props: { runId: bigint })`
+**Requires:** `CertificatePage(props: { runId: bigint })`, `Home()`, `Terminal()`, `VerdictPage(props: { runId: bigint })`, `routeHref(r: Route): string`, `useRoute(): Route`, `type Route = { name: "home" } | { name: "challenge" } | { name: "run"; runId: bigint } | { name: "cert"; runId: bigint }`, `RUN_STATUS = ["None", "Active", "Passed", "Failed", "Voided"]`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `browserClient(): PublicClient`, `TRUST_LINE = "Every certificate is chain-checked at mint; every verdict is replayable."`, `REGISTRY: Address | null`, `VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void })`, `interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }`, `replayRead(client: PublicClient, account: Address, pool: Address, stored: StoredRead): Promise<ReplayRow[]>`, `interface ReplayRow { field: "equity" | "lockedCollateral" | "positionSize" | "markPrice"; call: string; stored: bigint; chain: bigint | null; match: "exact" | "within-tolerance" | "differs" | "not-served" }`, `rulebookById(id: Hex): Rulebook | null`
+
+Applies `docs/design/frontend.md` (the CONSTRAINT: all UI follows it) and the kit's header as `packages/design/vendor/system.css` ("navigation") and the kit's `assets/layout/hero-collage.html` write it.
+
+Why (guide plan-bug P4, 2026-11-12):
+- **The header today:** Task 7's header uses `.nav > .wrap` with bare `.link` anchors and a secondary button, and has no `.nav__bar`. At 1440×900 the logo, "Verdicts" and the button stack vertically and overflow the fixed 72 px header.
+- **The kit's markup:** `<header class="nav"><div class="wrap nav__bar">`. It puts `.wrap` and `.nav__bar` on **one** element, so `.nav__bar { height: 100% }` fills the bar and centres its row. Inside: `.nav__logo` (the dealt `ring` mark), `.nav__links` > `.nav__item` > `.nav__link` (with `aria-current="page"`), `.nav__actions` with the one filled button (`.btn--primary`; below 1024 px the kit keeps only `.btn--primary` in the bar), and the `.nav__toggle` menu button.
+- **Behaviour:** React state replaces the kit's `system.js` toggle. It sets `is-open` and `aria-expanded`, swaps the bars and cross icons, and sets `body.nav-locked`. Escape, a link tap and a resize to ≥ 1024 px close it.
+- **Empty states, plain words, never a bare heading:**
+  - Home says it is reading, "No verdicts yet. A verdict appears here when a challenge run ends.", or that the registry could not be read. A failed read is not shown as "no verdicts".
+  - `#/run/<id>` for a run the registry never issued (status None, zero account) shows "Run <id> not found" with a link back, instead of an empty verdict.
+
+Checked on 2026-11-12 in scratch: the web build served by `vite preview` and captured headless at 1440×900, with the deployed registry `0xf5D8…9370`. The header is one centred row (logo, Verdicts underlined, filled button). Home shows the no-verdicts line (`runCount` 0), and `#/run/99` shows "Run 99 not found".
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/web/test/nav.test.tsx`:
+```tsx
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { Header } from "../src/App";
+import { NO_RUNS_TEXT, READING_TEXT, RunList } from "../src/pages/Home";
+import { RunNotFound, runMissing } from "../src/pages/Verdict";
+
+describe("header: the kit's nav (docs/design/frontend.md)", () => {
+  it("uses the kit header: header.nav > .wrap.nav__bar with the logo, the links, one filled button and the menu toggle", () => {
+    const { container } = render(<Header current="home" />);
+    const bar = container.querySelector("header.nav > .wrap.nav__bar");
+    expect(bar).toBeTruthy();
+    expect(bar?.querySelector(".nav__logo .mark[data-mark='ring']")).toBeTruthy();
+    const link = bar?.querySelector(".nav__links .nav__item .nav__link");
+    expect(link?.textContent).toBe("Verdicts");
+    expect(link?.getAttribute("aria-current")).toBe("page");
+    expect(bar?.querySelectorAll(".nav__actions .btn.btn--primary")).toHaveLength(1);
+    expect(container.querySelector("a.link, .nav > .wrap:not(.nav__bar)")).toBeNull();
+    const toggle = screen.getByRole("button", { name: "Menu" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(container.querySelector("header")?.className).toBe("nav is-open");
+    expect(document.body.classList.contains("nav-locked")).toBe(true);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(container.querySelector("header")?.className).toBe("nav");
+    expect(document.body.classList.contains("nav-locked")).toBe(false);
+  });
+});
+
+describe("plain empty states", () => {
+  it("says while it reads and when there are no verdicts yet", () => {
+    const { container, rerender } = render(<RunList runs={null} />);
+    expect(container.textContent).toBe(READING_TEXT);
+    rerender(<RunList runs={[]} />);
+    expect(container.textContent).toBe(NO_RUNS_TEXT);
+  });
+  it("shows a run the registry never issued as not found, not as an empty verdict", () => {
+    expect(runMissing({ status: 0, account: "0x0000000000000000000000000000000000000000" })).toBe(true);
+    expect(runMissing({ status: 3, account: "0x00000000000000000000000000000000000000a1" })).toBe(false);
+    render(<RunNotFound runId={99n} />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Run 99 not found");
+    expect(screen.getByText(/No run 99 is in the registry/)).toBeTruthy();
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/web -- test/nav.test.tsx`
+Expected: FAIL — `3 failed (3)`.
+
+- [ ] **Step 3: The kit header**
+
+Replace `apps/web/src/App.tsx` with:
+```tsx
+import { useEffect, useState } from "react";
+import { CertificatePage } from "./pages/Certificate";
+import { Home } from "./pages/Home";
+import { Terminal } from "./pages/Terminal";
+import { VerdictPage } from "./pages/Verdict";
+import { routeHref, useRoute, type Route } from "./routes";
+
+// The kit's header (docs/design/frontend.md; packages/design/vendor/system.css, "navigation"; the kit's own
+// assets/layout/hero-collage.html): <header class="nav"><div class="wrap nav__bar"> holding .nav__logo,
+// .nav__links (.nav__item > .nav__link), .nav__actions (the one filled button) and .nav__toggle, which opens the
+// phone sheet below 1024px. React state stands in for the kit's system.js: a toggle click, Escape, a link tap and a
+// resize to desktop width open or close the sheet, and body.nav-locked keeps the page from scrolling under it.
+const BARS = (
+  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+    <path d="M2 5h14M2 13h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+const CROSS = (
+  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+    <path d="M4 4l10 10M14 4L4 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+
+export function Header(props: { current?: Route["name"] }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    document.body.classList.toggle("nav-locked", open);
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const wide = typeof window.matchMedia === "function" ? window.matchMedia("(min-width: 1024px)") : null;
+    const onWide = (e: MediaQueryListEvent) => {
+      if (e.matches) setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    wide?.addEventListener("change", onWide);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      wide?.removeEventListener("change", onWide);
+      document.body.classList.remove("nav-locked");
+    };
+  }, [open]);
+  const close = () => setOpen(false);
+  return (
+    <header className={open ? "nav is-open" : "nav"}>
+      <div className="wrap nav__bar">
+        <a className="nav__logo" href={routeHref({ name: "home" })} aria-label="Basanos home" onClick={close}>
+          <span className="mark" data-mark="ring" aria-hidden="true" />
+          Basanos
+        </a>
+        <nav className="nav__links" aria-label="Main">
+          <div className="nav__item">
+            <a className="nav__link" href={routeHref({ name: "home" })} aria-current={props.current === "home" ? "page" : undefined} onClick={close}>
+              Verdicts
+            </a>
+          </div>
+        </nav>
+        <div className="nav__actions">
+          <a className="btn btn--primary" href={routeHref({ name: "challenge" })} onClick={close}>
+            Take a challenge
+          </a>
+        </div>
+        <button type="button" className="nav__toggle" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          {open ? CROSS : BARS}
+        </button>
+      </div>
+    </header>
+  );
+}
+
+export function App() {
+  const route = useRoute();
+  return (
+    <>
+      <Header current={route.name} />
+      <main className="app-main">
+        {route.name === "challenge" ? (
+          <Terminal />
+        ) : route.name === "run" ? (
+          <VerdictPage runId={route.runId} />
+        ) : route.name === "cert" ? (
+          <CertificatePage runId={route.runId} />
+        ) : (
+          <Home />
+        )}
+      </main>
+    </>
+  );
+}
+```
+
+- [ ] **Step 4: Plain empty states**
+
+Replace `apps/web/src/pages/Home.tsx` with:
+```tsx
+import { useEffect, useState } from "react";
+import { RUN_STATUS, basanosRegistryAbi } from "@basanos/core";
+import { browserClient } from "../chain/client";
+import { TRUST_LINE } from "../components/VerdictView";
+import { REGISTRY } from "../config";
+import { routeHref } from "../routes";
+
+// Plain empty states (docs/design/frontend.md): say what is there and what will be, in plain words, never a bare
+// heading. A failed read is not "no verdicts", so it says so.
+export const READING_TEXT = "Reading the registry…";
+export const NO_RUNS_TEXT = "No verdicts yet. A verdict appears here when a challenge run ends.";
+export const NO_REGISTRY_TEXT = "This build has no registry address set.";
+export const READ_FAILED_TEXT = "The registry could not be read right now. Reload to try again.";
+
+export function RunList(props: { runs: { runId: bigint; status: number }[] | null }) {
+  if (props.runs === null) return <p className="label">{READING_TEXT}</p>;
+  if (props.runs.length === 0) return <p className="label">{NO_RUNS_TEXT}</p>;
+  return (
+    <ul className="log">
+      {props.runs.map((r) => (
+        <li key={r.runId.toString()}>
+          <a className="link" href={routeHref({ name: "run", runId: r.runId })}>
+            Run {r.runId.toString()}: {RUN_STATUS[r.status] ?? "Unknown"}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function Home() {
+  const [runs, setRuns] = useState<{ runId: bigint; status: number }[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!REGISTRY) return;
+    const registry = REGISTRY;
+    const c = browserClient();
+    void (async () => {
+      try {
+        const count = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "runCount" });
+        const ids: bigint[] = [];
+        for (let id = count; id > 0n && ids.length < 12; id--) ids.push(id);
+        const rows = await Promise.all(
+          ids.map(async (runId) => ({ runId, status: (await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [runId] })).status })),
+        );
+        setRuns(rows);
+      } catch {
+        setFailed(true);
+      }
+    })();
+  }, []);
+  return (
+    <div className="wrap">
+      <h1 className="figure">Recent verdicts</h1>
+      <p>{TRUST_LINE}</p>
+      <p className="label">Somnia Tokyo testnet, paper USDso. No real funds, no payouts; not a financial service.</p>
+      {!REGISTRY ? <p className="label">{NO_REGISTRY_TEXT}</p> : failed ? <p className="label">{READ_FAILED_TEXT}</p> : <RunList runs={runs} />}
+    </div>
+  );
+}
+```
+
+Replace `apps/web/src/pages/Verdict.tsx` with:
+```tsx
+import { useEffect, useState } from "react";
+import { basanosRegistryAbi } from "@basanos/core";
+import { browserClient } from "../chain/client";
+import { VerdictView, type VerdictData } from "../components/VerdictView";
+import { REGISTRY } from "../config";
+import { replayRead, type ReplayRow } from "../lib/replay";
+import { rulebookById } from "../lib/rulebooks";
+import { routeHref } from "../routes";
+
+/** A run id the registry never issued reads back as an empty record (status None, zero account). */
+export function runMissing(run: { status: number; account: string }): boolean {
+  return run.status === 0 && /^0x0{40}$/i.test(run.account);
+}
+
+/** The plain empty state for a missing run (docs/design/frontend.md), instead of an empty verdict. */
+export function RunNotFound(props: { runId: bigint }) {
+  const id = props.runId.toString();
+  return (
+    <div className="wrap">
+      <h1 className="figure">Run {id} not found</h1>
+      <p>
+        No run {id} is in the registry. <a className="link" href={routeHref({ name: "home" })}>See the recent verdicts</a>.
+      </p>
+    </div>
+  );
+}
+
+export function VerdictPage(props: { runId: bigint }) {
+  const [data, setData] = useState<VerdictData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [pool, setPool] = useState<`0x${string}` | null>(null);
+  const [replay, setReplay] = useState<Record<"start" | "breach" | "end", ReplayRow[] | null>>({ start: null, breach: null, end: null });
+  useEffect(() => {
+    if (!REGISTRY) {
+      setError("This build has no registry address set.");
+      return;
+    }
+    const registry = REGISTRY;
+    const c = browserClient();
+    void (async () => {
+      try {
+        const run = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [props.runId] });
+        if (runMissing(run)) {
+          setMissing(true);
+          return;
+        }
+        const closeTxs = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getCloseTxs", args: [props.runId] });
+        const params = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRulebook", args: [run.rulebookId] });
+        setPool(params.pool);
+        setData({
+          runId: props.runId,
+          account: run.account,
+          status: run.status,
+          rule: run.rule,
+          voidReason: run.voidReason,
+          rulebookLabel: rulebookById(run.rulebookId)?.label ?? "Unpublished rulebook",
+          rulebookId: run.rulebookId,
+          rulebookJson: (() => {
+            const rb = rulebookById(run.rulebookId);
+            return rb ? JSON.stringify(rb, null, 2) : null;
+          })(),
+          start: run.start,
+          breach: run.breach,
+          end: run.end,
+          closeTxs,
+          oraclePrice: run.oraclePrice,
+          oracleSources: run.oracleSources,
+          oracleDone: run.oracleDone,
+        });
+      } catch (e) {
+        setError((e as Error).message.slice(0, 200));
+      }
+    })();
+  }, [props.runId]);
+  if (error) return <p className="wrap error">{error}</p>;
+  if (missing) return <RunNotFound runId={props.runId} />;
+  if (!data || !pool) return <p className="wrap label">Reading run {props.runId.toString()} from the registry…</p>;
+  const onReplay = async () => {
+    const c = browserClient();
+    const [start, breach, end] = await Promise.all([
+      replayRead(c, data.account, pool, data.start),
+      data.status === 3 ? replayRead(c, data.account, pool, data.breach) : Promise.resolve(null),
+      replayRead(c, data.account, pool, data.end),
+    ]);
+    setReplay({ start, breach, end });
+  };
+  return <VerdictView data={data} replay={replay} onReplay={() => void onReplay()} />;
+}
+```
+
+- [ ] **Step 5: Run the web tests and the build**
+Run: `npm test -w @basanos/web`
+Expected: `32 passed` (the existing app test still finds one "Take a challenge" link).
+Run: `npm run build -w @basanos/web`
+Expected: `check-env: no VITE_*_PK variables`, then Vite's `✓ built in …`.
+
+- [ ] **Step 6: Run the test (the gate)**
+Run: `npm test -w @basanos/web -- test/nav.test.tsx`
+Expected: PASS — `3 passed`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `fix(web): the kit's header markup and plain empty states`

@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it.",
   "subsystems": [
     "spike",
     "contracts",
@@ -3082,6 +3082,68 @@
       "status": "pending"
     },
     {
+      "id": "web:10",
+      "subsystem": "web",
+      "title": "The kit's header markup and plain empty states (applies `docs/design/frontend.md`)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:2",
+        "web:6",
+        "web:7",
+        "web:9",
+        "web:5",
+        "contracts:8",
+        "web:3",
+        "web:4"
+      ],
+      "effort": "medium",
+      "files": {
+        "create": [],
+        "modify": [
+          "apps/web/src/App.tsx",
+          "apps/web/src/pages/Home.tsx",
+          "apps/web/src/pages/Verdict.tsx"
+        ],
+        "test": [
+          "apps/web/test/nav.test.tsx"
+        ]
+      },
+      "provides": [
+        "Header(props: { current?: Route[\"name\"] }) (the kit header: header.nav > .wrap.nav__bar > .nav__logo, .nav__links, .nav__actions, .nav__toggle)",
+        "RunList(props: { runs: { runId: bigint; status: number }[] | null })",
+        "READING_TEXT, NO_RUNS_TEXT, NO_REGISTRY_TEXT, READ_FAILED_TEXT (plain empty-state copy)",
+        "runMissing(run: { status: number; account: string }): boolean",
+        "RunNotFound(props: { runId: bigint })"
+      ],
+      "requires": [
+        "CertificatePage(props: { runId: bigint })",
+        "Home()",
+        "Terminal()",
+        "VerdictPage(props: { runId: bigint })",
+        "routeHref(r: Route): string",
+        "useRoute(): Route",
+        "type Route = { name: \"home\" } | { name: \"challenge\" } | { name: \"run\"; runId: bigint } | { name: \"cert\"; runId: bigint }",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "browserClient(): PublicClient",
+        "TRUST_LINE = \"Every certificate is chain-checked at mint; every verdict is replayable.\"",
+        "REGISTRY: Address | null",
+        "VerdictView(props: { data: VerdictData; replay: Record<\"start\" | \"breach\" | \"end\", ReplayRow[] | null>; onReplay: () => void })",
+        "interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }",
+        "replayRead(client: PublicClient, account: Address, pool: Address, stored: StoredRead): Promise<ReplayRow[]>",
+        "interface ReplayRow { field: \"equity\" | \"lockedCollateral\" | \"positionSize\" | \"markPrice\"; call: string; stored: bigint; chain: bigint | null; match: \"exact\" | \"within-tolerance\" | \"differs\" | \"not-served\" }",
+        "rulebookById(id: Hex): Rulebook | null"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web -- test/nav.test.tsx",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "fix(web): the kit's header markup and plain empty states",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
       "id": "ship:1",
       "subsystem": "ship",
       "title": "`@basanos/ship` — featured snapshot, X posts, checks, site assembly, evidence index",
@@ -3352,6 +3414,7 @@
         "web:7",
         "web:8",
         "web:9",
+        "web:10",
         "landing:3",
         "landing:5",
         "contracts:10"
@@ -3666,7 +3729,8 @@
         "web:2",
         "web:7",
         "web:8",
-        "web:9"
+        "web:9",
+        "web:10"
       ],
       "effort": "medium",
       "files": {

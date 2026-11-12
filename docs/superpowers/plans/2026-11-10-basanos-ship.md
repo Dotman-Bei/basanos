@@ -1008,7 +1008,7 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 - Create: `deployments/site.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, web:Task 2, web:Task 7, web:Task 8, web:Task 9, landing:Task 3, landing:Task 5, contracts:Task 10
+**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, landing:Task 3, landing:Task 5, contracts:Task 10
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`

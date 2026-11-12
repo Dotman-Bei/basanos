@@ -658,7 +658,7 @@ Message: `feat(landing): collage hero, three steps, real verdict, replay, testne
 - Create: `apps/landing/scripts/shoot-verdict.mjs`
 - Create: `apps/landing/src/img/verdict.png`
 
-**Depends on:** Task 2, Task 3, web:Task 2, web:Task 7, web:Task 8, web:Task 9
+**Depends on:** Task 2, Task 3, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10
 **Effort:** medium
 **Provides:** `apps/landing/src/img/verdict.png (1440x900 shoot.mjs screenshot of /app/#/run/<featured id>, real product UI)`, `CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>`
 **Requires:** `apps/landing/src/featured-verdict.json (the page's only data source)`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `apps/web/dist (static build served at /app/)`
