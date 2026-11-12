@@ -1,0 +1,43 @@
+{
+  "evidence": "deposit-a",
+  "writtenAt": "2026-11-12T11:36:23.750Z",
+  "account": "A",
+  "owner": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+  "token": "0xed7993A74dAe1e6656B704A424DcD8711aAf4F72",
+  "marginBank": "0x478769E1177C0773c43A593DCCc4Ad15F15F1394",
+  "txs": [
+    {
+      "label": "approve",
+      "hash": "0x82186f7088b3ae58626d8690582ea99c71166795b8a46409a3016df55dc81b3f",
+      "status": "success",
+      "gasUsed": "260601",
+      "costWei": "1563606000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x82186f7088b3ae58626d8690582ea99c71166795b8a46409a3016df55dc81b3f"
+    },
+    {
+      "label": "deposit",
+      "hash": "0x58dcd6a3b88fad8fd3a30bc9e4e5a90c2f3627e1304acbd666d8748d5f57bc9c",
+      "status": "success",
+      "gasUsed": "521297",
+      "costWei": "3127782000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x58dcd6a3b88fad8fd3a30bc9e4e5a90c2f3627e1304acbd666d8748d5f57bc9c"
+    }
+  ],
+  "ok": true,
+  "amountWei": "50000000000000000000",
+  "before": {
+    "walletWei": "50000000000000000000",
+    "allowanceWei": "0",
+    "unlockedWei": "0",
+    "lockedWei": "0",
+    "activePools": 0
+  },
+  "after": {
+    "walletWei": "0",
+    "allowanceWei": "0",
+    "unlockedWei": "50000000000000000000",
+    "lockedWei": "0",
+    "activePools": 0
+  },
+  "creditedWei": "50000000000000000000"
+}
