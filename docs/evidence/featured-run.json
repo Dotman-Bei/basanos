@@ -1,0 +1,73 @@
+{
+  "schema": "basanos.featured/1",
+  "chainId": 50383,
+  "registry": "0xf5D8099239200DF961E0910A42C105214D1E9370",
+  "runId": "1",
+  "status": "Failed",
+  "rule": "DailyLoss",
+  "rulebook": {
+    "schema": "basanos.rulebook/1",
+    "name": "Tokyo Sprint",
+    "variant": "demo",
+    "label": "Tokyo Sprint · Demo",
+    "chainId": 50383,
+    "market": {
+      "symbol": "BTC-PERP",
+      "pool": "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0",
+      "baseDecimals": 8
+    },
+    "profitTargetBps": 50,
+    "dailyLossBps": 50,
+    "trailingDrawdownBps": 75,
+    "maxExposureX": 15,
+    "minDurationSec": 60,
+    "timeLimitSec": 900,
+    "oracleSymbol": "BTC/USDC:PERP",
+    "voidOn": [
+      "flow",
+      "foreignMarket",
+      "grantRevoked"
+    ],
+    "id": "0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757"
+  },
+  "account": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+  "start": {
+    "block": "48411141",
+    "equity": "49.99",
+    "equityRaw": "49999025000000000000",
+    "size": "0",
+    "mark": "71,346.69"
+  },
+  "breach": {
+    "block": "48411742",
+    "equity": "49.24",
+    "equityRaw": "49249049431589214500",
+    "size": "350000",
+    "mark": "71,339.82"
+  },
+  "end": {
+    "block": "48411968",
+    "equity": "49.67",
+    "equityRaw": "49671425000000000000",
+    "size": "0",
+    "mark": "71,309.95"
+  },
+  "closeTxs": [
+    {
+      "hash": "0x911cf71f696e4479ff82ff65ce70261e4c9e54da81a4f5d3392c5f27ebe5f283",
+      "url": "https://explorer.testnet.somnia.network/tokyo/tx/0x911cf71f696e4479ff82ff65ce70261e4c9e54da81a4f5d3392c5f27ebe5f283"
+    }
+  ],
+  "verdictTx": {
+    "hash": "0x50ae1ed65e86ebca00643ca78754f8bf6bfe233630c7c58cf6418ea30db01add",
+    "url": "https://explorer.testnet.somnia.network/tokyo/tx/0x50ae1ed65e86ebca00643ca78754f8bf6bfe233630c7c58cf6418ea30db01add"
+  },
+  "oracle": null,
+  "links": {
+    "verdict": "/app/#/run/1",
+    "certificate": null
+  },
+  "trustLine": "Every certificate is chain-checked at mint; every verdict is replayable.",
+  "demoDisclosure": "Both demo accounts are burners operated by the builder: one human-driven, one scripted.",
+  "testnetNotice": "Somnia Tokyo testnet, paper USDso. No real funds, no payouts; not a financial service."
+}
