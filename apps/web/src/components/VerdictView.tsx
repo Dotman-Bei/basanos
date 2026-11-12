@@ -1,6 +1,7 @@
 import type { Address, Hex } from "viem";
 import { RULE_NAMES, RUN_STATUS, VOID_REASONS, explorerTx } from "@basanos/core";
 import { formatUsdso, shortHash } from "../lib/format";
+import type { JudgedView } from "../lib/judged";
 import type { ReplayRow, StoredRead } from "../lib/replay";
 import { routeHref } from "../routes";
 
@@ -41,7 +42,12 @@ function heading(d: VerdictData): string {
   return status.toUpperCase();
 }
 
-function ReadBlock(props: { title: string; who: string; read: StoredRead; rows: ReplayRow[] | null }) {
+function judgedText(j: JudgedView): string {
+  if (!j.served) return "book no longer served by the public RPC";
+  return j.equity === null ? "the book in this block cannot price the position" : `${formatUsdso(j.equity)} USDso`;
+}
+
+function ReadBlock(props: { title: string; who: string; read: StoredRead; rows: ReplayRow[] | null; judged?: JudgedView | null }) {
   return (
     <section className="panel">
       <h2 className="label">
@@ -54,7 +60,16 @@ function ReadBlock(props: { title: string; who: string; read: StoredRead; rows: 
         <dd className="mono">{props.read.positionSize.toString()}</dd>
         <dt>Mark</dt>
         <dd className="mono">{props.read.markOk ? formatUsdso(props.read.markPrice) : "no fresh mark"}</dd>
+        {props.judged ? (
+          <>
+            <dt>Closeable equity (judged)</dt>
+            <dd className="mono">{judgedText(props.judged)}</dd>
+          </>
+        ) : null}
       </dl>
+      {props.judged ? (
+        <p className="label">The rules judge closeable equity: the stored equity revalued at the book in this block (bids for a long, asks for a short).</p>
+      ) : null}
       {props.rows ? (
         <ul className="log">
           {props.rows.map((r) => (
@@ -68,7 +83,13 @@ function ReadBlock(props: { title: string; who: string; read: StoredRead; rows: 
   );
 }
 
-export function VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void }) {
+export function VerdictView(props: {
+  data: VerdictData;
+  replay: Record<"start" | "breach" | "end", ReplayRow[] | null>;
+  onReplay: () => void;
+  /** The breach revalued at the replayed book (spec §5); absent until Replay is pressed. */
+  breachJudged?: JudgedView | null;
+}) {
   const d = props.data;
   const passed = d.status === 2;
   const failed = d.status === 3;
@@ -95,7 +116,7 @@ export function VerdictView(props: { data: VerdictData; replay: Record<"start" |
       <div className="app-grid">
         <div className="app-col-8">
           <ReadBlock title="Start" who="read by the registry in the transaction" read={d.start} rows={props.replay.start} />
-          {failed ? <ReadBlock title="Breach" who="attested by the referee" read={d.breach} rows={props.replay.breach} /> : null}
+          {failed ? <ReadBlock title="Breach" who="attested by the referee" read={d.breach} rows={props.replay.breach} judged={props.breachJudged ?? null} /> : null}
           <ReadBlock title="End" who="read by the registry in the transaction" read={d.end} rows={props.replay.end} />
         </div>
         <div className="app-col-4">
