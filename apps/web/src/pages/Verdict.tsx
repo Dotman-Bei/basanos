@@ -5,10 +5,30 @@ import { VerdictView, type VerdictData } from "../components/VerdictView";
 import { REGISTRY } from "../config";
 import { replayRead, type ReplayRow } from "../lib/replay";
 import { rulebookById } from "../lib/rulebooks";
+import { routeHref } from "../routes";
+
+/** A run id the registry never issued reads back as an empty record (status None, zero account). */
+export function runMissing(run: { status: number; account: string }): boolean {
+  return run.status === 0 && /^0x0{40}$/i.test(run.account);
+}
+
+/** The plain empty state for a missing run (docs/design/frontend.md), instead of an empty verdict. */
+export function RunNotFound(props: { runId: bigint }) {
+  const id = props.runId.toString();
+  return (
+    <div className="wrap">
+      <h1 className="figure">Run {id} not found</h1>
+      <p>
+        No run {id} is in the registry. <a className="link" href={routeHref({ name: "home" })}>See the recent verdicts</a>.
+      </p>
+    </div>
+  );
+}
 
 export function VerdictPage(props: { runId: bigint }) {
   const [data, setData] = useState<VerdictData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
   const [pool, setPool] = useState<`0x${string}` | null>(null);
   const [replay, setReplay] = useState<Record<"start" | "breach" | "end", ReplayRow[] | null>>({ start: null, breach: null, end: null });
   useEffect(() => {
@@ -21,6 +41,10 @@ export function VerdictPage(props: { runId: bigint }) {
     void (async () => {
       try {
         const run = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [props.runId] });
+        if (runMissing(run)) {
+          setMissing(true);
+          return;
+        }
         const closeTxs = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getCloseTxs", args: [props.runId] });
         const params = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRulebook", args: [run.rulebookId] });
         setPool(params.pool);
@@ -50,6 +74,7 @@ export function VerdictPage(props: { runId: bigint }) {
     })();
   }, [props.runId]);
   if (error) return <p className="wrap error">{error}</p>;
+  if (missing) return <RunNotFound runId={props.runId} />;
   if (!data || !pool) return <p className="wrap label">Reading run {props.runId.toString()} from the registry…</p>;
   const onReplay = async () => {
     const c = browserClient();
