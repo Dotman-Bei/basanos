@@ -976,3 +976,181 @@ Expected: PASS — `PASS third-party list`.
 
 - [ ] **Step 3: Commit (kernel-performed — no agent runs this)**
 Message: `docs(gates): list the third-party frontend-kit files in the submission draft`
+
+---
+
+### Task 7: The landing's closes row names a PASS's certificate, not "0, first none" (P8)
+
+**Files:**
+- Modify: `apps/landing/scripts/render.ts`
+- Modify: `apps/landing/src/page.html`
+- Test: `apps/landing/test/closes-row.test.ts`
+
+**Depends on:** Task 1, Task 3, Task 5
+**Effort:** low
+**Model tier:** standard
+**Provides:** `pageVars(f: FeaturedLike): Record<string, string> (adds closeRowLabel, closeRowLead, closeRowHref, closeRowLink: a FAIL names its first close, a PASS its certificate)`, `apps/landing/src/page.html (the #verdict closes row reads the closeRow slots)`
+**Requires:** `interface FeaturedLike { runId: string; status: string; rule: string | null; rulebook: { label: string; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number }; start: { block: string; equity: string }; end: { block: string; equity: string }; breach: { block: string; equity: string } | null; closeTxs: { hash: string; url: string }[]; verdictTx: { hash: string; url: string } | null; oracle: { price: string; sources: number } | null; links: { verdict: string; certificate: string | null }; account: string; registry: string; trustLine: string; demoDisclosure: string; testnetNotice: string }`, `pageVars(f: FeaturedLike): Record<string, string>`, `renderPage(template: string, f: FeaturedLike): string`, `findUnbacked(html: string, f: FeaturedLike): string[]`, `apps/landing/src/page.html (the template)`, `withOracleRow(template: string, f: FeaturedLike): string (the Price Oracle row only with a real reading)`, `apps/landing/test/fixtures/featured-sample.json (a labelled test fixture, "sample": true; lives under test/ only)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`
+
+Why (architect P8, 2026-11-12; the guide's P8c sweep of `apps/landing`):
+- **The defect:** ship:3 makes the money-shot PASS the featured run. The registry records no close for a PASS, so the "Referee closes" row of "A real verdict from Somnia Tokyo testnet" would print the count `0`, then "first none", with "none" linking to the verdict.
+- **The fix:** the row takes four new slots from `pageVars`.
+  - A PASS with a certificate: "Certificate", then "Soulbound, held by the account: certificate #<id>", linking to the certificate.
+  - A FAIL reads exactly as before ("1, first 0x911c…f283").
+  - A run with neither: "None recorded: see the verdict".
+- **Why not the lock close here:** that section says every figure is read from the chain, and the lock close is in the referee's evidence bundle, not in the registry. The certificate is on-chain. (web:14 shows the lock close on the verdict page, labelled as from the bundle.)
+- **The rest of the landing is clean:** its equities come pre-formatted from the snapshot ("49.99"), its blocks are block numbers, and it renders no position size.
+- **UI rules:** `docs/design/frontend.md`: the same `landing-rows` row and classes; only its slots change; no CSS.
+- **Verified by the architect** in a test bed from HEAD: with the committed run-1 snapshot, that row of the built page is unchanged; with a snapshot of run 3 (the real PASS, `snapshot-run.ts 3`), the landing builds with `PASS truth (run 3)` and the row reads as above.
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/landing/test/closes-row.test.ts`:
+```ts
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { withOracleRow } from "../scripts/oracle-row";
+import { renderPage, type FeaturedLike } from "../scripts/render";
+import { findUnbacked } from "../scripts/truth";
+
+const template = readFileSync(new URL("../src/page.html", import.meta.url), "utf8");
+// The labelled test fixture, not src/featured-verdict.json: ship:3 replaces that snapshot with the money shot.
+const base = JSON.parse(readFileSync(new URL("./fixtures/featured-sample.json", import.meta.url), "utf8")) as FeaturedLike;
+const CLOSE = "0x911cf71f696e4479ff82ff65ce70261e4c9e54da81a4f5d3392c5f27ebe5f283";
+// Run 1 on Hideki: a FAIL with one referee close.
+const fail: FeaturedLike = {
+  ...base,
+  runId: "1",
+  status: "Failed",
+  rule: "DailyLoss",
+  closeTxs: [{ hash: CLOSE, url: `https://explorer.testnet.somnia.network/tokyo/tx/${CLOSE}` }],
+  links: { verdict: "/app/#/run/1", certificate: null },
+};
+// Run 3 on Hideki: a PASS, for which the registry records no close.
+const pass: FeaturedLike = { ...base, runId: "3", status: "Passed", rule: null, breach: null, closeTxs: [], links: { verdict: "/app/#/run/3", certificate: "/app/#/cert/3" } };
+const page = (f: FeaturedLike) => renderPage(withOracleRow(template, f), f);
+
+describe("the landing's closes row (P8)", () => {
+  it("names a FAIL's first referee close, as before", () => {
+    expect(page(fail)).toContain(`<div><dt>Referee closes</dt><dd>1, first <a class="link" href="https://explorer.testnet.somnia.network/tokyo/tx/${CLOSE}">0x911c…f283</a></dd></div>`);
+  });
+  it("names a PASS's certificate instead of a close count of 0", () => {
+    const html = page(pass);
+    expect(html).toContain('<div><dt>Certificate</dt><dd>Soulbound, held by the account: <a class="link" href="/app/#/cert/3">certificate #3</a></dd></div>');
+    expect(html).not.toContain("Referee closes");
+    expect(html).not.toMatch(/\b0, first\b/);
+    expect(findUnbacked(html, pass)).toEqual([]);
+  });
+  it("says none were recorded when a run has neither a close nor a certificate", () => {
+    expect(page({ ...fail, closeTxs: [] })).toContain('<div><dt>Referee closes</dt><dd>None recorded: <a class="link" href="/app/#/run/1">see the verdict</a></dd></div>');
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/landing -- test/closes-row.test.ts`
+Expected: FAIL — `Tests  2 failed | 1 passed (3)` (the FAIL row already reads as before).
+
+- [ ] **Step 3: Add the closes-row slots**
+
+Replace `apps/landing/scripts/render.ts` with:
+```ts
+export interface FeaturedLike {
+  runId: string;
+  status: string;
+  rule: string | null;
+  rulebook: { label: string; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number };
+  start: { block: string; equity: string };
+  end: { block: string; equity: string };
+  breach: { block: string; equity: string } | null;
+  closeTxs: { hash: string; url: string }[];
+  verdictTx: { hash: string; url: string } | null;
+  oracle: { price: string; sources: number } | null;
+  links: { verdict: string; certificate: string | null };
+  account: string;
+  registry: string;
+  trustLine: string;
+  demoDisclosure: string;
+  testnetNotice: string;
+}
+
+const pct = (bps: number, sign: "+" | "-") => `${sign}${(bps / 100).toFixed(2)}%`;
+const short = (h: string) => (h.length > 14 ? `${h.slice(0, 6)}…${h.slice(-4)}` : h);
+
+/** Every value the page shows, derived from the featured snapshot only. */
+export function pageVars(f: FeaturedLike): Record<string, string> {
+  const failed = f.status === "Failed";
+  const close = f.closeTxs[0];
+  // A PASS records no close (the registry reads the end state itself), so its closes row names the certificate instead.
+  const cert = f.status === "Passed" ? f.links.certificate : null;
+  return {
+    runId: f.runId,
+    label: f.rulebook.label,
+    headline: failed ? `FAILED — ${f.rule ?? "rule"}` : f.status.toUpperCase(),
+    statusWord: f.status.toLowerCase(),
+    startEquity: f.start.equity,
+    endEquity: f.end.equity,
+    startBlock: f.start.block,
+    endBlock: f.end.block,
+    targetPct: pct(f.rulebook.profitTargetBps, "+"),
+    dailyPct: pct(f.rulebook.dailyLossBps, "-"),
+    trailingPct: pct(f.rulebook.trailingDrawdownBps, "-"),
+    exposureX: String(f.rulebook.maxExposureX),
+    minDurationSec: String(f.rulebook.minDurationSec),
+    timeLimitMin: String(Math.round(f.rulebook.timeLimitSec / 60)),
+    closeCount: String(f.closeTxs.length),
+    closeTxShort: close ? short(close.hash) : "none",
+    closeTxUrl: close ? close.url : f.links.verdict,
+    closeRowLabel: cert ? "Certificate" : "Referee closes",
+    closeRowLead: cert ? "Soulbound, held by the account:" : close ? `${f.closeTxs.length}, first` : "None recorded:",
+    closeRowHref: cert ?? (close ? close.url : f.links.verdict),
+    closeRowLink: cert ? `certificate #${f.runId}` : close ? short(close.hash) : "see the verdict",
+    verdictTxShort: f.verdictTx ? short(f.verdictTx.hash) : "pending",
+    verdictTxUrl: f.verdictTx ? f.verdictTx.url : f.links.verdict,
+    oracleLine: f.oracle ? `${f.oracle.price} (${f.oracle.sources} sources)` : "no reading recorded",
+    resultLine: failed ? `Referee closed the position in ${f.closeTxs.length} transaction(s)` : f.links.certificate ? "Certificate minted to the account" : "Verdict recorded",
+    verdictHref: f.links.verdict,
+    certHref: f.links.certificate ?? f.links.verdict,
+    accountShort: short(f.account),
+    registryShort: short(f.registry),
+    trustLine: f.trustLine,
+    demoDisclosure: f.demoDisclosure,
+    testnetNotice: f.testnetNotice,
+  };
+}
+
+export function renderPage(template: string, f: FeaturedLike): string {
+  const vars = pageVars(f);
+  return template.replace(/\{\{([a-zA-Z]+)\}\}/g, (_, key: string) => {
+    const v = vars[key];
+    if (v === undefined) throw new Error(`unknown template slot {{${key}}}`);
+    return v;
+  });
+}
+```
+
+- [ ] **Step 4: Use them in the page**
+
+Old (exactly once in `apps/landing/src/page.html`; the line keeps its indentation):
+```html
+<div><dt>Referee closes</dt><dd>{{closeCount}}, first <a class="link" href="{{closeTxUrl}}">{{closeTxShort}}</a></dd></div>
+```
+New:
+```html
+<div><dt>{{closeRowLabel}}</dt><dd>{{closeRowLead}} <a class="link" href="{{closeRowHref}}">{{closeRowLink}}</a></dd></div>
+```
+
+- [ ] **Step 5: Build the landing**
+Run: `npm run build -w @basanos/landing`
+Expected: `PASS truth (run <the featured run id>); built apps/landing/dist`.
+
+- [ ] **Step 6: Run the landing suite**
+Run: `npm test -w @basanos/landing`
+Expected: `Tests  14 passed (14)`.
+
+- [ ] **Step 7: Run the new test (the gate)**
+Run: `npm test -w @basanos/landing -- test/closes-row.test.ts`
+Expected: PASS — `3 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `fix(landing): a PASS's closes row names its certificate, not a close count of 0 (P8)`

@@ -3416,3 +3416,681 @@ Expected: PASS — `3 passed`.
 
 - [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
 Message: `fix(web): the verdict page replays the breach's closeable equity at the book of its block (P5)`
+
+---
+
+### Task 13: The certificate page in plain words and money (P8)
+
+**Files:**
+- Modify: `apps/web/src/lib/format.ts`
+- Modify: `apps/web/src/components/CertificateView.tsx`
+- Test: `apps/web/test/certificate.test.tsx`
+
+**Depends on:** Task 2, Task 4, Task 6, referee:Task 18
+**Effort:** low
+**Model tier:** standard
+**Provides:** `formatGain(start: bigint, end: bigint): string ("+0.79%": end against start, signed, 2 decimals)`, `formatBtc(size: bigint, baseDecimals?: number): string ("Flat", "0.0035 BTC long", "0.00342 BTC short")`, `interface CertificateRow { label: string; value: string; mono: boolean }`, `certificateRows(meta: NonNullable<ReturnType<typeof decodeTokenUri>>): CertificateRow[]`, `CertificateView(props: { runId: bigint; holder: Address; uri: string }) (plain labels, equities in USDso, the gain; the trust line and the holder unchanged)`
+**Requires:** `formatUsdso(raw: bigint, decimals?: number): string`, `formatBps(bps: number): string`, `shortHash(h: string): string`, `decodeTokenUri(uri: string): { name: string; description: string; external_url: string; attributes: { trait_type: string; value: string | number }[] } | null`, `CertificateView(props: { runId: bigint; holder: Address; uri: string })`, `TRUST_LINE = "Every certificate is chain-checked at mint; every verdict is replayable."`, `rulebookById(id: Hex): Rulebook | null (current and retired rulebooks)`, `routeHref(r: Route): string`
+
+Why (architect P8, 2026-11-12; the guide viewed `#/cert/3` on real data after the first live PASS):
+- **The defect:** the certificate page printed the tokenURI attributes as they come, for example `startEquity 49671425000000000000`. It is the product's headline proof, and it will be screenshotted and posted.
+- **The fix:** the rows read Start equity, End equity, Gain, Start block, End block, Rulebook (by name) and Rulebook id. The equities read `49.67 USDso` and `50.06 USDso`; the gain reads `+0.79%` (end against start, signed, 2 decimals).
+  - Money is truncated to the cent by `formatUsdso`, as everywhere else in the app.
+  - Block numbers stay plain integers: they are what the explorer searches.
+  - A rulebook the app does not know reads "Unpublished rulebook", as on the verdict page.
+- **Unchanged:** the trust line (the tokenURI's own description) and the "held by" address.
+- **UI rules:** `docs/design/frontend.md` (plain copy; one system). Only the kit's existing `kv`, `panel`, `mono`, `label` and `figure` classes; no new styles.
+- **`formatBtc`** is added here for Task 14 (position sizes on the verdict page).
+- **The fixture** is certificate #3 exactly as `tokenURI(3)` returns it on Hideki (read 2026-11-12). The test also asserts that no 19-digit integer and no raw attribute name is rendered.
+- **Verified by the architect** in a test bed from HEAD: the test fails first (3 failed), then passes; the web suite is 42 tests; the page was shot at 1440 and 390 px against the live registry.
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/web/test/certificate.test.tsx`:
+```tsx
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { CertificateView, certificateRows, decodeTokenUri } from "../src/components/CertificateView";
+import { TRUST_LINE } from "../src/components/VerdictView";
+import { formatBtc, formatGain } from "../src/lib/format";
+
+// Certificate #3 exactly as the registry's tokenURI(3) returns it on Hideki (run 3, the first live PASS; read 2026-11-12).
+const URI =
+  "data:application/json;base64,eyJuYW1lIjoiQmFzYW5vcyBDZXJ0aWZpY2F0ZSAjMyIsImRlc2NyaXB0aW9uIjoiRXZlcnkgY2VydGlmaWNhdGUgaXMgY2hhaW4tY2hlY2tlZCBhdCBtaW50OyBldmVyeSB2ZXJkaWN0IGlzIHJlcGxheWFibGUuIiwiZXh0ZXJuYWxfdXJsIjoiaHR0cHM6Ly9iYXNhbm9zLnZlcmNlbC5hcHAvYXBwLyMvY2VydC8zIiwiYXR0cmlidXRlcyI6W3sidHJhaXRfdHlwZSI6InJ1bGVib29rIiwidmFsdWUiOiIweDVhNWFmN2VlOTk3MWM0OTIxYzU2MTZiMWQ0NjJkNWRmNTBhZmM2ODcyYTEzMzYyMzM3ZTUyMDY5OTYwOGM0NDgifSx7InRyYWl0X3R5cGUiOiJzdGFydEJsb2NrIiwidmFsdWUiOjQ4NTM5OTc2fSx7InRyYWl0X3R5cGUiOiJlbmRCbG9jayIsInZhbHVlIjo0ODU0MTY5OH0seyJ0cmFpdF90eXBlIjoic3RhcnRFcXVpdHkiLCJ2YWx1ZSI6IjQ5NjcxNDI1MDAwMDAwMDAwMDAwIn0seyJ0cmFpdF90eXBlIjoiZW5kRXF1aXR5IiwidmFsdWUiOiI1MDA2MzM0NTAwMDAwMDAwMDAwMCJ9XX0=";
+const HOLDER = "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1";
+
+describe("the certificate page in plain words and money (P8)", () => {
+  it("formats the gain and a position size", () => {
+    expect(formatGain(49_671_425_000_000_000_000n, 50_063_345_000_000_000_000n)).toBe("+0.79%");
+    expect(formatGain(100n, 99n)).toBe("-1.00%");
+    expect(formatGain(0n, 5n)).toBe("—");
+    expect(formatBtc(0n)).toBe("Flat");
+    expect(formatBtc(350_000n)).toBe("0.0035 BTC long");
+    expect(formatBtc(-342_000n)).toBe("0.00342 BTC short");
+  });
+  it("turns certificate #3's attributes into labelled rows", () => {
+    const meta = decodeTokenUri(URI);
+    expect(meta).not.toBeNull();
+    expect(certificateRows(meta!)).toEqual([
+      { label: "Start equity", value: "49.67 USDso", mono: true },
+      { label: "End equity", value: "50.06 USDso", mono: true },
+      { label: "Gain", value: "+0.79%", mono: true },
+      { label: "Start block", value: "48539976", mono: true },
+      { label: "End block", value: "48541698", mono: true },
+      { label: "Rulebook", value: "Tokyo Sprint · Demo", mono: false },
+      { label: "Rulebook id", value: "0x5a5af7ee9971c4921c5616b1d462d5df50afc6872a13362337e520699608c448", mono: true },
+    ]);
+  });
+  it("renders money and plain labels, never a raw wei amount or an attribute name", () => {
+    const { container } = render(<CertificateView runId={3n} holder={HOLDER} uri={URI} />);
+    for (const text of ["49.67 USDso", "50.06 USDso", "+0.79%", "Start equity", "End equity", "Start block", "End block", "Rulebook", "Tokyo Sprint · Demo"]) {
+      expect(screen.getByText(text)).toBeTruthy();
+    }
+    expect(container.textContent).not.toMatch(/\d{19}/);
+    for (const raw of ["startEquity", "endEquity", "startBlock", "endBlock"]) expect(container.textContent).not.toContain(raw);
+    // Unchanged: the trust line and the holder.
+    expect(screen.getByText(TRUST_LINE)).toBeTruthy();
+    expect(screen.getByText(HOLDER)).toBeTruthy();
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/web -- test/certificate.test.tsx`
+Expected: FAIL — `Tests  3 failed (3)` (`TypeError: formatGain is not a function`, `TypeError: certificateRows is not a function`).
+
+- [ ] **Step 3: Add the formatters**
+
+Replace `apps/web/src/lib/format.ts` with:
+```ts
+import { formatUnits } from "viem";
+
+export function formatUsdso(raw: bigint, decimals = 18): string {
+  const neg = raw < 0n;
+  const abs = neg ? -raw : raw;
+  const cents = (abs * 100n) / 10n ** BigInt(decimals);
+  const whole = (cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const frac = (cents % 100n).toString().padStart(2, "0");
+  return `${neg ? "-" : ""}${whole}.${frac}`;
+}
+
+export function formatBps(bps: number): string {
+  return `${bps >= 0 ? "+" : "-"}${(Math.abs(bps) / 100).toFixed(2)}%`;
+}
+
+/** End against start as a signed percent with 2 decimals ("+0.79%"); "—" when there is no positive start. */
+export function formatGain(start: bigint, end: bigint): string {
+  if (start <= 0n) return "—";
+  return formatBps(Number(((end - start) * 1_000_000n) / start) / 100);
+}
+
+/** A BTC-PERP position size (8 base decimals) in plain words: "Flat", "0.0035 BTC long", "0.00342 BTC short". */
+export function formatBtc(size: bigint, baseDecimals = 8): string {
+  if (size === 0n) return "Flat";
+  return `${formatUnits(size < 0n ? -size : size, baseDecimals)} BTC ${size > 0n ? "long" : "short"}`;
+}
+
+export function shortHash(h: string): string {
+  return h.length > 14 ? `${h.slice(0, 6)}…${h.slice(-4)}` : h;
+}
+```
+
+- [ ] **Step 4: Show the certificate in plain words**
+
+Replace `apps/web/src/components/CertificateView.tsx` with:
+```tsx
+import type { Address, Hex } from "viem";
+import { formatGain, formatUsdso } from "../lib/format";
+import { rulebookById } from "../lib/rulebooks";
+import { routeHref } from "../routes";
+
+export function decodeTokenUri(uri: string): {
+  name: string;
+  description: string;
+  external_url: string;
+  attributes: { trait_type: string; value: string | number }[];
+} | null {
+  const prefix = "data:application/json;base64,";
+  if (!uri.startsWith(prefix)) return null;
+  try {
+    return JSON.parse(atob(uri.slice(prefix.length)));
+  } catch {
+    return null;
+  }
+}
+
+/** One row of the certificate, in plain words (docs/design/frontend.md: plain copy; the kit's kv list). */
+export interface CertificateRow {
+  label: string;
+  value: string;
+  mono: boolean;
+}
+
+type CertificateMeta = NonNullable<ReturnType<typeof decodeTokenUri>>;
+
+const attr = (meta: CertificateMeta, name: string) => meta.attributes.find((a) => a.trait_type === name)?.value;
+
+/** An equity attribute: the registry writes it as a decimal string of USDso wei. */
+function wei(v: string | number | undefined): bigint | null {
+  return v !== undefined && /^-?\d+$/.test(String(v)) ? BigInt(String(v)) : null;
+}
+
+/** The tokenURI attributes as the page shows them: money in USDso, the gain, plain labels, the rulebook by name. */
+export function certificateRows(meta: CertificateMeta): CertificateRow[] {
+  const start = wei(attr(meta, "startEquity"));
+  const end = wei(attr(meta, "endEquity"));
+  const startBlock = attr(meta, "startBlock");
+  const endBlock = attr(meta, "endBlock");
+  const id = attr(meta, "rulebook");
+  const rows: CertificateRow[] = [];
+  if (start !== null) rows.push({ label: "Start equity", value: `${formatUsdso(start)} USDso`, mono: true });
+  if (end !== null) rows.push({ label: "End equity", value: `${formatUsdso(end)} USDso`, mono: true });
+  if (start !== null && end !== null) rows.push({ label: "Gain", value: formatGain(start, end), mono: true });
+  if (startBlock !== undefined) rows.push({ label: "Start block", value: String(startBlock), mono: true });
+  if (endBlock !== undefined) rows.push({ label: "End block", value: String(endBlock), mono: true });
+  if (id !== undefined) {
+    rows.push({ label: "Rulebook", value: rulebookById(String(id) as Hex)?.label ?? "Unpublished rulebook", mono: false });
+    rows.push({ label: "Rulebook id", value: String(id), mono: true });
+  }
+  return rows;
+}
+
+export function CertificateView(props: { runId: bigint; holder: Address; uri: string }) {
+  const meta = decodeTokenUri(props.uri);
+  if (!meta) return <p className="error">This certificate's metadata could not be read.</p>;
+  return (
+    <div className="wrap">
+      <p className="label">Soulbound certificate (ERC-721 + ERC-5192), held by</p>
+      <p className="mono">{props.holder}</p>
+      <h1 className="figure">{meta.name}</h1>
+      <p>{meta.description}</p>
+      <dl className="kv panel">
+        {certificateRows(meta).map((r) => (
+          <div key={r.label} style={{ display: "contents" }}>
+            <dt>{r.label}</dt>
+            <dd className={r.mono ? "mono" : undefined}>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p>
+        <a className="link" href={routeHref({ name: "run", runId: props.runId })}>
+          See the verdict and replay it
+        </a>
+      </p>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 5: Type-check and build**
+Run: `npm run typecheck -w @basanos/web`
+Expected: exits 0 with no `error TS` lines.
+Run: `npm run build -w @basanos/web`
+Expected: `check-env` passes, then Vite prints `built in`.
+
+- [ ] **Step 6: Run the whole web suite**
+Run: `npm test -w @basanos/web`
+Expected: `Tests  42 passed (42)`.
+
+- [ ] **Step 7: Run the new test (the gate)**
+Run: `npm test -w @basanos/web -- test/certificate.test.tsx`
+Expected: PASS — `3 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `fix(web): the certificate page shows money and plain labels, not raw wei (P8)`
+
+---
+
+### Task 14: The verdict page: a PASS's lock close from the evidence bundle, sizes in BTC, the canonical rulebook JSON (P8)
+
+**Files:**
+- Create: `apps/web/src/lib/evidence.ts`
+- Modify: `apps/web/src/components/VerdictView.tsx`
+- Modify: `apps/web/src/pages/Verdict.tsx`
+- Test: `apps/web/test/verdict-pass.test.tsx`
+
+**Depends on:** Task 2, Task 3, Task 4, Task 6, Task 9, Task 10, Task 12, Task 13, spike:Task 2, spike:Task 3, referee:Task 18, referee:Task 20, referee:Task 22
+**Effort:** low
+**Model tier:** standard
+**Provides:** `interface EvidenceEntry { bundle: { account?: string; startBlock?: string; verdict?: string; lock?: { blockNumber: string; judgedEquity: string; bufferBps: number }; close?: { txs?: { label: string; hash: string; status: string }[] } } }`, `type EvidenceStore = Record<string, EvidenceEntry>`, `EVIDENCE: EvidenceStore (docs/evidence/runs.json as committed when the app is built)`, `lockTxsFromEvidence(store: EvidenceStore, run: { runId: bigint; account: Address; start: { blockNumber: bigint } }): Hex[]`, `rulebookText(id: Hex): string | null (the canonical JSON whose keccak256 is the id)`, `VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void; breachJudged?: JudgedView | null; lockTxs?: readonly Hex[] })`, `VerdictPage(props: { runId: bigint }) (a PASS shows its lock close from the evidence bundle; sizes in BTC; the rulebook JSON canonical)`
+**Requires:** `VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void; breachJudged?: JudgedView | null })`, `interface JudgedView { equity: bigint | null; served: boolean }`, `replayJudged(client: PublicClient, pool: Address, read: StoredRead): Promise<JudgedView>`, `interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }`, `VerdictPage(props: { runId: bigint })`, `ORACLE_NO_READING_LINE = "No Price Oracle reading was recorded for this verdict."`, `runMissing(run: { status: number; account: string }): boolean`, `RunNotFound(props: { runId: bigint })`, `formatBtc(size: bigint, baseDecimals?: number): string ("Flat", "0.0035 BTC long", "0.00342 BTC short")`, `formatUsdso(raw: bigint, decimals?: number): string`, `shortHash(h: string): string`, `interface StoredRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }`, `interface ReplayRow { field: "equity" | "lockedCollateral" | "positionSize" | "markPrice"; call: string; stored: bigint; chain: bigint | null; match: "exact" | "within-tolerance" | "differs" | "not-served" }`, `replayRead(client: PublicClient, account: Address, pool: Address, stored: StoredRead): Promise<ReplayRow[]>`, `RULEBOOKS: readonly Rulebook[]`, `rulebookById(id: Hex): Rulebook | null (current and retired rulebooks)`, `canonicalJson(value: unknown): string`, `rulebookId(rb: Rulebook): Hex`, `explorerTx(hash: Hex): string`, `browserClient(): PublicClient`, `REGISTRY: Address | null`, `routeHref(r: Route): string`, `the referee daemon: FAIL and PASS closes planned from the push and sent in one round trip; the PASS lock from the push's closeable equity plus LOCK_BUFFER_BPS (no SDK quote); DaemonDeps without markets`, `docs/evidence/rehearsal-pass.json (the first live PASS: passRunId, its certificate held by its own account, one FAILED run)`
+
+Why (architect P8, 2026-11-12):
+- **P8b, the lock close.** `recordPass` stores no close transaction, by design: the registry reads the end state itself. The referee's lock close is in its evidence bundle, `docs/evidence/runs.json` (run 3: `0xfdf7…5548`).
+  - **Cheap:** the app imports the committed evidence at build time, as it already imports the rulebooks. There is no new read, service or route. The minified bundle grows by 13.5 KB (538,426 to 551,965 bytes, measured).
+  - **Honest:** the panel's heading is "Referee lock transaction (from the evidence bundle)", and one line says why a PASS stores none. It shows only on a PASS, and only when the bundle's account and start block match the registry's run, its verdict is PASSED and it locked. Only the transactions that succeeded are listed. A run the build holds no bundle for shows nothing.
+  - **Timing:** ship:3 shoots this page after its take, and ship:6 builds after ship:3, so the money shot's bundle is in both.
+- **P8c, raw integers on the verdict page.**
+  - **Position size** printed raw base units (`350000` for run 1's breach). It now reads "Flat", "0.0035 BTC long" or "0.00342 BTC short" (`formatBtc`, 8 base decimals; the registry runs BTC-PERP only).
+  - **Rulebook JSON:** the page says the id is the keccak256 of "this canonical JSON", but it printed `JSON.stringify(rb, null, 2)`, whose hash is not the id. It now prints `canonicalJson(rb)`, the exact preimage, in a wrapping `mono` paragraph (a `pre` would not wrap the one long line at 390 px). The test hashes the shown text back to the id.
+  - **Unchanged:** block numbers (plain integers, as the explorer searches them), the mark (already formatted), the FAIL close list and the oracle line.
+- **UI rules:** `docs/design/frontend.md`: one more `panel` in the right column, with the kit's `label`, `log`, `link` and `mono` classes; no new styles.
+- **Verified by the architect** in a test bed from HEAD after Task 13: the test fails first (it cannot resolve `lib/evidence`), then passes; the web suite is 47 tests; runs 3 and 1 were shot at 1440 px against the live registry.
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/web/test/verdict-pass.test.tsx`:
+```tsx
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { keccak256, toBytes, type Hex } from "viem";
+import { rulebookId } from "@basanos/core";
+import { VerdictView, type VerdictData } from "../src/components/VerdictView";
+import { EVIDENCE, lockTxsFromEvidence, type EvidenceStore } from "../src/lib/evidence";
+import { RULEBOOKS } from "../src/lib/rulebooks";
+import { rulebookText } from "../src/pages/Verdict";
+
+const A = "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1";
+const LOCK: Hex = "0xfdf79939e50b31b3b5452d5a854d78932dedefafa1d34154a289cc5e38b75548";
+const MARK = 71_916_580_939_002_933_000_000n;
+const read = (equity: bigint, block: bigint, positionSize = 0n) => ({ blockNumber: block, equityOk: true, equity, lockedCollateral: 0n, positionSize, markOk: true, markPrice: MARK });
+// Run 3 as the registry stores it (the first live PASS): flat at both ends, no close transaction recorded.
+const pass: VerdictData = {
+  runId: 3n,
+  account: A,
+  status: 2,
+  rule: 0,
+  voidReason: 0,
+  rulebookLabel: "Tokyo Sprint · Demo",
+  rulebookId: rulebookId(RULEBOOKS[1]),
+  rulebookJson: null,
+  start: read(49_671_425_000_000_000_000n, 48_539_976n),
+  breach: { blockNumber: 0n, equityOk: false, equity: 0n, lockedCollateral: 0n, positionSize: 0n, markOk: false, markPrice: 0n },
+  end: read(50_063_345_000_000_000_000n, 48_541_698n),
+  closeTxs: [],
+  oraclePrice: 0n,
+  oracleSources: 0,
+  oracleDone: false,
+};
+// Run 1's breach (a FAIL): a 0.0035 BTC long.
+const fail: VerdictData = { ...pass, runId: 1n, status: 3, rule: 1, breach: read(49_249_049_431_589_214_500n, 48_411_742n, 350_000n), closeTxs: [LOCK] };
+const bundle = (over: Record<string, unknown> = {}) => ({
+  bundle: {
+    account: A,
+    startBlock: "48539976",
+    verdict: "PASSED",
+    lock: { blockNumber: "48541592", judgedEquity: "50063345000000000000", bufferBps: 10 },
+    close: { txs: [{ label: "close", hash: LOCK, status: "success" }, { label: "close", hash: `0x${"bb".repeat(32)}`, status: "reverted" }] },
+    ...over,
+  },
+});
+const LOCK_HEADING = "Referee lock transaction (from the evidence bundle)";
+
+describe("the verdict page for a PASS (P8)", () => {
+  it("takes the lock close from the evidence bundle only for this very run", () => {
+    expect(lockTxsFromEvidence({ "3": bundle() }, pass)).toEqual([LOCK]);
+    const wrong: EvidenceStore[] = [{}, { "3": bundle({ account: `0x${"11".repeat(20)}` }) }, { "3": bundle({ startBlock: "1" }) }, { "3": bundle({ verdict: "FAILED" }) }, { "3": bundle({ lock: undefined }) }];
+    for (const store of wrong) expect(lockTxsFromEvidence(store, pass)).toEqual([]);
+  });
+  it("finds run 3's lock close in the committed evidence (docs/evidence/runs.json)", () => {
+    expect(lockTxsFromEvidence(EVIDENCE, pass)).toEqual([LOCK]);
+  });
+  it("shows the lock close on a PASS, labelled as from the evidence bundle, and never on a FAIL", () => {
+    const { rerender } = render(<VerdictView data={pass} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} lockTxs={[LOCK]} />);
+    expect(screen.getByText(LOCK_HEADING)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "0xfdf7…5548" }).getAttribute("href")).toContain(LOCK);
+    rerender(<VerdictView data={pass} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />);
+    expect(screen.queryByText(LOCK_HEADING)).toBeNull();
+    rerender(<VerdictView data={fail} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} lockTxs={[LOCK]} />);
+    expect(screen.queryByText(LOCK_HEADING)).toBeNull();
+  });
+  it("shows position sizes in BTC, never as a raw integer", () => {
+    const { container, rerender } = render(<VerdictView data={pass} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />);
+    expect(screen.getAllByText("Flat")).toHaveLength(2);
+    rerender(<VerdictView data={fail} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />);
+    expect(screen.getByText("0.0035 BTC long")).toBeTruthy();
+    expect(container.textContent).not.toContain("350000");
+  });
+  it("shows the rulebook as the canonical JSON whose keccak256 is its id", () => {
+    const id = rulebookId(RULEBOOKS[1]);
+    const text = rulebookText(id);
+    expect(text).not.toBeNull();
+    expect(keccak256(toBytes(text!))).toBe(id);
+    expect(rulebookText(`0x${"00".repeat(32)}`)).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/web -- test/verdict-pass.test.tsx`
+Expected: FAIL — `Failed to resolve import "../src/lib/evidence"` (`Test Files  1 failed (1)`, no tests).
+
+- [ ] **Step 3: Read the lock close from the evidence bundle**
+
+`apps/web/src/lib/evidence.ts`:
+```ts
+import type { Address, Hex } from "viem";
+import runs from "../../../../docs/evidence/runs.json";
+
+/** One run in the referee's evidence store, docs/evidence/runs.json (packages/referee/src/evidence.ts writes it). */
+export interface EvidenceEntry {
+  bundle: {
+    account?: string;
+    startBlock?: string;
+    verdict?: string;
+    lock?: { blockNumber: string; judgedEquity: string; bufferBps: number };
+    close?: { txs?: { label: string; hash: string; status: string }[] };
+  };
+}
+
+export type EvidenceStore = Record<string, EvidenceEntry>;
+
+/** The evidence committed when the app was built. A run that ended later has none, and the page then shows nothing. */
+export const EVIDENCE = runs as unknown as EvidenceStore;
+
+/**
+ * A PASS's lock close, from the referee's evidence bundle: recordPass stores no close, because the registry reads the
+ * end state itself. Only a bundle for this very run counts: its account and start block match the registry's, its
+ * verdict is PASSED and it locked. Only the transactions that succeeded are returned.
+ */
+export function lockTxsFromEvidence(store: EvidenceStore, run: { runId: bigint; account: Address; start: { blockNumber: bigint } }): Hex[] {
+  const b = store[run.runId.toString()]?.bundle;
+  if (!b || b.verdict !== "PASSED" || !b.lock) return [];
+  if (b.account?.toLowerCase() !== run.account.toLowerCase() || b.startBlock !== run.start.blockNumber.toString()) return [];
+  return (b.close?.txs ?? []).filter((t) => t.status === "success" && /^0x[0-9a-fA-F]{64}$/.test(t.hash)).map((t) => t.hash as Hex);
+}
+```
+
+- [ ] **Step 4: Show it on the verdict page, with sizes in BTC and the canonical rulebook JSON**
+
+Replace `apps/web/src/components/VerdictView.tsx` with:
+```tsx
+import type { Address, Hex } from "viem";
+import { RULE_NAMES, RUN_STATUS, VOID_REASONS, explorerTx } from "@basanos/core";
+import { formatBtc, formatUsdso, shortHash } from "../lib/format";
+import type { JudgedView } from "../lib/judged";
+import type { ReplayRow, StoredRead } from "../lib/replay";
+import { routeHref } from "../routes";
+
+export const TRUST_LINE = "Every certificate is chain-checked at mint; every verdict is replayable.";
+
+/** Shown when a verdict has no recorded Price Oracle reading (the registry asks at each verdict, best-effort, inside try). */
+export const ORACLE_NO_READING_LINE = "No Price Oracle reading was recorded for this verdict.";
+
+export interface VerdictData {
+  runId: bigint;
+  account: Address;
+  status: number;
+  rule: number;
+  voidReason: number;
+  rulebookLabel: string;
+  rulebookId: Hex;
+  rulebookJson: string | null;
+  start: StoredRead;
+  breach: StoredRead;
+  end: StoredRead;
+  closeTxs: readonly Hex[];
+  oraclePrice: bigint;
+  oracleSources: number;
+  oracleDone: boolean;
+}
+
+const MATCH_TEXT: Record<ReplayRow["match"], string> = {
+  exact: "matches",
+  "within-tolerance": "matches within 10 bps (end of block vs inside the transaction)",
+  differs: "differs",
+  "not-served": "stored on-chain; state no longer served by the public RPC",
+};
+
+function heading(d: VerdictData): string {
+  const status = RUN_STATUS[d.status] ?? "Unknown";
+  if (status === "Failed") return `FAILED — ${RULE_NAMES[d.rule] ?? "rule"}`;
+  if (status === "Voided") return `VOID — ${VOID_REASONS[d.voidReason] ?? "reason"}`;
+  return status.toUpperCase();
+}
+
+function judgedText(j: JudgedView): string {
+  if (!j.served) return "book no longer served by the public RPC";
+  return j.equity === null ? "the book in this block cannot price the position" : `${formatUsdso(j.equity)} USDso`;
+}
+
+function ReadBlock(props: { title: string; who: string; read: StoredRead; rows: ReplayRow[] | null; judged?: JudgedView | null }) {
+  return (
+    <section className="panel">
+      <h2 className="label">
+        {props.title} — block {props.read.blockNumber.toString()} ({props.who})
+      </h2>
+      <dl className="kv">
+        <dt>Equity</dt>
+        <dd className="mono">{props.read.equityOk ? `${formatUsdso(props.read.equity + props.read.lockedCollateral)} USDso` : "unpriceable"}</dd>
+        <dt>Position size</dt>
+        <dd className="mono">{formatBtc(props.read.positionSize)}</dd>
+        <dt>Mark</dt>
+        <dd className="mono">{props.read.markOk ? formatUsdso(props.read.markPrice) : "no fresh mark"}</dd>
+        {props.judged ? (
+          <>
+            <dt>Closeable equity (judged)</dt>
+            <dd className="mono">{judgedText(props.judged)}</dd>
+          </>
+        ) : null}
+      </dl>
+      {props.judged ? (
+        <p className="label">The rules judge closeable equity: the stored equity revalued at the book in this block (bids for a long, asks for a short).</p>
+      ) : null}
+      {props.rows ? (
+        <ul className="log">
+          {props.rows.map((r) => (
+            <li key={r.field}>
+              <span className="mono">{r.call}</span>: {MATCH_TEXT[r.match]}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+export function VerdictView(props: {
+  data: VerdictData;
+  replay: Record<"start" | "breach" | "end", ReplayRow[] | null>;
+  onReplay: () => void;
+  /** The breach revalued at the replayed book (spec §5); absent until Replay is pressed. */
+  breachJudged?: JudgedView | null;
+  /** A PASS's lock close from the referee's evidence bundle (lib/evidence.ts); recordPass stores none. */
+  lockTxs?: readonly Hex[];
+}) {
+  const d = props.data;
+  const passed = d.status === 2;
+  const failed = d.status === 3;
+  return (
+    <div className="wrap">
+      <p className="label">Run {d.runId.toString()}</p>
+      <h1 className="figure">{heading(d)}</h1>
+      <p>
+        <span className={`state ${passed ? "state--passed" : failed ? "state--failed" : ""}`}>{d.rulebookLabel}</span>
+      </p>
+      <p>{TRUST_LINE}</p>
+      {passed ? (
+        <p>
+          <a className="link" href={routeHref({ name: "cert", runId: d.runId })}>
+            View the certificate
+          </a>
+        </p>
+      ) : null}
+      <div className="btn-row">
+        <button type="button" className="btn btn--primary" onClick={props.onReplay}>
+          Replay at the pinned blocks
+        </button>
+      </div>
+      <div className="app-grid">
+        <div className="app-col-8">
+          <ReadBlock title="Start" who="read by the registry in the transaction" read={d.start} rows={props.replay.start} />
+          {failed ? <ReadBlock title="Breach" who="attested by the referee" read={d.breach} rows={props.replay.breach} judged={props.breachJudged ?? null} /> : null}
+          <ReadBlock title="End" who="read by the registry in the transaction" read={d.end} rows={props.replay.end} />
+        </div>
+        <div className="app-col-4">
+          <section className="panel">
+            <h2 className="label">Account</h2>
+            <p className="mono">{d.account}</p>
+            <h2 className="label">Rulebook id</h2>
+            <p className="mono">{d.rulebookId}</p>
+            {d.rulebookJson ? (
+              <details>
+                <summary className="label">Rulebook JSON (its id is the keccak256 of this canonical JSON)</summary>
+                <p className="mono">{d.rulebookJson}</p>
+              </details>
+            ) : null}
+          </section>
+          {d.closeTxs.length > 0 ? (
+            <section className="panel">
+              <h2 className="label">Referee close transactions</h2>
+              <ul className="log">
+                {d.closeTxs.map((h) => (
+                  <li key={h}>
+                    <a className="link mono" href={explorerTx(h)} target="_blank" rel="noreferrer">
+                      {shortHash(h)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {passed && props.lockTxs && props.lockTxs.length > 0 ? (
+            <section className="panel">
+              <h2 className="label">Referee lock transaction (from the evidence bundle)</h2>
+              <p className="label">A pass stores no close transaction: the registry reads the end state itself. The referee's evidence bundle records the order it sent to lock the result.</p>
+              <ul className="log">
+                {props.lockTxs.map((h) => (
+                  <li key={h}>
+                    <a className="link mono" href={explorerTx(h)} target="_blank" rel="noreferrer">
+                      {shortHash(h)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          <section className="panel">
+            <h2 className="label">Price Oracle cross-check</h2>
+            <p className="mono">
+              {d.oracleDone && d.oracleSources > 0
+                ? `${formatUsdso(d.oraclePrice)} (${d.oracleSources} sources) vs mark ${formatUsdso(d.end.markPrice)}`
+                : ORACLE_NO_READING_LINE}
+            </p>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+Replace `apps/web/src/pages/Verdict.tsx` with:
+```tsx
+import { useEffect, useState } from "react";
+import type { Hex } from "viem";
+import { basanosRegistryAbi, canonicalJson } from "@basanos/core";
+import { browserClient } from "../chain/client";
+import { VerdictView, type VerdictData } from "../components/VerdictView";
+import { REGISTRY } from "../config";
+import { EVIDENCE, lockTxsFromEvidence } from "../lib/evidence";
+import { replayJudged, type JudgedView } from "../lib/judged";
+import { replayRead, type ReplayRow } from "../lib/replay";
+import { rulebookById } from "../lib/rulebooks";
+import { routeHref } from "../routes";
+
+/** The rulebook as its canonical JSON (keys sorted, no whitespace): the exact text whose keccak256 is its id. */
+export function rulebookText(id: Hex): string | null {
+  const rb = rulebookById(id);
+  return rb ? canonicalJson(rb) : null;
+}
+
+/** A run id the registry never issued reads back as an empty record (status None, zero account). */
+export function runMissing(run: { status: number; account: string }): boolean {
+  return run.status === 0 && /^0x0{40}$/i.test(run.account);
+}
+
+/** The plain empty state for a missing run (docs/design/frontend.md), instead of an empty verdict. */
+export function RunNotFound(props: { runId: bigint }) {
+  const id = props.runId.toString();
+  return (
+    <div className="wrap">
+      <h1 className="figure">Run {id} not found</h1>
+      <p>
+        No run {id} is in the registry. <a className="link" href={routeHref({ name: "home" })}>See the recent verdicts</a>.
+      </p>
+    </div>
+  );
+}
+
+export function VerdictPage(props: { runId: bigint }) {
+  const [data, setData] = useState<VerdictData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [pool, setPool] = useState<`0x${string}` | null>(null);
+  const [replay, setReplay] = useState<Record<"start" | "breach" | "end", ReplayRow[] | null>>({ start: null, breach: null, end: null });
+  const [breachJudged, setBreachJudged] = useState<JudgedView | null>(null);
+  useEffect(() => {
+    if (!REGISTRY) {
+      setError("This build has no registry address set.");
+      return;
+    }
+    const registry = REGISTRY;
+    const c = browserClient();
+    void (async () => {
+      try {
+        const run = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [props.runId] });
+        if (runMissing(run)) {
+          setMissing(true);
+          return;
+        }
+        const closeTxs = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getCloseTxs", args: [props.runId] });
+        const params = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRulebook", args: [run.rulebookId] });
+        setPool(params.pool);
+        setData({
+          runId: props.runId,
+          account: run.account,
+          status: run.status,
+          rule: run.rule,
+          voidReason: run.voidReason,
+          rulebookLabel: rulebookById(run.rulebookId)?.label ?? "Unpublished rulebook",
+          rulebookId: run.rulebookId,
+          rulebookJson: rulebookText(run.rulebookId),
+          start: run.start,
+          breach: run.breach,
+          end: run.end,
+          closeTxs,
+          oraclePrice: run.oraclePrice,
+          oracleSources: run.oracleSources,
+          oracleDone: run.oracleDone,
+        });
+      } catch (e) {
+        setError((e as Error).message.slice(0, 200));
+      }
+    })();
+  }, [props.runId]);
+  if (error) return <p className="wrap error">{error}</p>;
+  if (missing) return <RunNotFound runId={props.runId} />;
+  if (!data || !pool) return <p className="wrap label">Reading run {props.runId.toString()} from the registry…</p>;
+  const onReplay = async () => {
+    const c = browserClient();
+    const [start, breach, end, judged] = await Promise.all([
+      replayRead(c, data.account, pool, data.start),
+      data.status === 3 ? replayRead(c, data.account, pool, data.breach) : Promise.resolve(null),
+      replayRead(c, data.account, pool, data.end),
+      data.status === 3 ? replayJudged(c, pool, data.breach) : Promise.resolve(null),
+    ]);
+    setReplay({ start, breach, end });
+    setBreachJudged(judged);
+  };
+  const lockTxs = data.status === 2 ? lockTxsFromEvidence(EVIDENCE, data) : [];
+  return <VerdictView data={data} replay={replay} onReplay={() => void onReplay()} breachJudged={breachJudged} lockTxs={lockTxs} />;
+}
+```
+
+- [ ] **Step 5: Type-check and build**
+Run: `npm run typecheck -w @basanos/web`
+Expected: exits 0 with no `error TS` lines.
+Run: `npm run build -w @basanos/web`
+Expected: `check-env` passes, then Vite prints `built in` (the existing chunk-size warning is unchanged in kind).
+
+- [ ] **Step 6: Run the whole web suite**
+Run: `npm test -w @basanos/web`
+Expected: `Tests  47 passed (47)`.
+
+- [ ] **Step 7: Run the new test (the gate)**
+Run: `npm test -w @basanos/web -- test/verdict-pass.test.tsx`
+Expected: PASS — `5 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `fix(web): a PASS shows its lock close from the evidence bundle; sizes in BTC; the rulebook JSON is canonical (P8)`

@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10. 2026-11-12 (P5, the book trades ~19 bps above the mark): referee:13 (core: book reads, the evaluator judges closeable equity, book-capped opens, DEMO_LEVERAGE_X 5), referee:14 (the referee judges with the book of the same block; FAIL evidence records it), referee:15 (bot opens from the book, 5x demo, demo-check measures the spread), spike:21 (skeleton opens from the book; the dry-run simulates the open), web:11 (terminal orders from the book, closeable equity, 5x ticket), web:12 (verdict replays the judged equity) and ship:11 (README) added; spike:11 depends on spike:21, referee:10 on referee:14 and referee:15, ship:3 on referee:14, referee:15 and web:11, ship:6 on web:11 and web:12. 2026-11-12 (P6, the SDK's send path ended 'outcome unknown' twice, B18): referee:16 (account-write builders move to @basanos/core/owner-tx, byte-identical to the SDK's encoding; the spike's live-lib re-exports them) and referee:17 (the bot's grant, startRun and opens go viem-direct, read back from the chain, never re-sent; a take that fails after a run started aborts into demo-aborted.json) added; referee:10 and ship:3 depend on referee:17. 2026-11-12 (P7, referee:10's two FAILs: price noise at 5x, staggered entries, a 7.7 s closer): referee:18 (demo v2 + 10x, chosen by a 12 h replay; demo v1 kept), referee:19 (the replay tool), referee:20 (closes capped from the book, one round trip from the push; PASS lock buffer), referee:21 (same-block pair, FAIL on demand after the first PASS, check-pass gate), referee:22 (LIVE rehearsal take 2: the first PASS and certificate) and ship:12 (README) added; ship:3 depends on referee:18, 20, 21, 22; ship:6 on referee:18.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10. 2026-11-12 (P5, the book trades ~19 bps above the mark): referee:13 (core: book reads, the evaluator judges closeable equity, book-capped opens, DEMO_LEVERAGE_X 5), referee:14 (the referee judges with the book of the same block; FAIL evidence records it), referee:15 (bot opens from the book, 5x demo, demo-check measures the spread), spike:21 (skeleton opens from the book; the dry-run simulates the open), web:11 (terminal orders from the book, closeable equity, 5x ticket), web:12 (verdict replays the judged equity) and ship:11 (README) added; spike:11 depends on spike:21, referee:10 on referee:14 and referee:15, ship:3 on referee:14, referee:15 and web:11, ship:6 on web:11 and web:12. 2026-11-12 (P6, the SDK's send path ended 'outcome unknown' twice, B18): referee:16 (account-write builders move to @basanos/core/owner-tx, byte-identical to the SDK's encoding; the spike's live-lib re-exports them) and referee:17 (the bot's grant, startRun and opens go viem-direct, read back from the chain, never re-sent; a take that fails after a run started aborts into demo-aborted.json) added; referee:10 and ship:3 depend on referee:17. 2026-11-12 (P7, referee:10's two FAILs: price noise at 5x, staggered entries, a 7.7 s closer): referee:18 (demo v2 + 10x, chosen by a 12 h replay; demo v1 kept), referee:19 (the replay tool), referee:20 (closes capped from the book, one round trip from the push; PASS lock buffer), referee:21 (same-block pair, FAIL on demand after the first PASS, check-pass gate), referee:22 (LIVE rehearsal take 2: the first PASS and certificate) and ship:12 (README) added; ship:3 depends on referee:18, 20, 21, 22; ship:6 on referee:18. 2026-11-12 (P8, the guide viewed run 3 and certificate #3 on real data): web:13 (the certificate page in plain words and money), web:14 (the verdict page: a PASS's lock close from the evidence bundle, sizes in BTC, the canonical rulebook JSON) and landing:7 (a PASS's closes row names its certificate) added; ship:3 depends on web:13 and web:14 (its screenshot and recording show these pages); ship:6 on web:13, web:14 and landing:7.",
   "subsystems": [
     "spike",
     "contracts",
@@ -4118,6 +4118,133 @@
       "status": "pending"
     },
     {
+      "id": "web:13",
+      "subsystem": "web",
+      "title": "The certificate page in plain words and money (P8)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:2",
+        "web:4",
+        "web:6",
+        "referee:18"
+      ],
+      "effort": "low",
+      "model_tier": "standard",
+      "files": {
+        "create": [],
+        "modify": [
+          "apps/web/src/lib/format.ts",
+          "apps/web/src/components/CertificateView.tsx"
+        ],
+        "test": [
+          "apps/web/test/certificate.test.tsx"
+        ]
+      },
+      "provides": [
+        "formatGain(start: bigint, end: bigint): string (\"+0.79%\": end against start, signed, 2 decimals)",
+        "formatBtc(size: bigint, baseDecimals?: number): string (\"Flat\", \"0.0035 BTC long\", \"0.00342 BTC short\")",
+        "interface CertificateRow { label: string; value: string; mono: boolean }",
+        "certificateRows(meta: NonNullable<ReturnType<typeof decodeTokenUri>>): CertificateRow[]",
+        "CertificateView(props: { runId: bigint; holder: Address; uri: string }) (plain labels, equities in USDso, the gain; the trust line and the holder unchanged)"
+      ],
+      "requires": [
+        "formatUsdso(raw: bigint, decimals?: number): string",
+        "formatBps(bps: number): string",
+        "shortHash(h: string): string",
+        "decodeTokenUri(uri: string): { name: string; description: string; external_url: string; attributes: { trait_type: string; value: string | number }[] } | null",
+        "CertificateView(props: { runId: bigint; holder: Address; uri: string })",
+        "TRUST_LINE = \"Every certificate is chain-checked at mint; every verdict is replayable.\"",
+        "rulebookById(id: Hex): Rulebook | null (current and retired rulebooks)",
+        "routeHref(r: Route): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web -- test/certificate.test.tsx",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "fix(web): the certificate page shows money and plain labels, not raw wei (P8)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "web:14",
+      "subsystem": "web",
+      "title": "The verdict page: a PASS's lock close from the evidence bundle, sizes in BTC, the canonical rulebook JSON (P8)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:2",
+        "web:3",
+        "web:4",
+        "web:6",
+        "web:9",
+        "web:10",
+        "web:12",
+        "web:13",
+        "spike:2",
+        "spike:3",
+        "referee:18",
+        "referee:20",
+        "referee:22"
+      ],
+      "effort": "low",
+      "model_tier": "standard",
+      "files": {
+        "create": [
+          "apps/web/src/lib/evidence.ts"
+        ],
+        "modify": [
+          "apps/web/src/components/VerdictView.tsx",
+          "apps/web/src/pages/Verdict.tsx"
+        ],
+        "test": [
+          "apps/web/test/verdict-pass.test.tsx"
+        ]
+      },
+      "provides": [
+        "interface EvidenceEntry { bundle: { account?: string; startBlock?: string; verdict?: string; lock?: { blockNumber: string; judgedEquity: string; bufferBps: number }; close?: { txs?: { label: string; hash: string; status: string }[] } } }",
+        "type EvidenceStore = Record<string, EvidenceEntry>",
+        "EVIDENCE: EvidenceStore (docs/evidence/runs.json as committed when the app is built)",
+        "lockTxsFromEvidence(store: EvidenceStore, run: { runId: bigint; account: Address; start: { blockNumber: bigint } }): Hex[]",
+        "rulebookText(id: Hex): string | null (the canonical JSON whose keccak256 is the id)",
+        "VerdictView(props: { data: VerdictData; replay: Record<\"start\" | \"breach\" | \"end\", ReplayRow[] | null>; onReplay: () => void; breachJudged?: JudgedView | null; lockTxs?: readonly Hex[] })",
+        "VerdictPage(props: { runId: bigint }) (a PASS shows its lock close from the evidence bundle; sizes in BTC; the rulebook JSON canonical)"
+      ],
+      "requires": [
+        "VerdictView(props: { data: VerdictData; replay: Record<\"start\" | \"breach\" | \"end\", ReplayRow[] | null>; onReplay: () => void; breachJudged?: JudgedView | null })",
+        "interface JudgedView { equity: bigint | null; served: boolean }",
+        "replayJudged(client: PublicClient, pool: Address, read: StoredRead): Promise<JudgedView>",
+        "interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }",
+        "VerdictPage(props: { runId: bigint })",
+        "ORACLE_NO_READING_LINE = \"No Price Oracle reading was recorded for this verdict.\"",
+        "runMissing(run: { status: number; account: string }): boolean",
+        "RunNotFound(props: { runId: bigint })",
+        "formatBtc(size: bigint, baseDecimals?: number): string (\"Flat\", \"0.0035 BTC long\", \"0.00342 BTC short\")",
+        "formatUsdso(raw: bigint, decimals?: number): string",
+        "shortHash(h: string): string",
+        "interface StoredRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }",
+        "interface ReplayRow { field: \"equity\" | \"lockedCollateral\" | \"positionSize\" | \"markPrice\"; call: string; stored: bigint; chain: bigint | null; match: \"exact\" | \"within-tolerance\" | \"differs\" | \"not-served\" }",
+        "replayRead(client: PublicClient, account: Address, pool: Address, stored: StoredRead): Promise<ReplayRow[]>",
+        "RULEBOOKS: readonly Rulebook[]",
+        "rulebookById(id: Hex): Rulebook | null (current and retired rulebooks)",
+        "canonicalJson(value: unknown): string",
+        "rulebookId(rb: Rulebook): Hex",
+        "explorerTx(hash: Hex): string",
+        "browserClient(): PublicClient",
+        "REGISTRY: Address | null",
+        "routeHref(r: Route): string",
+        "the referee daemon: FAIL and PASS closes planned from the push and sent in one round trip; the PASS lock from the push's closeable equity plus LOCK_BUFFER_BPS (no SDK quote); DaemonDeps without markets",
+        "docs/evidence/rehearsal-pass.json (the first live PASS: passRunId, its certificate held by its own account, one FAILED run)"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web -- test/verdict-pass.test.tsx",
+        "expect": "PASS — `5 passed`."
+      },
+      "commit": "fix(web): a PASS shows its lock close from the evidence bundle; sizes in BTC; the rulebook JSON is canonical (P8)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
       "id": "ship:1",
       "subsystem": "ship",
       "title": "`@basanos/ship` — featured snapshot, X posts, checks, site assembly, evidence index",
@@ -4260,7 +4387,9 @@
         "referee:20",
         "referee:21",
         "referee:22",
-        "web:11"
+        "web:11",
+        "web:13",
+        "web:14"
       ],
       "effort": "medium",
       "model_tier": "top",
@@ -4400,9 +4529,12 @@
         "web:10",
         "web:11",
         "web:12",
+        "web:13",
+        "web:14",
         "referee:18",
         "landing:3",
         "landing:5",
+        "landing:7",
         "contracts:10"
       ],
       "effort": "medium",
@@ -4942,6 +5074,51 @@
         "expect": "PASS — `PASS third-party list`."
       },
       "commit": "docs(gates): list the third-party frontend-kit files in the submission draft",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "landing:7",
+      "subsystem": "landing",
+      "title": "The landing's closes row names a PASS's certificate, not \"0, first none\" (P8)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-landing.md",
+      "depends_on": [
+        "landing:1",
+        "landing:3",
+        "landing:5"
+      ],
+      "effort": "low",
+      "model_tier": "standard",
+      "files": {
+        "create": [],
+        "modify": [
+          "apps/landing/scripts/render.ts",
+          "apps/landing/src/page.html"
+        ],
+        "test": [
+          "apps/landing/test/closes-row.test.ts"
+        ]
+      },
+      "provides": [
+        "pageVars(f: FeaturedLike): Record<string, string> (adds closeRowLabel, closeRowLead, closeRowHref, closeRowLink: a FAIL names its first close, a PASS its certificate)",
+        "apps/landing/src/page.html (the #verdict closes row reads the closeRow slots)"
+      ],
+      "requires": [
+        "interface FeaturedLike { runId: string; status: string; rule: string | null; rulebook: { label: string; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number }; start: { block: string; equity: string }; end: { block: string; equity: string }; breach: { block: string; equity: string } | null; closeTxs: { hash: string; url: string }[]; verdictTx: { hash: string; url: string } | null; oracle: { price: string; sources: number } | null; links: { verdict: string; certificate: string | null }; account: string; registry: string; trustLine: string; demoDisclosure: string; testnetNotice: string }",
+        "pageVars(f: FeaturedLike): Record<string, string>",
+        "renderPage(template: string, f: FeaturedLike): string",
+        "findUnbacked(html: string, f: FeaturedLike): string[]",
+        "apps/landing/src/page.html (the template)",
+        "withOracleRow(template: string, f: FeaturedLike): string (the Price Oracle row only with a real reading)",
+        "apps/landing/test/fixtures/featured-sample.json (a labelled test fixture, \"sample\": true; lives under test/ only)",
+        "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/landing -- test/closes-row.test.ts",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "fix(landing): a PASS's closes row names its certificate, not a close count of 0 (P8)",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"

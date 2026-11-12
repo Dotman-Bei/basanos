@@ -654,7 +654,7 @@ Message: `docs(evidence): featured run = the rehearsal's first real verdict`
 - Modify: `apps/landing/src/featured-verdict.json`
 - Modify: `apps/landing/src/img/verdict.png`
 
-**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2, landing:Task 4, referee:Task 12, referee:Task 14, referee:Task 15, referee:Task 17, referee:Task 18, referee:Task 20, referee:Task 21, referee:Task 22, web:Task 11
+**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2, landing:Task 4, referee:Task 12, referee:Task 14, referee:Task 15, referee:Task 17, referee:Task 18, referee:Task 20, referee:Task 21, referee:Task 22, web:Task 11, web:Task 13, web:Task 14
 **Effort:** medium
 **Model tier:** top
 **Provides:** `money shot take in docs/evidence/demo-takes.json (one PASS, one FAIL)`, `FEATURED_RUN_ID (the money-shot PASS run; set in .env)`
@@ -1008,7 +1008,7 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 - Create: `deployments/site.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, Task 10, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, web:Task 11, web:Task 12, referee:Task 18, landing:Task 3, landing:Task 5, contracts:Task 10
+**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, Task 10, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, web:Task 11, web:Task 12, web:Task 13, web:Task 14, referee:Task 18, landing:Task 3, landing:Task 5, landing:Task 7, contracts:Task 10
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`
