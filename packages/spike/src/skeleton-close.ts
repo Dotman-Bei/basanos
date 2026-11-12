@@ -5,6 +5,9 @@
 // Every write is signed locally by viem and sent to the standard RPC (rpcHttp()). Account A's grant, open and
 // rest carry ORDER_GAS and an explicit pending nonce; --sdk-send routes those three through the SDK's own send
 // path instead (fallback only). The evidence records which path ran as `sendPath`.
+// Account A must be FUNDED, not voucher-backed (B14/B15, spike:20): at least 1 USDso of unlocked collateral in its
+// own MarginBank balance (spike:18 deposits it). The leverage cap that applies is the voucher cap only for a claimed
+// voucher, otherwise the market maximum (40x on BTC-PERP); the evidence records both.
 import { zeroAddress, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -29,6 +32,7 @@ import {
 } from "@basanos/core";
 import { loadDotEnv, requirePrivateKey } from "@basanos/core/node";
 import { writeEvidence } from "./evidence";
+import { SKELETON_MIN_UNLOCKED, capFromLeverage, formatUsdso, fundedProblem } from "./funding";
 import {
   grantCall,
   isFlat,
@@ -114,8 +118,12 @@ if (ownerStt < STT_WRITE_HEADROOM || refereeStt < STT_WRITE_HEADROOM) {
   stop(`STT below the 0.6 write headroom (owner ${ownerStt}, referee ${refereeStt}); top up from the Tokyo faucet`);
 }
 const voucher = await ownerMarkets.client.getPerpVoucher(MARGIN_BANK, owner);
-if (!voucher?.claimed) stop("account A has no claimed voucher; the Step 3 preflight claims it (this script never claims)");
+const voucherClaimed = voucher?.claimed === true;
+const ownerState = await client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getAccountState", args: [owner] });
+const unfunded = fundedProblem("account A", ownerState.unlockedCollateralBalance, SKELETON_MIN_UNLOCKED);
+if (unfunded) stop(unfunded);
 const leverage = await ownerMarkets.client.getPerpLeverage({ marginBank: MARGIN_BANK, account: owner, pool: BTC_POOL });
+const cap = capFromLeverage(leverage, voucherClaimed);
 const params = await client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "getOrderBookParameters" });
 const book: BookParams = { tickSize: params.tickSize, minQuantity: params.minQuantity, lotSize: params.lotSize };
 const markets = await ownerMarkets.client.listPerpMarkets();
@@ -127,7 +135,8 @@ if (!startAccount || !isFlat(startAccount)) stop("account A is not flat; flatten
 if (!start.markOk) stop("BTC-PERP has no fresh mark price");
 const openQty = alignUp(book.minQuantity, book.lotSize);
 console.log(
-  `preflight ok: owner ${owner}, referee ${referee}, voucher floor ${voucher?.floor}, voucher cap ${leverage.voucherLeverageCapX}x, ` +
+  `preflight ok: owner ${owner}, referee ${referee}, unlocked margin ${formatUsdso(ownerState.unlockedCollateralBalance)} USDso, ` +
+    `leverage cap ${cap.capX}x (${cap.capSource}), voucher ${voucherClaimed ? "claimed" : "none"}, ` +
     `mark ${start.markPrice}, open qty ${openQty}, send path ${sendPath}`,
 );
 if (dryRun) {
@@ -237,8 +246,14 @@ writeEvidence("g1a-close", {
     voucherLeverageCapX: leverage.voucherLeverageCapX,
     accountMaxLeverageX: leverage.accountMaxLeverageX,
     protocolMaxLeverageX: leverage.protocolMaxLeverageX,
+    marketMaxLeverageBps: leverage.marketMaxLeverageBps,
     creditFloor: leverage.creditFloor,
+    voucherClaimed,
+    // The cap that applies: the voucher cap only for a claimed voucher, else the market maximum (40x on BTC-PERP).
+    capX: cap.capX,
+    capSource: cap.capSource,
   },
+  funding: { unlockedWei: ownerState.unlockedCollateralBalance, needWei: SKELETON_MIN_UNLOCKED, source: voucherClaimed ? "voucher" : "deposit" },
   book,
   entry,
   startSnapshot: start,
