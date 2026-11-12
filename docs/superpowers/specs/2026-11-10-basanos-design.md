@@ -154,7 +154,7 @@ happens after 2026-11-15 and the results date is unpublished, hence the stored r
   `MainFundedChild`, `IsolatedModeSet`, `MaxLeverageSet`, `BuilderFeeCharged`; voucher events
   (`AccountCredited` / `CreditReclaimed`) are not in the SDK's ABI.
 
-**Open until the spike runs:** G1(a) the referee's close on a voucher account, the per-account `getPerpLeverage` read for (e), the
+**Open until the spike runs:** G1(a) the referee's close on a funded account (deposited USDso; no voucher, B14), the per-account `getPerpLeverage` read for (e), the
 equity-view history depth (c), and R1's three indexer reads. Task `spike:13` writes each answer, with
 its evidence file, into §3a below. G1(d) is answered (2026-11-11). The two-symbol request finalized Failed (Majority consensus). Probe P1 (one symbol, the registry's own path) finalized Success, so the cross-check stays (§1).
 
@@ -162,11 +162,11 @@ its evidence file, into §3a below. G1(d) is answered (2026-11-11). The two-symb
 
 | Item | Evidence file | Result |
 |---|---|---|
-| G1(a) referee close on a voucher account | `docs/evidence/g1a-close.json` | written by `spike:13` |
+| G1(a) referee close on a funded account | `docs/evidence/g1a-close.json` | written by `spike:13` |
 | G1(b) watch with attached equity multicall | `docs/evidence/g1b-watch.json` | written by `spike:13` |
 | G1(c) equity history depth | `docs/evidence/g1c-history.json` | written by `spike:13` |
 | G1(d) Price Oracle `BTC/USDC:PERP` | `docs/evidence/g1d-oracle.json` | **Failed.** Request 7773100 (createRequest tx `0xdf795f1f…a30d`, block 47437497) finalized Failed one block later (`RequestFinalized` status 3, tx `0x851aaa04…2301`). All three validators answered Success with prices: `BTC/USDC:PERP` 73,976.65 from 7 sources, identical across the three; `BTC/USDC` 74,008.55–74,011.48 from 6–7 sources, differing. The 4-argument `createRequest` uses Majority consensus, which needs byte-identical answers, so the request failed and no consensus price reached the callback. dreamDEX's PriceFeedScheduler uses `createAdvancedRequest` with Threshold consensus (3 validators, threshold 2, 30 s, 0.06 STT) and succeeds every 5 blocks. **Probe P1** (request 7782661: one symbol, `BTC/USDC:PERP`, through the registry's own 4-argument path, 0.0309 STT) finalized **Success**. Two of three validators answered byte-identically (≈ 73,735.85, 6 sources), which Majority needs; the evidence is `docs/evidence/g1d-probe-p1.json`. The cross-check is restored: `ORACLE_ENABLED=true`. A request can still fail, so every surface shows a reading only when one was recorded. |
-| G1(e) voucher leverage cap (per account) | `docs/evidence/g1a-close.json` (`leverage` field) | written by `spike:13` |
+| G1(e) leverage cap that applies (the voucher's 20× only for a voucher account, else the market's 40×) | `docs/evidence/g1a-close.json` (`leverage` field) | written by `spike:13` |
 | R1 indexer reads | `docs/evidence/r1-indexer.json` | written by `spike:13` |
 | Live mark tape for G4 | `packages/core/test/fixtures/btc-tape.json` | written by `spike:13` |
 | Measured STT cost per tx | `docs/evidence/g1a-close.json` (`costs`) | written by `spike:13` |
@@ -216,10 +216,11 @@ contract-checked fields; the full JSON is published in `rulebooks/` and on the v
 | `oracleSymbol` | `BTC/USDC:PERP` | same | registry (oracle request) |
 | VOID on | money flow, a position in another market, grant revoked | same | referee / anyone |
 
-**Tuning to the voucher (20× cap):** a 1,000 USDso voucher account may increase a position up to 20×.
-The exposure cap (15×) sits below it, so an exposure breach is reachable on demand. Demo sizing is
-**12×** (≈ 0.16 BTC at 74.5k = ≈ 11.9k notional): a 0.125% BTC move is ±1.5% equity (standard), a
-0.042% move is ±0.5% (demo).
+**Tuning to the leverage cap.** The demo accounts are not voucher accounts. `claim()` reverts chain-wide (B14), so each account holds its own USDso, deposited into its MarginBank balance (≈ 50 USDso each, 2026-11-12).
+- **The cap that applies** is the market's 40× (`marketMaxLeverageBps` 400000). The voucher's 20× cap binds only a voucher account.
+- **Why the cap matters:** the exposure cap (15×) sits below either cap, so an exposure breach is still reachable on demand (the bot's breach goes to 16×).
+- **Demo sizing is 12×** of live equity. At ≈ 50 USDso that is ≈ 600 USDso of notional, ≈ 0.008 BTC, about 60 times the 0.00013 BTC minimum. Sizing scales with equity, so nothing assumes 1,000 USDso (referee:11).
+- **What a move does:** a 0.125% BTC move is ±1.5% equity (standard), and a 0.042% move is ±0.5% (demo).
 
 **Demo mode (G4).** `tokyo-sprint-demo` is the same rulebook schema with tighter numbers, registered
 with its own id and labelled "Tokyo Sprint · Demo" on every surface that shows it. `npm run demo -w
@@ -447,10 +448,10 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
 - The bot signs with `ACCOUNT_B_PK` (its own account, no operator): grant the referee place + cancel on
   the BTC pool, `startRun`, open a short IOC at the demo size, hold; `bot.ts breach` adds size past
   15×.
-- `npm run demo -w @basanos/bot`: preflight both accounts (STT ≥ 0.6, voucher present, flat, grants),
+- `npm run demo -w @basanos/bot`: preflight both accounts (STT ≥ 0.6, funded: unlocked MarginBank margin, flat, grants),
   start both runs on `tokyo-sprint-demo`, open opposite 12× positions, stream both runs until both have a
   verdict, print every tx hash with explorer links.
-- No bot or demo command ever claims a voucher; claims happen once per account in the Step 3 preflight.
+- No bot or demo command ever claims a voucher. The demo accounts are funded by depositing their own wallet USDso (spike:18, spike:19), because `claim()` reverts chain-wide (B14).
   The web terminal's "Claim voucher" button (§10) is the only claim path in the product; it fires only on
   an explicit user click, and every test and dev run mocks it.
 

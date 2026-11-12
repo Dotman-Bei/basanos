@@ -13,7 +13,7 @@
 **Boot notes for the orchestrator:**
 - Append-only to push 1: every `spike:*` / `contracts:*` task referenced here keeps its id, files and gate.
 - Task 1 adds a wildcard subpath export to `@basanos/core` (`"./*": "./src/*.ts"`). New core modules are imported as `@basanos/core/<module>`, so no task here edits `packages/core/src/index.ts`.
-- **No task claims a voucher.** The Step 3 preflight claimed one per challenge account. The verdict path never calls `getMarginEvents`, `listPerpMarginPulls` or `listPerpMainFundingEvents` (R1).
+- **No task claims a voucher**, because `claim()` reverts chain-wide (B14). Each challenge account is funded with its own wallet USDso, deposited into its own MarginBank balance (spike:18 for A, spike:19 for B). The verdict path never calls `getMarginEvents`, `listPerpMarginPulls` or `listPerpMainFundingEvents` (R1).
 - Task 10 is human-gated: it signs with `REFEREE_PK`, `ACCOUNT_A_PK` and `ACCOUNT_B_PK`, and it produces the first real verdict runs (`docs/evidence/rehearsal.json`) that the landing plan builds against.
 - The repo path contains a space (tollgate S3). Every command here is run from the repo root.
 
@@ -2528,7 +2528,7 @@ Message: `feat(referee): demo-cost check, rulebook registration and rehearsal ch
 **Human-gated.** This signs real transactions with `REFEREE_PK` (closes and verdicts, plus 0.0309 STT per PASS or FAIL verdict for the Price Oracle, mostly rebated; set `ORACLE_ENABLED=true` in `.env` first), `ACCOUNT_A_PK` and `ACCOUNT_B_PK` (grant, `startRun`, orders). Needed first:
 - all three burners topped up to about 1 STT from the Tokyo faucet;
 - `REGISTRY_ADDRESS` and `REFEREE_ADDRESS` set in `.env`;
-- both accounts flat with their claimed vouchers.
+- both accounts flat, each funded: its own USDso deposited in its own MarginBank balance (spike:18, spike:19; no voucher).
 
 No voucher is ever claimed. `rulebooks/tokyo-sprint-demo.json` and `deployments/hideki.json` change only if step 1 fails.
 

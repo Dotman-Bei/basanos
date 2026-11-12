@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it.",
   "subsystems": [
     "spike",
     "contracts",
@@ -678,14 +678,15 @@
     {
       "id": "spike:11",
       "subsystem": "spike",
-      "title": "LIVE — the referee closes a voucher account (G1 a, e; the Nov 11 tripwire)",
+      "title": "LIVE — the referee closes a funded account (G1 a, e; the Nov 11 tripwire)",
       "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
       "depends_on": [
         "spike:7",
         "spike:9",
         "spike:10",
         "spike:14",
-        "spike:18"
+        "spike:18",
+        "spike:20"
       ],
       "effort": "medium",
       "model_tier": "top",
@@ -697,10 +698,10 @@
         "test": []
       },
       "provides": [
-        "docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage.voucherLeverageCapX, entry { markBefore, avgEntryPrice, costBps }, costs)"
+        "docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage { voucherLeverageCapX, capX, capSource }, funding { unlockedWei }, entry { markBefore, avgEntryPrice, costBps }, costs)"
       ],
       "requires": [
-        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send]",
+        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send] (funded test: account A needs >= 1 USDso of unlocked MarginBank margin; records the leverage cap that applies)",
         "CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS"
       ],
       "gate": {
@@ -1182,6 +1183,82 @@
       "commit": "docs(evidence): account B's own USDso deposited into its MarginBank balance",
       "human_gate": true,
       "gate_profile": "wallet",
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:20",
+      "subsystem": "spike",
+      "title": "The skeleton tests a funded account, not a claimed voucher, and records the leverage cap that applies",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:14",
+        "spike:17",
+        "spike:2",
+        "spike:6",
+        "spike:4",
+        "spike:3",
+        "spike:7",
+        "spike:10"
+      ],
+      "effort": "low",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "packages/spike/src/skeleton-close.ts"
+        ],
+        "test": []
+      },
+      "provides": [
+        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send] (funded test: account A needs >= 1 USDso of unlocked MarginBank margin; records the leverage cap that applies)"
+      ],
+      "requires": [
+        "BTC_POOL",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]",
+        "MARGIN_BANK",
+        "marginBankAbi",
+        "OPERATOR_REGISTRY",
+        "ORDER_GAS = 10_000_000n",
+        "ORDER_TYPE_IOC = 2",
+        "ORDER_TYPE_LIMIT = 0",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "STT_WRITE_HEADROOM = 600_000_000_000_000_000n",
+        "alignUp(x: bigint, step: bigint): bigint",
+        "farFutureNs(nowMs?: number): bigint",
+        "perpPoolAbi",
+        "planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null",
+        "planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "writeEvidence(name: EvidenceName, data: Record<string, unknown>): string",
+        "SKELETON_MIN_UNLOCKED = 1 USDso (1_000_000_000_000_000_000n)",
+        "capFromLeverage(lev: { voucherLeverageCapX: number; marketMaxLeverageBps: bigint | null; protocolMaxLeverageX: number }, voucherClaimed: boolean): { capX: number; capSource: \"voucher\" | \"market\" }",
+        "formatUsdso(wei: bigint): string",
+        "fundedProblem(who: string, unlockedWei: bigint, needWei: bigint): string | null",
+        "grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall",
+        "isFlat(s: AccountSnapshot): boolean",
+        "ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall",
+        "ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }",
+        "parseSendPath(argv: readonly string[]): SendPath",
+        "sumCosts(txs: readonly TxRecord[]): bigint",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "type SendPath = \"viem\" | \"sdk\"",
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "interface UnsignedCall { to: Address; data: Hex; value: bigint }",
+        "marketsFor(pk?: Hex): SomniaMarkets",
+        "publicClient(): PublicClient",
+        "walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/spike",
+        "expect": "PASS — `31 passed`."
+      },
+      "commit": "fix(spike): the skeleton tests a funded account and records the leverage cap that applies",
+      "human_gate": false,
       "allow_empty": false,
       "status": "pending"
     },

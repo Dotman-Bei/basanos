@@ -7,7 +7,9 @@
 
 **Boot notes for the orchestrator:**
 - Chain: Somnia Tokyo testnet (Hideki, 50383). Secrets only in the git-ignored `.env` under the names in spec §13; never print, log or commit a key.
-- Tasks 11 and 12 are human-gated (`human_gate: true`): they sign real transactions with burner keys that the Step 3 preflight funded. **No task in this plan ever claims a voucher**; the preflight claimed one per challenge account.
+- Tasks 11, 12, 18 and 19 are human-gated (`human_gate: true`). They sign real transactions with burner keys: the Step 3 preflight gave them STT, and the organizers sent USDso to the wallets.
+  - **No task in this plan ever claims a voucher.** `claim()` reverts chain-wide (B14), and no account holds one.
+  - The accounts are funded: Tasks 18 and 19 deposit each account's own wallet USDso into its own MarginBank balance.
 - **Task 11 is stop-and-escalate:** if the referee's close does not land (evidence `ok: false`), stop the build and escalate to the user. The product depends on it.
 - **SDK pin timebox:** if task 11 has not landed a real order on 0.33.0 within ~2 h of starting the skeleton, stop and route a plan fix to the architect: switch `@somnia-chain/markets-sdk` to `0.32.1` in `packages/core/package.json` and `packages/spike/package.json`.
 - **Task 14 (added 2026-11-11, after Task 10 landed):** account A's own writes in `skeleton-close` (grant, open, rest) move off the SDK's send path, which returned `TransactionOutcomeUnknownError` in the Step 3 preflight, onto viem: signed locally, sent to the standard RPC with `ORDER_GAS` and an explicit nonce. It runs after Task 10 and before Task 11 (Task 11 depends on it). `--sdk-send` keeps the SDK path as an opt-in fallback; the evidence records `sendPath`.
@@ -2461,22 +2463,27 @@ Message: `feat(spike): referee close skeleton and Price Oracle probe with dry-ru
 
 ---
 
-### Task 11: LIVE — the referee closes a voucher account (G1 a, e; the Nov 11 tripwire)
+### Task 11: LIVE — the referee closes a funded account (G1 a, e; the Nov 11 tripwire)
 
 **Files:**
 - Create: `docs/evidence/g1a-close.json`
 
-**Depends on:** Task 7, Task 9, Task 10, Task 14, Task 18
+**Depends on:** Task 7, Task 9, Task 10, Task 14, Task 18, Task 20
 **Effort:** medium
 **Model tier:** top
-**Provides:** `docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage.voucherLeverageCapX, entry { markBefore, avgEntryPrice, costBps }, costs)`
-**Requires:** `CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send]`, `CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS`
+**Provides:** `docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage { voucherLeverageCapX, capX, capSource }, funding { unlockedWei }, entry { markBefore, avgEntryPrice, costBps }, costs)`
+**Requires:** `CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send] (funded test: account A needs >= 1 USDso of unlocked MarginBank margin; records the leverage cap that applies)`, `CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS`
 
-**Human-gated.** This signs real transactions with the account A and referee burners (`ACCOUNT_A_PK`, `REFEREE_PK` in `.env`). It needs: account A funded with ≥ 0.6 STT and holding its claimed voucher (Step 3 preflight), the referee funded with ≥ 0.6 STT, account A flat. It never claims a voucher. Expected spend: about 5–7 transactions. Account A's grant, open and resting order are signed by viem and sent to the standard RPC with `ORDER_GAS` and an explicit nonce (Task 14); run with `--sdk-send` only if the guide asks for the SDK's own send path, and the evidence records which path ran (`sendPath`).
+**Human-gated.** This signs real transactions with the account A and referee burners (`ACCOUNT_A_PK`, `REFEREE_PK` in `.env`). It needs:
+- account A with ≥ 0.6 STT and **≥ 1 USDso of unlocked margin in its own MarginBank balance**. Task 18 deposits it from A's own wallet; there is no voucher, because `claim()` reverts chain-wide (B14);
+- the referee with ≥ 0.6 STT;
+- account A flat.
+
+It never claims a voucher. The leverage cap that applies is the market's 40× (the voucher's 20× cap binds only a voucher account), and the evidence records it as `leverage.capX` / `capSource`. Expected spend: about 5–7 transactions. Account A's grant, open and resting order are signed by viem and sent to the standard RPC with `ORDER_GAS` and an explicit nonce (Task 14); run with `--sdk-send` only if the guide asks for the SDK's own send path, and the evidence records which path ran (`sendPath`).
 
 - [ ] **Step 1: Dry-run the preflight**
 Run: `npx tsx packages/spike/src/skeleton-close.ts --dry-run`
-Expected: `preflight ok: owner 0x…, referee 0x…, voucher floor …, voucher cap 20x, mark …, open qty …, send path viem` then `dry-run: no transaction sent`. A `STOP —` line means a prerequisite is missing: fix it (faucet, preflight) and re-run; do not continue.
+Expected: `preflight ok: owner 0x…, referee 0x…, unlocked margin <n> USDso, leverage cap 40x (market), voucher none, mark …, open qty …, send path viem` then `dry-run: no transaction sent`. A `STOP —` line means a prerequisite is missing: fix it (faucet, preflight) and re-run; do not continue.
 
 - [ ] **Step 2: Run live**
 Run: `npx tsx packages/spike/src/skeleton-close.ts`
@@ -2561,6 +2568,9 @@ describe("summarize", () => {
     expect(
       summarize("g1a-close", { ok: true, closeAttempts: 1, txs: [{}, {}, {}], leverage: { voucherLeverageCapX: 20 }, entry: { costBps: 1.25 } }),
     ).toBe("PASS — flat after 1 close attempt(s), 3 txs; voucher cap 20x; entry 1.25 bps vs mark");
+    expect(
+      summarize("g1a-close", { ok: true, closeAttempts: 1, txs: [{}, {}], leverage: { voucherLeverageCapX: 20, capX: 40, capSource: "market" }, entry: { costBps: 22.4 } }),
+    ).toBe("PASS — flat after 1 close attempt(s), 2 txs; leverage cap 40x (market); entry 22.4 bps vs mark");
     expect(summarize("g1c-history", { maxServedBack: 10_000_000 })).toBe("equity view served 10,000,000 blocks back (≈ 11.6 days)");
     expect(summarize("g1d-oracle", null)).toBe("not run");
   });
@@ -2618,7 +2628,9 @@ export function summarize(name: EvidenceName, data: Record<string, unknown> | nu
       const lev = (data.leverage ?? {}) as Record<string, unknown>;
       const head = data.ok === true ? "PASS" : "FAIL (escalated)";
       const entry = (data.entry ?? {}) as Record<string, unknown>;
-      return `${head} — flat after ${String(data.closeAttempts)} close attempt(s), ${arr(data.txs).length} txs; voucher cap ${String(lev.voucherLeverageCapX)}x; entry ${String(entry.costBps)} bps vs mark`;
+      // The cap that applies (spike:20): the market's for a non-voucher account, the voucher's only for a claimed voucher.
+      const cap = typeof lev.capX === "number" ? `leverage cap ${String(lev.capX)}x (${String(lev.capSource ?? "market")})` : `voucher cap ${String(lev.voucherLeverageCapX)}x`;
+      return `${head} — flat after ${String(data.closeAttempts)} close attempt(s), ${arr(data.txs).length} txs; ${cap}; entry ${String(entry.costBps)} bps vs mark`;
     }
     case "g1b-watch":
       return `${String(data.pushes)} price pushes and ${String(data.accountPushes ?? 0)} account pushes in ${String(data.seconds ?? "?")}s; equity decoded: ${String(data.equityDecoded)}; block timestamp unit: ${String(data.timestampUnit)}`;
@@ -5375,3 +5387,310 @@ Expected: PASS — `PASS deposit-b`.
 
 - [ ] **Step 4: Commit (kernel-performed — no agent runs this)**
 Message: `docs(evidence): account B's own USDso deposited into its MarginBank balance`
+
+---
+
+### Task 20: The skeleton tests a funded account, not a claimed voucher, and records the leverage cap that applies
+
+**Files:**
+- Modify: `packages/spike/src/skeleton-close.ts`
+
+**Depends on:** Task 14, Task 17, Task 2, Task 6, Task 4, Task 3, Task 7, Task 10
+**Effort:** low
+**Model tier:** top
+**Provides:** `CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send] (funded test: account A needs >= 1 USDso of unlocked MarginBank margin; records the leverage cap that applies)`
+**Requires:** `BTC_POOL`, `CANCEL_ORDER_FOR_SELECTOR`, `CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]`, `MARGIN_BANK`, `marginBankAbi`, `OPERATOR_REGISTRY`, `ORDER_GAS = 10_000_000n`, `ORDER_TYPE_IOC = 2`, `ORDER_TYPE_LIMIT = 0`, `PLACE_ORDER_FOR_SELECTOR`, `STT_WRITE_HEADROOM = 600_000_000_000_000_000n`, `alignUp(x: bigint, step: bigint): bigint`, `farFutureNs(nowMs?: number): bigint`, `perpPoolAbi`, `planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null`, `planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `writeEvidence(name: EvidenceName, data: Record<string, unknown>): string`, `SKELETON_MIN_UNLOCKED = 1 USDso (1_000_000_000_000_000_000n)`, `capFromLeverage(lev: { voucherLeverageCapX: number; marketMaxLeverageBps: bigint | null; protocolMaxLeverageX: number }, voucherClaimed: boolean): { capX: number; capSource: "voucher" | "market" }`, `formatUsdso(wei: bigint): string`, `fundedProblem(who: string, unlockedWei: bigint, needWei: bigint): string | null`, `grantCall(registry: Address, pool: Address, operator: Address, selectors: readonly Hex[]): UnsignedCall`, `isFlat(s: AccountSnapshot): boolean`, `ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall`, `ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }`, `parseSendPath(argv: readonly string[]): SendPath`, `sumCosts(txs: readonly TxRecord[]): bigint`, `txRecord(label: string, receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord`, `type SendPath = "viem" | "sdk"`, `interface TxRecord { label: string; hash: Hex; status: "success" | "reverted"; gasUsed: bigint; costWei: bigint; explorer: string }`, `interface UnsignedCall { to: Address; data: Hex; value: bigint }`, `marketsFor(pk?: Hex): SomniaMarkets`, `publicClient(): PublicClient`, `walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account`
+
+Why (guide plan-bugs P1 and P3, 2026-11-12):
+- **The gate:** Task 14's `skeleton-close.ts` stops unless account A holds a claimed voucher. No account will ever hold one, because `claim()` reverts chain-wide (B14).
+- **The funding:** the accounts are funded with their own wallet USDso, deposited into their own MarginBank balance (Tasks 17–19).
+- **The new test:** account A is "funded" when `MarginBank.getAccountState(A).unlockedCollateralBalance` ≥ 1 USDso (`SKELETON_MIN_UNLOCKED`). That is ample for the 0.00013 BTC minimum order: about 9.6 USDso of notional, about 0.24 USDso of margin at 40×.
+- **The leverage cap:** the cap that applies is the voucher's 20× only for a claimed voucher, otherwise the market's 40× (`marketMaxLeverageBps` 400000, verified read-only on 2026-11-12). The evidence keeps `voucherLeverageCapX` and adds `capX`, `capSource`, `voucherClaimed` and a `funding` block; spike:13's summary states the cap that applies.
+- **Unchanged:** every other line of Task 14's script, including the viem send path.
+
+- [ ] **Step 1: Replace the script**
+
+Replace `packages/spike/src/skeleton-close.ts` with:
+```ts
+// G1(a)+(e): account A grants the referee place+cancel on BTC-PERP, opens a minimum-size long and rests one
+// far bid; the referee cancels the resting order, closes the long with an IOC placeOrderFor (no reduce-only
+// flag exists), reads back flat. Follows the spec §8 close protocol: cancel first, fresh position read, IOC,
+// read-back, at most 3 attempts with widening slippage, final cancel sweep. --dry-run only reads.
+// Every write is signed locally by viem and sent to the standard RPC (rpcHttp()). Account A's grant, open and
+// rest carry ORDER_GAS and an explicit pending nonce; --sdk-send routes those three through the SDK's own send
+// path instead (fallback only). The evidence records which path ran as `sendPath`.
+// Account A must be FUNDED, not voucher-backed (B14/B15, spike:20): at least 1 USDso of unlocked collateral in its
+// own MarginBank balance (spike:18 deposits it). The leverage cap that applies is the voucher cap only for a claimed
+// voucher, otherwise the market maximum (40x on BTC-PERP); the evidence records both.
+import { zeroAddress, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import {
+  BTC_POOL,
+  CANCEL_ORDER_FOR_SELECTOR,
+  CLOSE_SLIPPAGE_STEPS_BPS,
+  MARGIN_BANK,
+  marginBankAbi,
+  OPERATOR_REGISTRY,
+  ORDER_GAS,
+  ORDER_TYPE_IOC,
+  ORDER_TYPE_LIMIT,
+  PLACE_ORDER_FOR_SELECTOR,
+  STT_WRITE_HEADROOM,
+  alignUp,
+  farFutureNs,
+  perpPoolAbi,
+  planClose,
+  planOpen,
+  readSnapshot,
+  type BookParams,
+} from "@basanos/core";
+import { loadDotEnv, requirePrivateKey } from "@basanos/core/node";
+import { writeEvidence } from "./evidence";
+import { SKELETON_MIN_UNLOCKED, capFromLeverage, formatUsdso, fundedProblem } from "./funding";
+import {
+  grantCall,
+  isFlat,
+  ownerOrderCall,
+  ownerTx,
+  parseSendPath,
+  sumCosts,
+  txRecord,
+  type SendPath,
+  type TxRecord,
+  type UnsignedCall,
+} from "./live-lib";
+import { marketsFor, publicClient, walletFor } from "./rpc";
+
+loadDotEnv();
+const dryRun = process.argv.includes("--dry-run");
+const sendPath: SendPath = parseSendPath(process.argv);
+const ownerPk = requirePrivateKey("ACCOUNT_A_PK");
+const refereePk = requirePrivateKey("REFEREE_PK");
+const owner: Address = privateKeyToAccount(ownerPk).address;
+const referee: Address = privateKeyToAccount(refereePk).address;
+const client = publicClient();
+const refWallet = walletFor(refereePk);
+const ownerWallet = walletFor(ownerPk);
+const ownerMarkets = marketsFor(ownerPk);
+const txs: TxRecord[] = [];
+const notes: string[] = [];
+
+function stop(reason: string, extra: Record<string, unknown> = {}): never {
+  console.error(`skeleton-close: STOP — ${reason}`);
+  if (!dryRun) writeEvidence("g1a-close", { ok: false, reason, sendPath, owner, referee, pool: BTC_POOL, txs, notes, ...extra });
+  process.exit(1);
+}
+
+/** One of account A's own writes. viem path: sign `call` with ORDER_GAS and the pending nonce, send it to the
+ *  standard RPC and wait for the receipt there. sdk path (--sdk-send): the SDK's own send, kept as a fallback. */
+async function ownerWrite(
+  label: string,
+  call: UnsignedCall,
+  viaSdk: () => Promise<{ receipt: Parameters<typeof txRecord>[1] }>,
+): Promise<TxRecord> {
+  let rec: TxRecord;
+  if (sendPath === "sdk") {
+    rec = txRecord(label, (await viaSdk()).receipt);
+  } else {
+    const nonce = await client.getTransactionCount({ address: owner, blockTag: "pending" });
+    const hash = await ownerWallet.sendTransaction(ownerTx(call, nonce, ORDER_GAS));
+    rec = txRecord(label, await client.waitForTransactionReceipt({ hash }));
+  }
+  txs.push(rec);
+  return rec;
+}
+
+async function authorized(selector: Hex): Promise<boolean> {
+  return client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [owner, referee, selector] });
+}
+
+async function openOrderIds(): Promise<readonly bigint[]> {
+  // The pool answers for msg.sender, so read as the owner via eth_call `from` (never through Multicall3).
+  return client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "getOwnOpenOrders", account: owner });
+}
+
+async function refereeCancelAll(label: string): Promise<void> {
+  try {
+    for (const id of await openOrderIds()) {
+      const hash = await refWallet.writeContract({
+        address: BTC_POOL,
+        abi: perpPoolAbi,
+        functionName: "cancelOrderFor",
+        args: [owner, id],
+        gas: ORDER_GAS,
+      });
+      txs.push(txRecord(label, await client.waitForTransactionReceipt({ hash })));
+    }
+  } catch (e) {
+    notes.push(`${label} failed: ${(e as Error).message.slice(0, 200)}`);
+  }
+}
+
+// 1. Preflight (reads only).
+const [ownerStt, refereeStt] = await Promise.all([client.getBalance({ address: owner }), client.getBalance({ address: referee })]);
+if (ownerStt < STT_WRITE_HEADROOM || refereeStt < STT_WRITE_HEADROOM) {
+  stop(`STT below the 0.6 write headroom (owner ${ownerStt}, referee ${refereeStt}); top up from the Tokyo faucet`);
+}
+const voucher = await ownerMarkets.client.getPerpVoucher(MARGIN_BANK, owner);
+const voucherClaimed = voucher?.claimed === true;
+const ownerState = await client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getAccountState", args: [owner] });
+const unfunded = fundedProblem("account A", ownerState.unlockedCollateralBalance, SKELETON_MIN_UNLOCKED);
+if (unfunded) stop(unfunded);
+const leverage = await ownerMarkets.client.getPerpLeverage({ marginBank: MARGIN_BANK, account: owner, pool: BTC_POOL });
+const cap = capFromLeverage(leverage, voucherClaimed);
+const params = await client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "getOrderBookParameters" });
+const book: BookParams = { tickSize: params.tickSize, minQuantity: params.minQuantity, lotSize: params.lotSize };
+const markets = await ownerMarkets.client.listPerpMarkets();
+const btcRow = markets.find((m) => m.baseSymbol === "BTC");
+if (!btcRow || btcRow.poolAddress.toLowerCase() !== BTC_POOL.toLowerCase()) stop("the live BTC-PERP pool differs from BTC_POOL in config");
+const start = await readSnapshot(client, [owner], BTC_POOL);
+const startAccount = start.accounts[0];
+if (!startAccount || !isFlat(startAccount)) stop("account A is not flat; flatten it in the dreamDEX app first");
+if (!start.markOk) stop("BTC-PERP has no fresh mark price");
+const openQty = alignUp(book.minQuantity, book.lotSize);
+console.log(
+  `preflight ok: owner ${owner}, referee ${referee}, unlocked margin ${formatUsdso(ownerState.unlockedCollateralBalance)} USDso, ` +
+    `leverage cap ${cap.capX}x (${cap.capSource}), voucher ${voucherClaimed ? "claimed" : "none"}, ` +
+    `mark ${start.markPrice}, open qty ${openQty}, send path ${sendPath}`,
+);
+if (dryRun) {
+  console.log("dry-run: no transaction sent");
+  process.exit(0);
+}
+
+// 2. Owner grants the referee place + cancel on the BTC pool only (a per-pool grant on the operator registry).
+const selectors: Hex[] = [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR];
+if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_ORDER_FOR_SELECTOR))) {
+  try {
+    await ownerWrite("grant", grantCall(OPERATOR_REGISTRY, BTC_POOL, referee, selectors), () =>
+      ownerMarkets.trader.setOperatorApprovalForPool({
+        pool: BTC_POOL,
+        operator: referee,
+        selectors,
+        approved: true,
+        operatorRegistry: OPERATOR_REGISTRY,
+      }),
+    );
+  } catch (e) {
+    stop(`the grant send failed before any order existed: ${(e as Error).message.slice(0, 200)}`);
+  }
+}
+if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_ORDER_FOR_SELECTOR))) stop("the grant did not take effect");
+
+// 3. Owner opens the minimum long (IOC) and rests one far bid (GTC) for the referee to cancel.
+const preOpen = await readSnapshot(client, [owner], BTC_POOL);
+const open = planOpen(true, openQty, preOpen.markPrice, book, 20);
+try {
+  const opened = await ownerWrite(
+    "open",
+    ownerOrderCall(BTC_POOL, true, open.price, open.quantity, ORDER_TYPE_IOC, farFutureNs()),
+    () => ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: open.price, quantity: open.quantity, orderType: ORDER_TYPE_IOC }),
+  );
+  if (opened.status === "reverted") stop("the opening IOC reverted, so no position was opened");
+} catch (e) {
+  stop(`the opening IOC failed before any position existed: ${(e as Error).message.slice(0, 200)}`);
+}
+// Real entry fill vs mark (the demo's +0.5% target is only trusted once this cost is known; spec §5).
+const openedPos = await client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getPosition", args: [owner, BTC_POOL] });
+const entry = {
+  side: "long",
+  quantity: open.quantity,
+  limitPrice: open.price,
+  markBefore: preOpen.markPrice,
+  markBlock: preOpen.blockNumber,
+  avgEntryPrice: openedPos.avgEntryPrice,
+  costBps: Number(((openedPos.avgEntryPrice - preOpen.markPrice) * 1_000_000n) / preOpen.markPrice) / 100,
+};
+console.log(`entry: avg ${entry.avgEntryPrice} vs mark ${entry.markBefore} = ${entry.costBps} bps`);
+const restPrice = (start.markPrice * 9_000n) / 10_000n - ((start.markPrice * 9_000n) / 10_000n) % book.tickSize;
+try {
+  await ownerWrite(
+    "rest",
+    ownerOrderCall(BTC_POOL, true, restPrice, openQty, ORDER_TYPE_LIMIT, farFutureNs()),
+    () => ownerMarkets.trader.placePerpOrder({ pool: BTC_POOL, isBid: true, price: restPrice, quantity: openQty, orderType: ORDER_TYPE_LIMIT }),
+  );
+} catch (e) {
+  // A rejected resting order (e.g. outside the pool's price band) must not strand the open long: note it and close.
+  notes.push(`resting order rejected: ${(e as Error).message.slice(0, 200)}; continuing to the referee close`);
+}
+
+// 4. Referee: cancel first, fresh read, IOC close, read back; at most 3 attempts.
+await refereeCancelAll("cancel");
+let attempts = 0;
+for (const slippage of CLOSE_SLIPPAGE_STEPS_BPS) {
+  const snap = await readSnapshot(client, [owner], BTC_POOL);
+  const acct = snap.accounts[0];
+  if (!acct || acct.size === 0n) break;
+  const plan = planClose(acct.size, snap.markPrice, book, slippage);
+  if (!plan) {
+    notes.push(`residual ${acct.size} is below one lot`);
+    break;
+  }
+  attempts += 1;
+  try {
+    const hash = await refWallet.writeContract({
+      address: BTC_POOL,
+      abi: perpPoolAbi,
+      functionName: "placeOrderFor",
+      args: [owner, plan.isBid, 0n, plan.price, plan.quantity, farFutureNs(), ORDER_TYPE_IOC, 0, zeroAddress, 0n],
+      gas: ORDER_GAS,
+    });
+    const receipt = await client.waitForTransactionReceipt({ hash });
+    txs.push(txRecord("close", receipt));
+    if (receipt.status === "reverted") notes.push(`close attempt ${attempts} at ${slippage} bps reverted (replay with eth_call at the parent block)`);
+  } catch (e) {
+    notes.push(`close attempt ${attempts} at ${slippage} bps failed to send: ${(e as Error).message.slice(0, 200)}`);
+  }
+}
+await refereeCancelAll("sweep");
+
+// 5. Read back and record.
+const end = await readSnapshot(client, [owner], BTC_POOL);
+const endAccount = end.accounts[0];
+const flat = endAccount ? isFlat(endAccount) : false;
+writeEvidence("g1a-close", {
+  ok: flat && txs.some((t) => t.label === "close" && t.status === "success"),
+  sdkVersion: "0.33.0",
+  sendPath,
+  owner,
+  referee,
+  pool: BTC_POOL,
+  operatorRegistry: OPERATOR_REGISTRY,
+  leverage: {
+    voucherLeverageCapX: leverage.voucherLeverageCapX,
+    accountMaxLeverageX: leverage.accountMaxLeverageX,
+    protocolMaxLeverageX: leverage.protocolMaxLeverageX,
+    marketMaxLeverageBps: leverage.marketMaxLeverageBps,
+    creditFloor: leverage.creditFloor,
+    voucherClaimed,
+    // The cap that applies: the voucher cap only for a claimed voucher, else the market maximum (40x on BTC-PERP).
+    capX: cap.capX,
+    capSource: cap.capSource,
+  },
+  funding: { unlockedWei: ownerState.unlockedCollateralBalance, needWei: SKELETON_MIN_UNLOCKED, source: voucherClaimed ? "voucher" : "deposit" },
+  book,
+  entry,
+  startSnapshot: start,
+  endSnapshot: end,
+  closeAttempts: attempts,
+  finalPositionSize: endAccount?.size ?? -1n,
+  finalLocked: endAccount?.lockedCollateral ?? -1n,
+  txs,
+  costs: { totalWei: sumCosts(txs), perTx: txs.map((t) => ({ label: t.label, gasUsed: t.gasUsed, costWei: t.costWei })) },
+  notes,
+});
+console.log(`skeleton-close: ${flat ? "FLAT" : "NOT FLAT"} after ${attempts} close attempt(s); ${txs.length} txs (owner writes via ${sendPath})`);
+for (const t of txs) console.log(`  ${t.label} ${t.status} ${t.explorer}`);
+process.exit(flat ? 0 : 1);
+```
+
+- [ ] **Step 2: Type-check (Task 11 runs the script live)**
+Run: `npm run typecheck -w @basanos/spike`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 3: Run the package tests (the gate)**
+Run: `npm test -w @basanos/spike`
+Expected: PASS — `31 passed`.
+
+- [ ] **Step 4: Commit (kernel-performed — no agent runs this)**
+Message: `fix(spike): the skeleton tests a funded account and records the leverage cap that applies`
