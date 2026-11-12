@@ -8,6 +8,9 @@
 // Account A must be FUNDED, not voucher-backed (B14/B15, spike:20): at least 1 USDso of unlocked collateral in its
 // own MarginBank balance (spike:18 deposits it). The leverage cap that applies is the voucher cap only for a claimed
 // voucher, otherwise the market maximum (40x on BTC-PERP); the evidence records both.
+// The opening IOC is capped from the book (best ask + 20 bps), not the mark (P5, spike:21): the book trades about
+// 19 bps above the mark, so a mark + 20 bps buy cannot fill. The dry-run checks the cap against the book and
+// simulates the open from account A, so a non-filling open stops before anything is sent.
 import { zeroAddress, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -26,11 +29,12 @@ import {
   farFutureNs,
   perpPoolAbi,
   planClose,
-  planOpen,
   readSnapshot,
   type BookParams,
 } from "@basanos/core";
+import { OPEN_MARGIN_BPS, planOpenFromBook, readBookLevels } from "@basanos/core/book";
 import { loadDotEnv, requirePrivateKey } from "@basanos/core/node";
+import { entryRecord, openProblem } from "./entry";
 import { writeEvidence } from "./evidence";
 import { SKELETON_MIN_UNLOCKED, capFromLeverage, formatUsdso, fundedProblem } from "./funding";
 import {
@@ -134,10 +138,26 @@ const startAccount = start.accounts[0];
 if (!startAccount || !isFlat(startAccount)) stop("account A is not flat; flatten it in the dreamDEX app first");
 if (!start.markOk) stop("BTC-PERP has no fresh mark price");
 const openQty = alignUp(book.minQuantity, book.lotSize);
+const startLevels = await readBookLevels(client, BTC_POOL, start.blockNumber);
+if (!startLevels) stop("the BTC-PERP book could not be read");
+const plannedOpen = planOpenFromBook(true, openQty, startLevels, book);
+const thin = openProblem(plannedOpen, startLevels);
+if (thin) stop(thin);
+try {
+  const sim = ownerOrderCall(BTC_POOL, true, plannedOpen.price, plannedOpen.quantity, ORDER_TYPE_IOC, farFutureNs());
+  await client.call({ account: owner, to: sim.to, data: sim.data });
+} catch (e) {
+  stop(`the opening IOC simulates a revert from account A: ${(e as Error).message.slice(0, 200)}`);
+}
+const bestAsk = startLevels.asks[0]?.price ?? 0n;
 console.log(
   `preflight ok: owner ${owner}, referee ${referee}, unlocked margin ${formatUsdso(ownerState.unlockedCollateralBalance)} USDso, ` +
     `leverage cap ${cap.capX}x (${cap.capSource}), voucher ${voucherClaimed ? "claimed" : "none"}, ` +
     `mark ${start.markPrice}, open qty ${openQty}, send path ${sendPath}`,
+);
+console.log(
+  `open plan: IOC buy ${plannedOpen.quantity} capped at ${plannedOpen.price} = best ask ${bestAsk} + ${OPEN_MARGIN_BPS} bps ` +
+    `(best ask ${Number(((bestAsk - start.markPrice) * 1_000_000n) / start.markPrice) / 100} bps above the mark); simulated from account A: fills`,
 );
 if (dryRun) {
   console.log("dry-run: no transaction sent");
@@ -165,7 +185,9 @@ if (!(await authorized(PLACE_ORDER_FOR_SELECTOR)) || !(await authorized(CANCEL_O
 
 // 3. Owner opens the minimum long (IOC) and rests one far bid (GTC) for the referee to cancel.
 const preOpen = await readSnapshot(client, [owner], BTC_POOL);
-const open = planOpen(true, openQty, preOpen.markPrice, book, 20);
+const preLevels = await readBookLevels(client, BTC_POOL, preOpen.blockNumber);
+if (!preLevels) stop("the BTC-PERP book could not be read before the open; only the grant was sent");
+const open = planOpenFromBook(true, openQty, preLevels, book);
 try {
   const opened = await ownerWrite(
     "open",
@@ -176,18 +198,12 @@ try {
 } catch (e) {
   stop(`the opening IOC failed before any position existed: ${(e as Error).message.slice(0, 200)}`);
 }
-// Real entry fill vs mark (the demo's +0.5% target is only trusted once this cost is known; spec §5).
+// The real entry fill against the mark (the basis), against the book (slippage) and the spread before it (spec §5).
 const openedPos = await client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getPosition", args: [owner, BTC_POOL] });
-const entry = {
-  side: "long",
-  quantity: open.quantity,
-  limitPrice: open.price,
-  markBefore: preOpen.markPrice,
-  markBlock: preOpen.blockNumber,
-  avgEntryPrice: openedPos.avgEntryPrice,
-  costBps: Number(((openedPos.avgEntryPrice - preOpen.markPrice) * 1_000_000n) / preOpen.markPrice) / 100,
-};
-console.log(`entry: avg ${entry.avgEntryPrice} vs mark ${entry.markBefore} = ${entry.costBps} bps`);
+const entry = entryRecord(open, preOpen.markPrice, preOpen.blockNumber, preLevels, openedPos.avgEntryPrice);
+console.log(
+  `entry: avg ${entry.avgEntryPrice} vs mark ${entry.markBefore} = ${entry.costBps} bps (basis); vs best ask ${entry.costVsBookBps} bps; spread ${entry.spreadBps} bps`,
+);
 const restPrice = (start.markPrice * 9_000n) / 10_000n - ((start.markPrice * 9_000n) / 10_000n) % book.tickSize;
 try {
   await ownerWrite(
