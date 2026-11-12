@@ -1,0 +1,157 @@
+{
+  "evidence": "g1a-close",
+  "writtenAt": "2026-11-12T13:25:49.436Z",
+  "ok": true,
+  "sdkVersion": "0.33.0",
+  "sendPath": "viem",
+  "owner": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+  "referee": "0xE358D82209ea9360F411A041C0200adc385877eb",
+  "pool": "0x4181dd08E73BbCdd1Ba3E615A18f6abD941b94C0",
+  "operatorRegistry": "0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a",
+  "leverage": {
+    "voucherLeverageCapX": 20,
+    "accountMaxLeverageX": 0,
+    "protocolMaxLeverageX": 40,
+    "marketMaxLeverageBps": "400000",
+    "creditFloor": "0",
+    "voucherClaimed": false,
+    "capX": 40,
+    "capSource": "market"
+  },
+  "funding": {
+    "unlockedWei": "50000000000000000000",
+    "needWei": "1000000000000000000",
+    "source": "deposit"
+  },
+  "book": {
+    "tickSize": "100000000000000000",
+    "minQuantity": "13000",
+    "lotSize": "1000"
+  },
+  "entry": {
+    "side": "long",
+    "quantity": "13000",
+    "limitPrice": "72797900000000000000000",
+    "markBefore": "72499837407613528000000",
+    "markBlock": "48357075",
+    "bookBlock": "48357075",
+    "bestBidBefore": "72651500000000000000000",
+    "bestAskBefore": "72652500000000000000000",
+    "avgEntryPrice": "72652500000000000000000",
+    "costBps": 21.05,
+    "costVsBookBps": 0,
+    "spreadBps": 0.13
+  },
+  "startSnapshot": {
+    "blockNumber": "48356986",
+    "timestamp": "1794489928",
+    "pool": "0x4181dd08E73BbCdd1Ba3E615A18f6abD941b94C0",
+    "markOk": true,
+    "markPrice": "72505934229737018000000",
+    "accounts": [
+      {
+        "account": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+        "equityOk": true,
+        "equity": "50000000000000000000",
+        "lockedCollateral": "0",
+        "totalEquity": "50000000000000000000",
+        "activePools": [],
+        "size": "0"
+      }
+    ]
+  },
+  "endSnapshot": {
+    "blockNumber": "48357199",
+    "timestamp": "1794489950",
+    "pool": "0x4181dd08E73BbCdd1Ba3E615A18f6abD941b94C0",
+    "markOk": true,
+    "markPrice": "72504724361643375500000",
+    "accounts": [
+      {
+        "account": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+        "equityOk": true,
+        "equity": "49999025000000000000",
+        "lockedCollateral": "0",
+        "totalEquity": "49999025000000000000",
+        "activePools": [],
+        "size": "0"
+      }
+    ]
+  },
+  "closeAttempts": 1,
+  "finalPositionSize": "0",
+  "finalLocked": "0",
+  "txs": [
+    {
+      "label": "grant",
+      "hash": "0x05b5b7946e42f295b1d65bb245831ac10dbdb00b28085f61a4e5fd6d0825bd7c",
+      "status": "success",
+      "gasUsed": "558405",
+      "costWei": "3350430000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x05b5b7946e42f295b1d65bb245831ac10dbdb00b28085f61a4e5fd6d0825bd7c"
+    },
+    {
+      "label": "open",
+      "hash": "0x96cf340b42337cc9fc9575adf4a78b3227c2b619f37ddf48c1e6e097e9a4f828",
+      "status": "success",
+      "gasUsed": "3149456",
+      "costWei": "18896736000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x96cf340b42337cc9fc9575adf4a78b3227c2b619f37ddf48c1e6e097e9a4f828"
+    },
+    {
+      "label": "rest",
+      "hash": "0xa31573cbf6e3affd29a32d7882b1540397217830df2071ce9d071080ef0db050",
+      "status": "success",
+      "gasUsed": "1631893",
+      "costWei": "9791358000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0xa31573cbf6e3affd29a32d7882b1540397217830df2071ce9d071080ef0db050"
+    },
+    {
+      "label": "cancel",
+      "hash": "0xb19448976d7a829a72a4a9fda89a3d92420487f598627d8880f37ba296a79dfd",
+      "status": "success",
+      "gasUsed": "170793",
+      "costWei": "1024758000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0xb19448976d7a829a72a4a9fda89a3d92420487f598627d8880f37ba296a79dfd"
+    },
+    {
+      "label": "close",
+      "hash": "0xcde89eae57d2f3719fd05fbdb0c2289d639275e10d03c5527f1407003c1d2b4b",
+      "status": "success",
+      "gasUsed": "1750962",
+      "costWei": "10505772000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0xcde89eae57d2f3719fd05fbdb0c2289d639275e10d03c5527f1407003c1d2b4b"
+    }
+  ],
+  "costs": {
+    "totalWei": "43569054000000000",
+    "perTx": [
+      {
+        "label": "grant",
+        "gasUsed": "558405",
+        "costWei": "3350430000000000"
+      },
+      {
+        "label": "open",
+        "gasUsed": "3149456",
+        "costWei": "18896736000000000"
+      },
+      {
+        "label": "rest",
+        "gasUsed": "1631893",
+        "costWei": "9791358000000000"
+      },
+      {
+        "label": "cancel",
+        "gasUsed": "170793",
+        "costWei": "1024758000000000"
+      },
+      {
+        "label": "close",
+        "gasUsed": "1750962",
+        "costWei": "10505772000000000"
+      }
+    ]
+  },
+  "notes": []
+}
