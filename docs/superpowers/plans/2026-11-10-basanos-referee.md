@@ -2519,11 +2519,11 @@ Message: `feat(referee): demo-cost check, rulebook registration and rehearsal ch
 - Modify: `rulebooks/tokyo-sprint-demo.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 7, Task 8, Task 9, Task 11, contracts:Task 10, contracts:Task 11, spike:Task 11, spike:Task 18, spike:Task 19
+**Depends on:** Task 7, Task 8, Task 9, Task 11, Task 12, contracts:Task 10, contracts:Task 11, spike:Task 11, spike:Task 18, spike:Task 19
 **Effort:** medium
 **Model tier:** top
 **Provides:** `docs/evidence/rehearsal.json (first real verdict runs: firstVerdictRunId, runs with statusName, ruleName, closeTxs)`, `docs/evidence/runs.json (per-run evidence bundles + evidenceHash + verdictTx)`, `docs/evidence/demo-takes.json (demo takes with run ids and tx hashes)`
-**Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]`, `CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (sizes from A's and B's live equity; checks the pool minimum)`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)`, `CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`
+**Requires:** `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)`, `CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (sizes from A's and B's live equity; checks the pool minimum)`, `CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)`, `CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`
 
 **Human-gated.** This signs real transactions with `REFEREE_PK` (closes and verdicts, plus 0.0309 STT per PASS or FAIL verdict for the Price Oracle, mostly rebated; set `ORACLE_ENABLED=true` in `.env` first), `ACCOUNT_A_PK` and `ACCOUNT_B_PK` (grant, `startRun`, orders). Needed first:
 - all three burners topped up to about 1 STT from the Tokyo faucet;
@@ -2755,3 +2755,477 @@ Expected: PASS — `3 passed`.
 
 - [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
 Message: `fix(bot): demo-check sizes from the accounts' live equity and checks the pool minimum`
+
+---
+
+### Task 12: The bot and the demo test funded accounts, not vouchers; the demo keeps a one-account fallback
+
+**Files:**
+- Modify: `packages/bot/src/actions.ts`
+- Modify: `packages/bot/src/bot.ts`
+- Modify: `packages/bot/src/demo.ts`
+- Test: `packages/bot/test/readiness.test.ts`
+
+**Depends on:** Task 8, spike:Task 2, spike:Task 6, contracts:Task 8, spike:Task 4, spike:Task 1, Task 3, spike:Task 10, spike:Task 3, Task 6
+**Effort:** medium
+**Model tier:** top
+**Provides:** `interface Preflight { account: Address; stt: bigint; sttOk: boolean; voucherClaimed: boolean; unlockedCollateral: bigint; funded: boolean; flat: boolean; equity: bigint }`, `DEMO_MIN_UNLOCKED = 5 USDso (5_000_000_000_000_000_000n)`, `preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei?: bigint): Promise<Preflight>`, `notReady(pf: Preflight): string[]`, `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)`, `CLI: npx tsx packages/bot/src/bot.ts start [--rulebook <name>] [--side short|long] [--leverage 12] | breach [--leverage 16] (funded preflight)`
+**Requires:** `BTC_POOL`, `CANCEL_ORDER_FOR_SELECTOR`, `CHAIN (hidekiTestnet, id 50383)`, `HIDEKI_ADDRESSES`, `INDEXER_URL`, `MARGIN_BANK`, `OPERATOR_REGISTRY`, `ORDER_TYPE_IOC = 2`, `PLACE_ORDER_FOR_SELECTOR`, `STT_WRITE_HEADROOM = 600_000_000_000_000_000n`, `alignUp(x: bigint, step: bigint): bigint`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `marginBankAbi`, `perpPoolAbi`, `planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan`, `readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>`, `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`, `repoPath(rel: string): string`, `jsonSafe(value: unknown): unknown`, `txRecord(label: string, receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord`, `interface TxRecord { label: string; hash: Hex; status: "success" | "reverted"; gasUsed: bigint; costWei: bigint; explorer: string }`, `rulebookId(rb: Rulebook): Hex`, `quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint`, `RULEBOOK_FILES: { "tokyo-sprint": string; "tokyo-sprint-demo": string }`, `loadDotEnv(path?: string): boolean`, `loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook`, `requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `makePublicClient(url: string): PublicClient`, `RULE_NAMES = ["None", "DailyLoss", "TrailingDrawdown", "MaxExposure", "TimeLimit", "Liquidated"]`, `RUN_STATUS = ["None", "Active", "Passed", "Failed", "Voided"]`, `explorerTx(hash: Hex): string`
+
+Why (guide plan-bugs P1 and P3, 2026-11-12):
+- **The gate:** Task 8's `preflight()` reports `voucherClaimed`, and `demo.ts` and `bot.ts start` stop unless it is true. No account will ever hold a voucher, because `claim()` reverts chain-wide (B14).
+- **The funding:** both accounts are funded instead. Account A held 100 USDso and moved about 50 to B, organizer-approved; spike:18 and spike:19 deposit each account's own USDso into its own MarginBank balance.
+
+This task makes four changes:
+- **`preflight()`** adds `unlockedCollateral` (`MarginBank.getAccountState().unlockedCollateralBalance`) and `funded` (≥ `DEMO_MIN_UNLOCKED`, 5 USDso, ample for a 12× size above the 0.00013 BTC minimum). It keeps `voucherClaimed` for the record.
+- **`notReady()`** lists what is missing (STT, funded, flat). It never asks for a voucher, and it points an unfunded account at its deposit task.
+- **The two-account demo is primary again:** A long, B short, 12× each, sized from live equity.
+- **`--one-account` is a fallback only,** for the case where B cannot be funded. A takes run 1, a FAIL on demand (12× long, then size past the 15× exposure cap; the market's 40× cap leaves room). Once the referee has closed it and A is flat, A takes run 2, the PASS attempt: 12× on `--pass-side`, held until the referee locks the target or a rule ends it.
+  - A PASS is not guaranteed with one account, which is why two accounts stay primary.
+  - Demo takes record `mode`.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/bot/test/readiness.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { DEMO_MIN_UNLOCKED, notReady, type Preflight } from "../src/actions";
+
+const E18 = 10n ** 18n;
+const ready: Preflight = {
+  account: "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+  stt: 1n * E18,
+  sttOk: true,
+  voucherClaimed: false,
+  unlockedCollateral: 50n * E18,
+  funded: true,
+  flat: true,
+  equity: 50n * E18,
+};
+
+describe("demo readiness (funded, not voucher-backed)", () => {
+  it("accepts a funded, flat account with STT and no voucher", () => {
+    expect(notReady(ready)).toEqual([]);
+    expect(DEMO_MIN_UNLOCKED).toBe(5n * E18);
+  });
+  it("names each missing prerequisite and points an unfunded account at its deposit", () => {
+    const unfunded = notReady({ ...ready, unlockedCollateral: 0n, funded: false });
+    expect(unfunded).toHaveLength(1);
+    expect(unfunded[0]).toMatch(/deposit the account's own wallet USDso first/);
+    expect(unfunded[0]).not.toMatch(/claim/);
+    expect(notReady({ ...ready, sttOk: false, stt: 0n, flat: false })).toHaveLength(2);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/bot -- test/readiness.test.ts`
+Expected: FAIL — `2 failed (2)` (`notReady` and `DEMO_MIN_UNLOCKED` are not exported yet).
+
+- [ ] **Step 3: Report funded in the preflight**
+
+Replace `packages/bot/src/actions.ts` with:
+```ts
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { createWalletClient, decodeEventLog, http, type Address, type Hex, type PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { SomniaMarkets } from "@somnia-chain/markets-sdk";
+import {
+  BTC_POOL,
+  CANCEL_ORDER_FOR_SELECTOR,
+  CHAIN,
+  HIDEKI_ADDRESSES,
+  INDEXER_URL,
+  MARGIN_BANK,
+  OPERATOR_REGISTRY,
+  ORDER_TYPE_IOC,
+  PLACE_ORDER_FOR_SELECTOR,
+  STT_WRITE_HEADROOM,
+  alignUp,
+  basanosRegistryAbi,
+  marginBankAbi,
+  perpPoolAbi,
+  planOpen,
+  readSnapshot,
+  type BookParams,
+} from "@basanos/core";
+import { repoPath } from "@basanos/core/node";
+import { jsonSafe, txRecord, type TxRecord } from "@basanos/referee";
+
+export interface Preflight {
+  account: Address;
+  stt: bigint;
+  sttOk: boolean;
+  voucherClaimed: boolean;
+  /** MarginBank getAccountState().unlockedCollateralBalance: the account's own deposited USDso not locked in a position. */
+  unlockedCollateral: bigint;
+  /** unlockedCollateral at or above what a demo run needs (DEMO_MIN_UNLOCKED unless the caller passes another need). */
+  funded: boolean;
+  flat: boolean;
+  equity: bigint;
+}
+
+/** The least unlocked MarginBank margin a demo run needs: its 12x size must clear the 0.00013 BTC pool minimum
+ *  (about 0.8 USDso of equity) with room for costs. */
+export const DEMO_MIN_UNLOCKED = 5n * 10n ** 18n;
+
+/** Inferred return type: bound to CHAIN and the key's account. */
+export function makeAccountWallet(pk: Hex, url: string) {
+  return createWalletClient({ account: privateKeyToAccount(pk), chain: CHAIN, transport: http(url) });
+}
+
+export type AccountWallet = ReturnType<typeof makeAccountWallet>;
+
+export function makeMarkets(pk: Hex): SomniaMarkets {
+  return new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES, privateKey: pk });
+}
+
+/** Reads only. Never claims a voucher: claim() reverts chain-wide (B14), so an account is ready when it is FUNDED,
+ *  with its own wallet USDso deposited into its own MarginBank balance (spike:18 for A, spike:19 for B). */
+export async function preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei: bigint = DEMO_MIN_UNLOCKED): Promise<Preflight> {
+  const [stt, voucher, snap, state] = await Promise.all([
+    client.getBalance({ address: account }),
+    markets.client.getPerpVoucher(MARGIN_BANK, account),
+    readSnapshot(client, [account], BTC_POOL),
+    client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getAccountState", args: [account] }),
+  ]);
+  const a = snap.accounts[0];
+  return {
+    account,
+    stt,
+    sttOk: stt >= STT_WRITE_HEADROOM,
+    voucherClaimed: voucher?.claimed ?? false,
+    unlockedCollateral: state.unlockedCollateralBalance,
+    funded: state.unlockedCollateralBalance >= needWei,
+    flat: a ? a.size === 0n && a.lockedCollateral === 0n && a.activePools.length === 0 : false,
+    equity: a?.totalEquity ?? 0n,
+  };
+}
+
+/** Why an account cannot start a demo run, or [] when it can. A voucher is never required. */
+export function notReady(pf: Preflight): string[] {
+  const p: string[] = [];
+  if (!pf.sttOk) p.push(`STT ${pf.stt} is below the 0.6 write headroom (top up from the Tokyo faucet)`);
+  if (!pf.funded) {
+    p.push(
+      `unlocked MarginBank margin is ${pf.unlockedCollateral} wei, below what a demo run needs; deposit the account's own wallet USDso first (deposit.ts: spike:18 for A, spike:19 for B)`,
+    );
+  }
+  if (!pf.flat) p.push("the account is not flat (flatten it in the dreamDEX app first)");
+  return p;
+}
+
+export async function readBook(client: PublicClient): Promise<BookParams> {
+  const p = await client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "getOrderBookParameters" });
+  return { tickSize: p.tickSize, minQuantity: p.minQuantity, lotSize: p.lotSize };
+}
+
+/** Grants the referee place + cancel on the BTC pool only, if not already granted. */
+export async function ensureGrant(client: PublicClient, markets: SomniaMarkets, owner: Address, referee: Address): Promise<TxRecord | null> {
+  const has = async (selector: Hex) =>
+    client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [owner, referee, selector] });
+  if ((await has(PLACE_ORDER_FOR_SELECTOR)) && (await has(CANCEL_ORDER_FOR_SELECTOR))) return null;
+  const r = await markets.trader.setOperatorApprovalForPool({
+    pool: BTC_POOL,
+    operator: referee,
+    selectors: [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR],
+    approved: true,
+    operatorRegistry: OPERATOR_REGISTRY,
+  });
+  return txRecord("grant", r.receipt);
+}
+
+export function runIdFromLogs(logs: readonly { address: Address; data: Hex; topics: readonly Hex[] }[], registry: Address): bigint | null {
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== registry.toLowerCase()) continue;
+    try {
+      const ev = decodeEventLog({ abi: basanosRegistryAbi, data: log.data, topics: log.topics as [Hex, ...Hex[]] });
+      if (ev.eventName === "RunStarted") return ev.args.runId;
+    } catch {
+      // another registry event
+    }
+  }
+  return null;
+}
+
+/** The account itself enrolls (msg.sender == account); the registry reads its start equity in the same tx. */
+export async function startRunAs(wallet: AccountWallet, client: PublicClient, registry: Address, rulebookId: Hex): Promise<{ runId: bigint; tx: TxRecord }> {
+  const hash = await wallet.writeContract({
+    address: registry,
+    abi: basanosRegistryAbi,
+    functionName: "startRun",
+    args: [wallet.account.address, rulebookId],
+  });
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  const runId = runIdFromLogs(receipt.logs, registry);
+  if (runId === null) throw new Error(`startRun emitted no RunStarted: ${hash}`);
+  return { runId, tx: txRecord("startRun", receipt) };
+}
+
+/** Extra size so the account's notional strictly exceeds targetX x equity (the on-demand exposure breach). */
+export function breachQuantity(currentSize: bigint, equity: bigint, targetX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint {
+  const oneBase = 10n ** BigInt(baseDecimals);
+  const abs = currentSize < 0n ? -currentSize : currentSize;
+  const targetNotional = equity * BigInt(targetX);
+  const current = (abs * mark) / oneBase;
+  const neededNotional = targetNotional > current ? targetNotional - current : 0n;
+  const qty = alignUp((neededNotional * oneBase) / mark + 1n, book.lotSize);
+  return qty < book.minQuantity ? book.minQuantity : qty;
+}
+
+export async function openIoc(markets: SomniaMarkets, client: PublicClient, isBid: boolean, quantity: bigint): Promise<TxRecord> {
+  const book = await readBook(client);
+  const snap = await readSnapshot(client, [], BTC_POOL);
+  if (!snap.markOk) throw new Error("BTC-PERP has no fresh mark");
+  const plan = planOpen(isBid, quantity, snap.markPrice, book, 20);
+  const r = await markets.trader.placePerpOrder({ pool: BTC_POOL, isBid, price: plan.price, quantity: plan.quantity, orderType: ORDER_TYPE_IOC });
+  return txRecord(isBid ? "open long" : "open short", r.receipt);
+}
+
+export const DEMO_TAKES = "docs/evidence/demo-takes.json";
+
+export function appendDemoTake(take: Record<string, unknown>, path: string = repoPath(DEMO_TAKES)): number {
+  const all = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as unknown[]) : [];
+  const n = all.length + 1;
+  all.push(jsonSafe({ take: n, ...take }));
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(all, null, 2)}\n`);
+  return n;
+}
+```
+
+- [ ] **Step 4: Gate the bot and the demo on readiness; add the one-account fallback**
+
+Replace `packages/bot/src/bot.ts` with:
+```ts
+// The scripted challenger (account B). It signs as itself; the referee's grant is the only delegation.
+import { BTC_POOL, readSnapshot, rulebookId, quantityForLeverage } from "@basanos/core";
+import { RULEBOOK_FILES, loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { makePublicClient } from "@basanos/referee";
+import { breachQuantity, ensureGrant, makeAccountWallet, makeMarkets, notReady, openIoc, preflight, readBook, startRunAs } from "./actions";
+
+loadDotEnv();
+const [cmd, ...rest] = process.argv.slice(2);
+const opt = (name: string, fallback: string): string => {
+  const i = rest.indexOf(name);
+  return i >= 0 && rest[i + 1] ? (rest[i + 1] as string) : fallback;
+};
+const pk = requirePrivateKey("ACCOUNT_B_PK");
+const wallet = makeAccountWallet(pk, rpcHttp());
+const account = wallet.account.address;
+const client = makePublicClient(rpcHttp());
+const markets = makeMarkets(pk);
+const registry = requireAddress("REGISTRY_ADDRESS");
+const referee = requireAddress("REFEREE_ADDRESS");
+
+if (cmd === "start") {
+  const name = opt("--rulebook", "tokyo-sprint-demo") as keyof typeof RULEBOOK_FILES;
+  const side = opt("--side", "short");
+  const leverage = Number(opt("--leverage", "12"));
+  const pf = await preflight(client, markets, account);
+  const problems = notReady(pf);
+  if (problems.length > 0) {
+    console.error(`bot preflight failed: ${problems.join("; ")}`);
+    process.exit(1);
+  }
+  const grant = await ensureGrant(client, markets, account, referee);
+  if (grant) console.log(`grant ${grant.explorer}`);
+  const { runId, tx } = await startRunAs(wallet, client, registry, rulebookId(loadRulebook(name)));
+  console.log(`run ${runId} started ${tx.explorer}`);
+  const snap = await readSnapshot(client, [], BTC_POOL);
+  const qty = quantityForLeverage(pf.equity, leverage, snap.markPrice, 8, await readBook(client));
+  const open = await openIoc(markets, client, side === "long", qty);
+  console.log(`${open.label} ${qty} ${open.status} ${open.explorer}`);
+  process.exit(0);
+} else if (cmd === "breach") {
+  const leverage = Number(opt("--leverage", "16"));
+  const snap = await readSnapshot(client, [account], BTC_POOL);
+  const a = snap.accounts[0];
+  if (!a || a.size === 0n) {
+    console.error("bot has no position to extend");
+    process.exit(1);
+  }
+  const add = breachQuantity(a.size, a.totalEquity, leverage, snap.markPrice, 8, await readBook(client));
+  const tx = await openIoc(markets, client, a.size > 0n, add);
+  console.log(`exposure breach: +${add} ${tx.status} ${tx.explorer}`);
+  process.exit(0);
+} else {
+  console.error("usage: bot.ts start [--rulebook <name>] [--side short|long] [--leverage 12] | breach [--leverage 16]");
+  process.exit(2);
+}
+```
+
+Replace `packages/bot/src/demo.ts` with:
+```ts
+// The demo runner. Primary: both builder-operated accounts take Tokyo Sprint · Demo with opposite 12x positions.
+// Fallback (--one-account, only if account B cannot be funded): account A takes two runs in sequence. Run 1 is a FAIL
+// on demand: 12x long, then size past the 15x exposure cap. Run 2 is the PASS attempt: 12x (--pass-side long|short),
+// held until the referee locks the target or a rule ends it. A PASS is not guaranteed with one account, which is why
+// the two-account demo is primary. Accounts must be FUNDED (own USDso deposited, spike:18 / spike:19); no voucher.
+// The referee daemon (packages/referee/src/cli.ts start) must already be running in another terminal.
+import type { Address, Hex } from "viem";
+import { BTC_POOL, RULE_NAMES, RUN_STATUS, basanosRegistryAbi, explorerTx, quantityForLeverage, readSnapshot, rulebookId } from "@basanos/core";
+import { loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { makePublicClient, type TxRecord } from "@basanos/referee";
+import { appendDemoTake, breachQuantity, ensureGrant, makeAccountWallet, makeMarkets, notReady, openIoc, preflight, readBook, startRunAs } from "./actions";
+
+loadDotEnv();
+const argv = process.argv.slice(2);
+const manualA = argv.includes("--a-manual");
+const oneAccount = argv.includes("--one-account");
+const passSide = argv[argv.indexOf("--pass-side") + 1] === "short" ? "short" : "long";
+const waitMin = Number(argv[argv.indexOf("--wait-min") + 1] ?? "10") || 10;
+const client = makePublicClient(rpcHttp());
+const registry = requireAddress("REGISTRY_ADDRESS");
+const referee = requireAddress("REFEREE_ADDRESS");
+const rb = loadRulebook("tokyo-sprint-demo");
+const id: Hex = rulebookId(rb);
+const txs: TxRecord[] = [];
+const say = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
+
+say(
+  oneAccount
+    ? "Basanos demo (one-account fallback): account A is a burner operated by the builder; run 1 FAIL by exposure, run 2 the PASS attempt."
+    : "Basanos demo: both challenge accounts are burners operated by the builder (A human-driven, B scripted).",
+);
+const accounts = (oneAccount ? (["ACCOUNT_A_PK"] as const) : (["ACCOUNT_A_PK", "ACCOUNT_B_PK"] as const)).map((name) => {
+  const pk = requirePrivateKey(name);
+  const wallet = makeAccountWallet(pk, rpcHttp());
+  return { name, wallet, markets: makeMarkets(pk), address: wallet.account.address as Address };
+});
+for (const a of accounts) {
+  const pf = await preflight(client, a.markets, a.address);
+  say(`${a.name} ${a.address}: stt ${pf.stt} unlocked margin ${pf.unlockedCollateral} flat ${pf.flat} equity ${pf.equity}`);
+  const problems = notReady(pf);
+  if (problems.length > 0) {
+    say(`STOP: ${a.name} is not ready: ${problems.join("; ")}. No voucher is ever claimed here.`);
+    process.exit(1);
+  }
+  const g = await ensureGrant(client, a.markets, a.address, referee);
+  if (g) txs.push(g);
+}
+const statusOf = async (runId: bigint) => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [runId] });
+const label = (r: Awaited<ReturnType<typeof statusOf>> | undefined) => (r ? `${RUN_STATUS[r.status] ?? r.status}${r.rule ? `/${RULE_NAMES[r.rule]}` : ""}` : "?");
+
+if (oneAccount) {
+  const [accA] = accounts;
+  if (!accA) throw new Error("account A expected");
+  const book = await readBook(client);
+  const waitVerdict = async (runId: bigint) => {
+    for (;;) {
+      const r = await statusOf(runId);
+      say(`run ${runId}: ${label(r)}`);
+      if (r && r.status !== 1) return r;
+      await new Promise((res) => setTimeout(res, 2_000));
+    }
+  };
+  const waitFlat = async () => {
+    const until = Date.now() + 5 * 60_000;
+    for (;;) {
+      const a = (await readSnapshot(client, [accA.address], BTC_POOL)).accounts[0];
+      if (a && a.size === 0n && a.lockedCollateral === 0n && a.activePools.length === 0) return;
+      if (Date.now() > until) throw new Error("account A is not flat 5 min after run 1's verdict");
+      await new Promise((res) => setTimeout(res, 3_000));
+    }
+  };
+  const runIds: bigint[] = [];
+  // Run 1: FAIL on demand by exposure.
+  const r1 = await startRunAs(accA.wallet, client, registry, id);
+  runIds.push(r1.runId);
+  txs.push(r1.tx);
+  say(`run 1 (${r1.runId}) on ${rb.label}: ${r1.tx.explorer}`);
+  const s1 = await readSnapshot(client, [accA.address], BTC_POOL);
+  txs.push(await openIoc(accA.markets, client, true, quantityForLeverage(s1.accounts[0]?.totalEquity ?? 0n, 12, s1.markPrice, 8, book)));
+  const s1b = (await readSnapshot(client, [accA.address], BTC_POOL)).accounts[0];
+  if (s1b && s1b.size !== 0n) {
+    txs.push(await openIoc(accA.markets, client, true, breachQuantity(s1b.size, s1b.totalEquity, 16, s1.markPrice, 8, book)));
+    say("run 1: size added past the 15x exposure cap (FAIL on demand)");
+  }
+  const v1 = await waitVerdict(r1.runId);
+  await waitFlat();
+  // Run 2: the PASS attempt.
+  const r2 = await startRunAs(accA.wallet, client, registry, id);
+  runIds.push(r2.runId);
+  txs.push(r2.tx);
+  say(`run 2 (${r2.runId}) on ${rb.label}, ${passSide} 12x: ${r2.tx.explorer}`);
+  const s2 = await readSnapshot(client, [accA.address], BTC_POOL);
+  txs.push(await openIoc(accA.markets, client, passSide === "long", quantityForLeverage(s2.accounts[0]?.totalEquity ?? 0n, 12, s2.markPrice, 8, book)));
+  const v2 = await waitVerdict(r2.runId);
+  const take = appendDemoTake({
+    at: new Date().toISOString(),
+    mode: "one-account",
+    rulebook: { id, label: rb.label },
+    runs: [
+      { runId: r1.runId, account: accA.address, status: RUN_STATUS[v1.status], rule: RULE_NAMES[v1.rule] },
+      { runId: r2.runId, account: accA.address, status: RUN_STATUS[v2.status], rule: RULE_NAMES[v2.rule], side: passSide },
+    ],
+    breachedOnDemand: true,
+    txs,
+  });
+  say(`take ${take} recorded in docs/evidence/demo-takes.json (one-account fallback)`);
+  for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+  process.exit(0);
+}
+
+const runs: bigint[] = [];
+for (const a of accounts) {
+  const { runId, tx } = await startRunAs(a.wallet, client, registry, id);
+  runs.push(runId);
+  txs.push(tx);
+  say(`${a.name} run ${runId} on ${rb.label}: ${tx.explorer}`);
+}
+const book = await readBook(client);
+const snap = await readSnapshot(client, accounts.map((a) => a.address), BTC_POOL);
+const [accA, accB] = accounts;
+if (!accA || !accB) throw new Error("two accounts expected");
+const qtyB = quantityForLeverage(snap.accounts[1]?.totalEquity ?? 0n, 12, snap.markPrice, 8, book);
+txs.push(await openIoc(accB.markets, client, false, qtyB));
+say(`B short ${qtyB} at 12x`);
+if (manualA) {
+  say("A: open the long from the Basanos terminal now (12x).");
+} else {
+  const qtyA = quantityForLeverage(snap.accounts[0]?.totalEquity ?? 0n, 12, snap.markPrice, 8, book);
+  txs.push(await openIoc(accA.markets, client, true, qtyA));
+  say(`A long ${qtyA} at 12x`);
+}
+const openedAt = Date.now();
+let breached = false;
+for (;;) {
+  const [ra, rbRun] = await Promise.all(runs.map((r) => statusOf(r)));
+  const states = [ra, rbRun].map((r) => label(r));
+  say(`runs ${runs.join(", ")}: ${states.join(" | ")}`);
+  if (ra && rbRun && ra.status !== 1 && rbRun.status !== 1) break;
+  if (!breached && Date.now() - openedAt > waitMin * 60_000 && rbRun?.status === 1) {
+    say("market still — take aborted: exposure breach on B (FAIL on demand); A resolves or hits its time limit");
+    const s = await readSnapshot(client, [accB.address], BTC_POOL);
+    const b = s.accounts[0];
+    if (b && b.size !== 0n) txs.push(await openIoc(accB.markets, client, b.size > 0n, breachQuantity(b.size, b.totalEquity, 16, s.markPrice, 8, book)));
+    breached = true;
+  }
+  await new Promise((r) => setTimeout(r, 2_000));
+}
+const final = await Promise.all(runs.map((r) => statusOf(r)));
+const take = appendDemoTake({
+  at: new Date().toISOString(),
+  mode: "two-account",
+  rulebook: { id, label: rb.label },
+  runs: runs.map((r, i) => ({ runId: r, account: accounts[i]?.address, status: RUN_STATUS[final[i]?.status ?? 0], rule: RULE_NAMES[final[i]?.rule ?? 0] })),
+  breachedOnDemand: breached,
+  txs,
+});
+say(`take ${take} recorded in docs/evidence/demo-takes.json`);
+for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+process.exit(0);
+```
+
+- [ ] **Step 5: Type-check (the demo runs live in referee:10 and ship:3)**
+Run: `npm run typecheck -w @basanos/bot`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 6: Run the test (the gate)**
+Run: `npm test -w @basanos/bot -- test/readiness.test.ts`
+Expected: PASS — `2 passed`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `fix(bot): readiness tests funded accounts, not vouchers; the demo keeps a one-account fallback`

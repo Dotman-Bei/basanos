@@ -654,11 +654,11 @@ Message: `docs(evidence): featured run = the rehearsal's first real verdict`
 - Modify: `apps/landing/src/featured-verdict.json`
 - Modify: `apps/landing/src/img/verdict.png`
 
-**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2, landing:Task 4
+**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2, landing:Task 4, referee:Task 12
 **Effort:** medium
 **Model tier:** top
 **Provides:** `money shot take in docs/evidence/demo-takes.json (one PASS, one FAIL)`, `FEATURED_RUN_ID (the money-shot PASS run; set in .env)`
-**Requires:** `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]`, `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json`, `CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot`, `CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json`, `CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>`
+**Requires:** `CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)`, `CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status`, `CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json`, `CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot`, `CLI: npx tsx apps/landing/scripts/featured-snapshot.ts -> writes apps/landing/src/featured-verdict.json from docs/evidence/featured-run.json`, `CLI: node apps/landing/scripts/shoot-verdict.mjs <runId> <registry> <referee>`
 
 **Human-gated (wallet).** This signs with `REFEREE_PK`, `ACCOUNT_A_PK` (pasted into the terminal's challenge wallet for the recording) and `ACCOUNT_B_PK`. Top up all three to about 1 STT first. Both challenge accounts must be funded: their own USDso deposited in their own MarginBank balance (spike:18, spike:19; no voucher). Run it on Nov 14, with demo-studio recording if Step 2.5 runs. No voucher is claimed. If the market is still, the runner's bounded wait aborts the take (spec §5): top up and take again.
 

@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it.",
   "subsystems": [
     "spike",
     "contracts",
@@ -2394,6 +2394,7 @@
         "referee:8",
         "referee:9",
         "referee:11",
+        "referee:12",
         "contracts:10",
         "contracts:11",
         "spike:11",
@@ -2421,7 +2422,7 @@
       ],
       "requires": [
         "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
-        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)",
         "CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (sizes from A's and B's live equity; checks the pool minimum)",
         "CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)",
         "CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal",
@@ -2499,6 +2500,88 @@
         "expect": "PASS — `3 passed`."
       },
       "commit": "fix(bot): demo-check sizes from the accounts' live equity and checks the pool minimum",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:12",
+      "subsystem": "referee",
+      "title": "The bot and the demo test funded accounts, not vouchers; the demo keeps a one-account fallback",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:8",
+        "spike:2",
+        "spike:6",
+        "contracts:8",
+        "spike:4",
+        "spike:1",
+        "referee:3",
+        "spike:10",
+        "spike:3",
+        "referee:6"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "packages/bot/src/actions.ts",
+          "packages/bot/src/bot.ts",
+          "packages/bot/src/demo.ts"
+        ],
+        "test": [
+          "packages/bot/test/readiness.test.ts"
+        ]
+      },
+      "provides": [
+        "interface Preflight { account: Address; stt: bigint; sttOk: boolean; voucherClaimed: boolean; unlockedCollateral: bigint; funded: boolean; flat: boolean; equity: bigint }",
+        "DEMO_MIN_UNLOCKED = 5 USDso (5_000_000_000_000_000_000n)",
+        "preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei?: bigint): Promise<Preflight>",
+        "notReady(pf: Preflight): string[]",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)",
+        "CLI: npx tsx packages/bot/src/bot.ts start [--rulebook <name>] [--side short|long] [--leverage 12] | breach [--leverage 16] (funded preflight)"
+      ],
+      "requires": [
+        "BTC_POOL",
+        "CANCEL_ORDER_FOR_SELECTOR",
+        "CHAIN (hidekiTestnet, id 50383)",
+        "HIDEKI_ADDRESSES",
+        "INDEXER_URL",
+        "MARGIN_BANK",
+        "OPERATOR_REGISTRY",
+        "ORDER_TYPE_IOC = 2",
+        "PLACE_ORDER_FOR_SELECTOR",
+        "STT_WRITE_HEADROOM = 600_000_000_000_000_000n",
+        "alignUp(x: bigint, step: bigint): bigint",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "marginBankAbi",
+        "perpPoolAbi",
+        "planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "repoPath(rel: string): string",
+        "jsonSafe(value: unknown): unknown",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "rulebookId(rb: Rulebook): Hex",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "RULEBOOK_FILES: { \"tokyo-sprint\": string; \"tokyo-sprint-demo\": string }",
+        "loadDotEnv(path?: string): boolean",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "makePublicClient(url: string): PublicClient",
+        "RULE_NAMES = [\"None\", \"DailyLoss\", \"TrailingDrawdown\", \"MaxExposure\", \"TimeLimit\", \"Liquidated\"]",
+        "RUN_STATUS = [\"None\", \"Active\", \"Passed\", \"Failed\", \"Voided\"]",
+        "explorerTx(hash: Hex): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/bot -- test/readiness.test.ts",
+        "expect": "PASS — `2 passed`."
+      },
+      "commit": "fix(bot): readiness tests funded accounts, not vouchers; the demo keeps a one-account fallback",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"
@@ -3132,7 +3215,8 @@
         "referee:8",
         "referee:10",
         "landing:2",
-        "landing:4"
+        "landing:4",
+        "referee:12"
       ],
       "effort": "medium",
       "model_tier": "top",
@@ -3152,7 +3236,7 @@
         "FEATURED_RUN_ID (the money-shot PASS run; set in .env)"
       ],
       "requires": [
-        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10]",
+        "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)",
         "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
         "CLI: npx tsx packages/ship/src/snapshot-run.ts [runId] -> writes docs/evidence/featured-run.json",
         "CLI: npx tsx packages/ship/src/check-money-shot.ts -> PASS money-shot",
