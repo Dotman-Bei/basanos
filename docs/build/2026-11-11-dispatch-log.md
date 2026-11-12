@@ -189,3 +189,15 @@ Workspace: 197 tests (core 69, referee 24, spike 33, web 38, ship 11, bot 11, la
 **Plan-bug (recorded, not fixed):** spike:13's `fillSpec` writes the G1(a) summary string into the spec's "Measured STT cost per tx" row instead of the `costs` figures. The evidence has them: total 0.0436 STT (grant 0.00335, open 0.0189, rest 0.00979, cancel 0.00102, close 0.0105). Also `summarize("g1d-oracle")` would return only "Failed" (no top-level `symbols`); harmless, that row was hand-filled.
 
 Workspace: 199 tests (core 69, referee 24, spike 35, web 38, ship 11, bot 11, landing 11); typecheck 0 errors. Remaining ready: spike:19 (human gate).
+
+## Resume — P6 wave (2026-11-12)
+
+Synced to `e0ff02b` (manifest 79 tasks).
+
+| Task | Executor / model | Commit | Gate re-run / checks |
+|---|---|---|---|
+| spike:19 evidence | (concierge run) | 45454f4 | `deposit.ts --account B --check` → PASS deposit-b; 50 USDso credited, 0 locked, 0 pools |
+| referee:16 | executor-high / sonnet | da5d2bd | 4 passed; core 73; owner-tx.ts + test SAME as plan (byte-equality vs SDK `buildPlacePerpOrder` intact); live-lib added lines in plan |
+| referee:17 | executor-medium / opus | b34f730 | 6 passed; bot 17; send.ts + test SAME (the "no `.trader.` / placePerpOrder / privateKey:" source scan intact); 309 added lines all in plan |
+
+`grep -rn "\.trader\." packages/bot packages/referee apps/web` (src, excl. node_modules/dist): no matches. Workspace: 209 tests (core 73, referee 24, spike 35, web 38, ship 11, bot 17, landing 11); typecheck 0; web build clean. Remaining ready: referee:10 (human gate).
