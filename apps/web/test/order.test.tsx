@@ -38,6 +38,6 @@ describe("the terminal's market order (P5)", () => {
     const onOrder = vi.fn();
     render(<Ticket equity={1_000n * E18} mark={74_500n * E18} busy={false} defaultLeverage={DEMO_LEVERAGE_X} onOrder={onOrder} />);
     fireEvent.click(screen.getByRole("button", { name: "Buy / long" }));
-    expect(onOrder).toHaveBeenCalledWith(true, 6_711_000n);
+    expect(onOrder).toHaveBeenCalledWith(true, 13_422_000n);
   });
 });

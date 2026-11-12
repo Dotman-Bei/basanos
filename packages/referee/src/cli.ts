@@ -15,7 +15,8 @@ const opt = (name: string): string | undefined => {
 };
 const client = makePublicClient(rpcHttp());
 const registry = requireAddress("REGISTRY_ADDRESS");
-const rulebooks = [loadRulebook("tokyo-sprint"), loadRulebook("tokyo-sprint-demo")];
+// Every registered rulebook it may meet: the standard, the current demo (v2) and the first demo (v1, still registered).
+const rulebooks = [loadRulebook("tokyo-sprint"), loadRulebook("tokyo-sprint-demo"), loadRulebook("tokyo-sprint-demo-v1")];
 
 if (cmd === "start") {
   const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());

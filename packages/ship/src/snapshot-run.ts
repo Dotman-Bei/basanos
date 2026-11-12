@@ -23,7 +23,9 @@ const registry = requireAddress("REGISTRY_ADDRESS");
 const client = makePublicClient(rpcHttp());
 const run = await client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [runId] });
 const closeTxs = await client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getCloseTxs", args: [runId] });
-const rb = [loadRulebook("tokyo-sprint"), loadRulebook("tokyo-sprint-demo")].find((r) => rulebookId(r).toLowerCase() === run.rulebookId.toLowerCase());
+const rb = [loadRulebook("tokyo-sprint"), loadRulebook("tokyo-sprint-demo"), loadRulebook("tokyo-sprint-demo-v1")].find(
+  (r) => rulebookId(r).toLowerCase() === run.rulebookId.toLowerCase(),
+);
 if (!rb) throw new Error(`run ${runId} uses a rulebook that is not in rulebooks/`);
 const stored = readRunsEvidence()[runId.toString()];
 const verdictTx = ((stored?.verdictTx as { hash?: Hex } | undefined)?.hash ?? null) as Hex | null;

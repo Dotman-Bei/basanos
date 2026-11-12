@@ -95,10 +95,12 @@ export function recommendDemoTargetBps(roundTripEqBps: number): number {
   return Math.max(50, Math.ceil((2 * roundTripEqBps) / 25) * 25);
 }
 
-/** Demo leverage (architect ruling P5, 2026-11-12). Rules judge closeable equity, so opening costs the spread x
- *  leverage at once: at most about 18 bps of equity at 5x on the measured 0.2-3.6 bps spread, inside the demo's 50 bps
- *  daily-loss floor. At 12x a 4.2 bps spread alone would breach it. */
-export const DEMO_LEVERAGE_X = 5;
+/** Demo leverage (architect P7, 2026-11-12; P5 had set 5x). Rules judge closeable equity, so opening costs the spread
+ *  x leverage at once: a median 1.57 bps round trip is about 16 equity bps at 10x, inside the demo v2 rulebook's 150
+ *  bps daily-loss floor. The leverage was chosen with demo v2 from a replay of 12 hours of on-chain mark and book
+ *  history (docs/evidence/demo-replay.json): at 10x the +0.50% target is a 5 bps price move, and an opposite pair opened
+ *  in the same block saw at least one PASS in 95.6% of 700 windows (64.7% for demo v1 at 5x). */
+export const DEMO_LEVERAGE_X = 10;
 
 /** What a closeable-equity run pays at entry, in bps of notional: buying at the ask side and being valued at the bid
  *  side (or the reverse). The demo-cost input since P5; costBpsVsMark measured the mark-to-book basis instead. */

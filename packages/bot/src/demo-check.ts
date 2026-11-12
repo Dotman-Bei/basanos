@@ -1,4 +1,6 @@
-// Decides whether the demo target is trustworthy given real trading costs (spec §5). Read-only.
+// Decides whether the book is fit for a demo take right now (spec §5). Read-only. The demo parameters themselves come
+// from the replay of real history (architect P7, docs/evidence/demo-replay.json), so a FAIL here means "wait for a
+// tighter book and re-run", never "change the rulebook": a wide spread is a moment, not a parameter.
 // Rules judge closeable equity (P5 ruling, 2026-11-12), so a run pays the spread between the two sides of the book at
 // entry and nothing more at the close: the cost is the buy average minus the sell average for the demo size, both
 // walked from ONE book read (one block), at DEMO_LEVERAGE_X. (The distance from the mark is the mark-to-book basis, about 19 bps on 2026-11-12, and is
@@ -7,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { BTC_POOL, readSnapshot } from "@basanos/core";
 import { averageFill, readBookLevels } from "@basanos/core/book";
-import { DEMO_LEVERAGE_X, parseTape, recommendDemoTargetBps, simulateTape } from "@basanos/core/demo-math";
+import { DEMO_LEVERAGE_X, parseTape, simulateTape } from "@basanos/core/demo-math";
 import { loadDotEnv, loadRulebook, repoPath, requireAddress, rpcHttp } from "@basanos/core/node";
 import { makePublicClient } from "@basanos/referee";
 import { readBook } from "./actions";
@@ -59,5 +61,8 @@ if (cost.ok && tapeOk) {
   console.log("PASS demo-check");
   process.exit(0);
 }
-console.log(`FAIL demo-check: raise profitTargetBps in rulebooks/tokyo-sprint-demo.json to ${recommendDemoTargetBps(cost.equityBps)} and register it`);
+console.log(
+  `FAIL demo-check: ${cost.ok ? "the tape does not resolve" : `the round trip is ${cost.spreadBps} bps of notional right now`}; ` +
+    "wait a few minutes for a tighter book and re-run (do not edit or re-register the rulebook)",
+);
 process.exit(1);
