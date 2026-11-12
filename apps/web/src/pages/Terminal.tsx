@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
-import { BTC_POOL, CANCEL_ORDER_FOR_SELECTOR, ORDER_TYPE_IOC, PLACE_ORDER_FOR_SELECTOR, VOUCHER_DISTRIBUTOR, explorerTx, iocPrice, perpPoolAbi } from "@basanos/core";
+import { BTC_POOL, CANCEL_ORDER_FOR_SELECTOR, ORDER_TYPE_IOC, PLACE_ORDER_FOR_SELECTOR, VOUCHER_DISTRIBUTOR, explorerTx, perpPoolAbi } from "@basanos/core";
+import { readBookLevels } from "@basanos/core/book";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
 import { initRunState } from "@basanos/core/evaluate";
 import { claimVoucherCall, grantRefereeCall, placeOrderCall, startRunCall, voucherAbi } from "../chain/calls";
 import { browserClient, sendCall } from "../chain/client";
@@ -9,8 +11,10 @@ import { StartFlow } from "../components/StartFlow";
 import { Ticket } from "../components/Ticket";
 import { WalletPanel } from "../components/WalletPanel";
 import { REFEREE, REGISTRY } from "../config";
+import { useBookAt } from "../hooks/useBook";
 import { useAccountSnapshot, useActiveRun } from "../hooks/useChain";
 import { formatUsdso, shortHash } from "../lib/format";
+import { judgedNow, ticketOrder } from "../lib/order";
 import { computeRails } from "../lib/rails";
 import { rulebookById } from "../lib/rulebooks";
 import { routeHref } from "../routes";
@@ -33,6 +37,9 @@ export function Terminal() {
   const [error, setError] = useState<string | null>(null);
   const [points, setPoints] = useState<bigint[]>([]);
   const acct = snap?.accounts[0];
+  const levels = useBookAt(snap?.blockNumber);
+  // The referee judges closeable equity (spec §5): the position valued at the book prices that would close it now.
+  const judged = snap ? judgedNow(acct, snap.markPrice, levels) : null;
 
   useEffect(() => {
     if (!address || !referee) return;
@@ -52,8 +59,8 @@ export function Terminal() {
   }, [address, referee, log.length]);
 
   useEffect(() => {
-    if (acct?.equityOk && active) setPoints((ps) => [...ps.slice(-299), acct.totalEquity]);
-  }, [acct?.totalEquity, acct?.equityOk, active]);
+    if (judged !== null && active) setPoints((ps) => [...ps.slice(-299), judged]);
+  }, [judged, active]);
 
   const run = async (label: string, fn: () => Promise<{ hash: Hex; status: string }>) => {
     setBusy(true);
@@ -96,9 +103,13 @@ export function Terminal() {
             <Ticket
               equity={acct.totalEquity}
               mark={snap.markPrice}
+              defaultLeverage={DEMO_LEVERAGE_X}
               busy={busy}
               onOrder={(isBid, qty) =>
-                void run(isBid ? "buy / long" : "sell / short", () => sendCall(key, placeOrderCall(isBid, iocPrice(isBid, snap.markPrice, 10n ** 17n, 20), qty, ORDER_TYPE_IOC)))
+                void run(isBid ? "buy / long" : "sell / short", async () => {
+                  const plan = ticketOrder(isBid, qty, await readBookLevels(browserClient(), BTC_POOL));
+                  return sendCall(key, placeOrderCall(isBid, plan.price, plan.quantity, ORDER_TYPE_IOC));
+                })
               }
             />
           ) : null}
@@ -109,8 +120,10 @@ export function Terminal() {
               Account
             </h2>
             <dl className="kv">
-              <dt>Equity</dt>
-              <dd className="figure">{acct?.equityOk ? `${formatUsdso(acct.totalEquity)} USDso` : "—"}</dd>
+              <dt>Closeable equity (what the referee judges)</dt>
+              <dd className="figure">{judged !== null ? `${formatUsdso(judged)} USDso` : "—"}</dd>
+              <dt>Equity at the mark</dt>
+              <dd>{acct?.equityOk ? `${formatUsdso(acct.totalEquity)} USDso` : "—"}</dd>
               <dt>STT for gas</dt>
               <dd>
                 {stt === null ? "—" : `${formatUsdso(stt)} STT`}{" "}

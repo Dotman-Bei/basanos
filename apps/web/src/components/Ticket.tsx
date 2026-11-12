@@ -3,8 +3,8 @@ import { quantityForLeverage } from "@basanos/core";
 
 const BOOK = { tickSize: 10n ** 17n, minQuantity: 13_000n, lotSize: 1_000n };
 
-export function Ticket(props: { equity: bigint; mark: bigint; busy: boolean; onOrder: (isBid: boolean, quantity: bigint) => void }) {
-  const [leverage, setLeverage] = useState(12);
+export function Ticket(props: { equity: bigint; mark: bigint; busy: boolean; defaultLeverage?: number; onOrder: (isBid: boolean, quantity: bigint) => void }) {
+  const [leverage, setLeverage] = useState(props.defaultLeverage ?? 12);
   const qty = props.mark > 0n ? quantityForLeverage(props.equity, leverage, props.mark, 8, BOOK) : 0n;
   return (
     <section className="panel" aria-labelledby="ticket-h">
