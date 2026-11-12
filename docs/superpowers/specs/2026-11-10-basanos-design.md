@@ -165,14 +165,14 @@ its evidence file, into §3a below. G1(d) is answered (2026-11-11). The two-symb
 
 | Item | Evidence file | Result |
 |---|---|---|
-| G1(a) referee close on a funded account | `docs/evidence/g1a-close.json` | PASS — flat after 1 close attempt(s), 5 txs; leverage cap 40x (market); entry 21.05 bps vs mark |
+| G1(a) referee close on a funded account | `docs/evidence/g1a-close.json` | PASS — flat after 1 close attempt, 5 txs. The entry filled at the best ask: slippage 0 bps (`entry.costVsBookBps`) and a spread of 0.13 bps (`entry.spreadBps`). The fill sits 21.05 bps above the mark (`entry.costBps`); that is the mark-to-book basis, not a cost (§5, closeable equity) |
 | G1(b) watch with attached equity multicall | `docs/evidence/g1b-watch.json` | 117 price pushes and 1168 account pushes in 30s; equity decoded: true; block timestamp unit: seconds |
 | G1(c) equity history depth | `docs/evidence/g1c-history.json` | equity view served 20,000,000 blocks back (≈ 23.1 days) |
 | G1(d) Price Oracle `BTC/USDC:PERP` | `docs/evidence/g1d-oracle.json` | **Failed.** Request 7773100 (createRequest tx `0xdf795f1f…a30d`, block 47437497) finalized Failed one block later (`RequestFinalized` status 3, tx `0x851aaa04…2301`). All three validators answered Success with prices: `BTC/USDC:PERP` 73,976.65 from 7 sources, identical across the three; `BTC/USDC` 74,008.55–74,011.48 from 6–7 sources, differing. The 4-argument `createRequest` uses Majority consensus, which needs byte-identical answers, so the request failed and no consensus price reached the callback. dreamDEX's PriceFeedScheduler uses `createAdvancedRequest` with Threshold consensus (3 validators, threshold 2, 30 s, 0.06 STT) and succeeds every 5 blocks. **Probe P1** (request 7782661: one symbol, `BTC/USDC:PERP`, through the registry's own 4-argument path, 0.0309 STT) finalized **Success**. Two of three validators answered byte-identically (≈ 73,735.85, 6 sources), which Majority needs; the evidence is `docs/evidence/g1d-probe-p1.json`. The cross-check is restored: `ORACLE_ENABLED=true`. A request can still fail, so every surface shows a reading only when one was recorded. |
-| G1(e) leverage cap that applies (the voucher's 20× only for a voucher account, else the market's 40×) | `docs/evidence/g1a-close.json` (`leverage` field) | PASS — flat after 1 close attempt(s), 5 txs; leverage cap 40x (market); entry 21.05 bps vs mark |
+| G1(e) leverage cap that applies (the voucher's 20× only for a voucher account, else the market's 40×) | `docs/evidence/g1a-close.json` (`leverage` field) | PASS — the cap that applies is 40× (`leverage.capX` 40, `capSource` market). No voucher was claimed, so the voucher's 20× does not apply |
 | R1 indexer reads | `docs/evidence/r1-indexer.json` | getMarginEvents: ok; listPerpMarginPulls: ok; listPerpMainFundingEvents: ok |
 | Live mark tape for G4 | `packages/core/test/fixtures/btc-tape.json` | 2153 BTC mark points over 540s |
-| Measured STT cost per tx | `docs/evidence/g1a-close.json` (`costs`) | PASS — flat after 1 close attempt(s), 5 txs; leverage cap 40x (market); entry 21.05 bps vs mark |
+| Measured STT cost per tx | `docs/evidence/g1a-close.json` (`costs`) | 0.0436 STT for the 5 txs (gasUsed × effectiveGasPrice at 6 gwei): grant 0.00335, open 0.0189, rest 0.00979, cancel 0.00102, close 0.0105 |
 
 ## 4. Architecture and repo layout
 
@@ -245,9 +245,9 @@ terminal or by the runner, bot short), and streams both runs. Whichever way BTC 
 account reaches the target (PASS after the 60 s minimum) and the other its daily-loss floor (FAIL). A
 PASS still needs real movement; if the market is still, `bot.ts breach` adds bot size past 15× for a
 FAIL on demand while the PASS waits. The wait is bounded: if no account has a verdict 10 minutes after
-the positions open, the runner reports "market still — take aborted", applies the exposure breach to the
-bot (FAIL) and leaves the human run to resolve or hit `TimeLimit` at 900 s; the next take starts after a
-faucet top-up. The skeleton proves the math.
+the positions open, the runner reports "market still: exposure breach on B (FAIL on demand)", applies the
+exposure breach to the bot (FAIL) and leaves the human run to resolve or hit `TimeLimit` at 900 s; the next take
+starts after a faucet top-up. (A take that fails after a run started is aborted, which is a different case: §9.) The skeleton proves the math.
 - **What the spike records:** a live 9-minute (540 s) BTC mark tape, and the real entry fill against the mark and the book (`docs/evidence/g1a-close.json`: `entry.costBps` is the basis, `entry.costVsBookBps` the slippage, `entry.spreadBps` the spread).
 - **The tape test:** a core test replays the tape at 5× with a 3.6 bps round trip paid at entry, and none at the close, since closeable equity already values the exit side. It asserts that both sides resolve.
 - **The live check:** `demo-check` measures the live round trip for the demo size from one book read and passes when it is at most half the 50 bps target. On 2026-11-12 it measured 1.98 to 2.84 bps of notional, which is 9.9 to 14.2 equity bps: PASS.
@@ -473,6 +473,16 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
   start both runs on `tokyo-sprint-demo`, open opposite 5× positions (`DEMO_LEVERAGE_X`) with IOCs capped from
   the book (best ask + 20 bps / best bid − 20 bps), stream both runs until both have a
   verdict, print every tx hash with explorer links.
+- **How account writes reach the chain (P6, 2026-11-12).** Every bot and demo write is viem-direct (`packages/bot/src/send.ts`): the grant, `startRun` and the opens.
+  - **The send:** signed locally with `ORDER_GAS` and an explicit pending nonce, sent once with `eth_sendRawTransaction` to the standard RPC, receipt taken from the public client. The hash is known before the send, so a failed or timed-out send is still looked up.
+  - **The calls:** built by `@basanos/core/owner-tx`, byte-identical to the SDK's own encoding (pinned by a test).
+  - **Why:** the SDK's send path (`eth_sendRawTransactionSync` on `send.hideki…`) ended "outcome unknown" with nothing on-chain twice: the voucher claim (2026-11-11) and B's grant in the first rehearsal (2026-11-12, B18). The bot never hands the SDK a key; the SDK stays for reads.
+  - **Read back, never re-sent:** a write counts only when its effect is read back (both grant selectors authorized, the account's active run, or its position size moving). Nothing is re-sent: a grant is idempotent, but an open is not.
+- **When a write does not take effect (P6b).**
+  - **Before the take has started a run:** the demo stops. A re-run starts over and reads the grant and the active run before it sends anything.
+  - **Once a run has started, the take aborts.** Nothing is re-sent and no run is voided. A void is the referee's verdict on a flow, a foreign market or a revoked grant, and none of those happened. Revoking the grant to force one would also leave the referee unable to close an open that lands late.
+  - **The abort:** the referee ends each run by a rule or at its time limit, closing any position first. The demo waits for every verdict (at most the time limit + 300 s), checks the accounts are flat, records the take in `docs/evidence/demo-aborted.json` and exits 1. It never writes to `demo-takes.json`, which check-rehearsal and check-money-shot judge.
+  - **A failed exposure top-up** for a FAIL on demand is only noted.
 - No bot or demo command ever claims a voucher. The demo accounts are funded by depositing their own wallet USDso (spike:18, spike:19), because `claim()` reverts chain-wide (B14).
   The web terminal's "Claim voucher" button (§10) is the only claim path in the product; it fires only on
   an explicit user click, and every test and dev run mocks it.
@@ -671,6 +681,8 @@ feedback, deploy; Nov 15 — buffer, submitted by 09:00.
 - A trader who self-trades against a second account at the band edge can manufacture a pass
   (anti-collusion forensics are out of scope).
 - Replay depends on the public RPC's history; past the horizon the page shows the stored reads.
+- An aborted demo take (§9) holds its accounts until the referee ends their runs, at most the demo's 900 s time limit;
+  no run is voided to free them sooner.
 - Rules judge closeable equity from the 20 best levels on each side; a position those levels cannot price
   pauses judging for that snapshot, so an account larger than the visible book is not judged until the book
   refills.
@@ -684,6 +696,7 @@ feedback, deploy; Nov 15 — buffer, submitted by 09:00.
 | Tokyo Sprint PASS conditions | All contract-checkable at the end state (flat, equity ≥ target, min time, within time limit, grant); path rules referee-enforced, shown by replay | user, 2026-11-10 |
 | Trust-model wording | "Every certificate is chain-checked at mint; every verdict is replayable." | user, 2026-11-10 |
 | Which equity do the rules judge? | Closeable equity: the marked equity revalued at the same-block book (bids for a long, asks for a short); opening IOCs capped from the book; demo at 5×; rulebooks unchanged | architect ruling P5 on the guide's measurement (the book ≈ 19 bps above the mark), 2026-11-12 |
+| How do the bot's own writes reach the chain, and what if one fails mid-take? | viem-direct (signed locally, `ORDER_GAS`, explicit pending nonce, standard RPC), read back from the chain, never re-sent; a take that fails after a run started aborts: the runs end by a rule or at their time limits (no void), recorded in `demo-aborted.json` | architect ruling P6 on the guide's diagnosis B18 (the SDK's send path ended "outcome unknown" twice), 2026-11-12 |
 | Demo mode | `tokyo-sprint-demo`, a separately registered parameter set of the one rulebook, labelled on every surface; demo runner; exposure-breach fallback | user (fold-in list) + G4 |
 | Landing page | Required scope, additive `landing` plan, truthful content, kit checkers as gate | user directive via the guide |
 | Deploy host | Vercel | user, 2026-11-10 |
