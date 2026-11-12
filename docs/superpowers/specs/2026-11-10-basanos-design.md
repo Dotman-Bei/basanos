@@ -114,7 +114,7 @@ block. The referee's evidence bundle records that equity and that book (its hash
 page re-reads the book at the block to show it (web:12).
 
 **Replay horizon.** Stage-1 probe (2026-11-10 ~17:03 WAT, block 46,725,618): the public Hideki RPC
-served `USDso.totalSupply()` at **10,000,000 blocks back (2026-10-30, ≈ 11.6 days)**, with values that
+served `USDso.totalSupply()` at **10,000,000 blocks back (2026-10-30, ≈ 11.6 days)**; measured with the equity view: equity view served 20,000,000 blocks back (≈ 23.1 days), with values that
 change over time (archive state). Task `spike:13` replaces this line's measurement with the
 equity-view measurement (`tryGetAccountEquity` at depth) and writes the real horizon here. Judging
 happens after 2026-11-15 and the results date is unpublished, hence the stored raw reads.
@@ -165,14 +165,14 @@ its evidence file, into §3a below. G1(d) is answered (2026-11-11). The two-symb
 
 | Item | Evidence file | Result |
 |---|---|---|
-| G1(a) referee close on a funded account | `docs/evidence/g1a-close.json` | written by `spike:13` |
-| G1(b) watch with attached equity multicall | `docs/evidence/g1b-watch.json` | written by `spike:13` |
-| G1(c) equity history depth | `docs/evidence/g1c-history.json` | written by `spike:13` |
+| G1(a) referee close on a funded account | `docs/evidence/g1a-close.json` | PASS — flat after 1 close attempt(s), 5 txs; leverage cap 40x (market); entry 21.05 bps vs mark |
+| G1(b) watch with attached equity multicall | `docs/evidence/g1b-watch.json` | 117 price pushes and 1168 account pushes in 30s; equity decoded: true; block timestamp unit: seconds |
+| G1(c) equity history depth | `docs/evidence/g1c-history.json` | equity view served 20,000,000 blocks back (≈ 23.1 days) |
 | G1(d) Price Oracle `BTC/USDC:PERP` | `docs/evidence/g1d-oracle.json` | **Failed.** Request 7773100 (createRequest tx `0xdf795f1f…a30d`, block 47437497) finalized Failed one block later (`RequestFinalized` status 3, tx `0x851aaa04…2301`). All three validators answered Success with prices: `BTC/USDC:PERP` 73,976.65 from 7 sources, identical across the three; `BTC/USDC` 74,008.55–74,011.48 from 6–7 sources, differing. The 4-argument `createRequest` uses Majority consensus, which needs byte-identical answers, so the request failed and no consensus price reached the callback. dreamDEX's PriceFeedScheduler uses `createAdvancedRequest` with Threshold consensus (3 validators, threshold 2, 30 s, 0.06 STT) and succeeds every 5 blocks. **Probe P1** (request 7782661: one symbol, `BTC/USDC:PERP`, through the registry's own 4-argument path, 0.0309 STT) finalized **Success**. Two of three validators answered byte-identically (≈ 73,735.85, 6 sources), which Majority needs; the evidence is `docs/evidence/g1d-probe-p1.json`. The cross-check is restored: `ORACLE_ENABLED=true`. A request can still fail, so every surface shows a reading only when one was recorded. |
-| G1(e) leverage cap that applies (the voucher's 20× only for a voucher account, else the market's 40×) | `docs/evidence/g1a-close.json` (`leverage` field) | written by `spike:13` |
-| R1 indexer reads | `docs/evidence/r1-indexer.json` | written by `spike:13` |
-| Live mark tape for G4 | `packages/core/test/fixtures/btc-tape.json` | written by `spike:13` |
-| Measured STT cost per tx | `docs/evidence/g1a-close.json` (`costs`) | written by `spike:13` |
+| G1(e) leverage cap that applies (the voucher's 20× only for a voucher account, else the market's 40×) | `docs/evidence/g1a-close.json` (`leverage` field) | PASS — flat after 1 close attempt(s), 5 txs; leverage cap 40x (market); entry 21.05 bps vs mark |
+| R1 indexer reads | `docs/evidence/r1-indexer.json` | getMarginEvents: ok; listPerpMarginPulls: ok; listPerpMainFundingEvents: ok |
+| Live mark tape for G4 | `packages/core/test/fixtures/btc-tape.json` | 2153 BTC mark points over 540s |
+| Measured STT cost per tx | `docs/evidence/g1a-close.json` (`costs`) | PASS — flat after 1 close attempt(s), 5 txs; leverage cap 40x (market); entry 21.05 bps vs mark |
 
 ## 4. Architecture and repo layout
 
