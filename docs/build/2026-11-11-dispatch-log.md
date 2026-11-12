@@ -143,3 +143,20 @@ Workspace totals after this wave: core 53, referee 21, spike 25, web 29, ship 10
   stops with "COMMIT FAILED" if HEAD did not move.
 
 Status: 51 / 63 done. Ready: spike:11 only (human gate, B14 / USDso). contracts:11 now depends on spike:11 (63b70d3).
+
+## Resume 2026-11-12 (architect P1–P4 wave: spike:17, spike:20, referee:12, web:10, landing:3, ship:10)
+
+| Task | Routed | Commit | Gate (re-run by orchestrator) |
+|---|---|---|---|
+| spike:17 | executor-medium / opus (main tree) | 5bcdb29 | funding 6 passed; all 3 files SAME as plan; typecheck 0; deposit.ts never run |
+| spike:20 | executor-medium / opus | 0bf0275 | spike 31 passed; plan block present; typecheck 0; skeleton-close never run |
+| referee:12 | executor-medium / opus | 6aef744 | readiness 2 passed; bot 9 passed; 4 plan blocks present; typecheck 0 |
+| web:10 | executor-high / sonnet | a5f5fe2 | nav 3 passed; web 32 passed; build OK (`check-env: no VITE_*_PK variables`) |
+| landing:3 | executor-high / sonnet | 2ccef75 | page + sample-guard 7 passed; landing 11 passed; all 9 files SAME as plan |
+| ship:10 | executor-high / sonnet | 9ac0a8e | sample 1 passed; ship 11 passed; ship:9 baseUrl check retained |
+
+**Incident:** worktree isolation refused both first dispatches — the session cwd came back with a lowercase `c:` drive
+letter while git resolves `C:/`, which the harness reads as a worktree redirect. The two fresh worktrees were clean and
+removed; every task in this wave ran sequentially in the main tree (no parallelism, so no isolation needed).
+
+Status: 57 / 70 done. Ready: spike:18 and spike:19 only (human gates: LIVE deposits). Stopped per the guide.
