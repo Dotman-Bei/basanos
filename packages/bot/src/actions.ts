@@ -16,6 +16,7 @@ import {
   STT_WRITE_HEADROOM,
   alignUp,
   basanosRegistryAbi,
+  farFutureNs,
   marginBankAbi,
   perpPoolAbi,
   readSnapshot,
@@ -23,7 +24,9 @@ import {
 } from "@basanos/core";
 import { planOpenFromBook, readBookLevels } from "@basanos/core/book";
 import { repoPath } from "@basanos/core/node";
-import { jsonSafe, txRecord, type TxRecord } from "@basanos/referee";
+import { grantCall, ownerOrderCall, startRunCall } from "@basanos/core/owner-tx";
+import { jsonSafe } from "@basanos/referee";
+import { effectOf, sendWrite, type AccountWrite, type SendResult, type Sender } from "./send";
 
 export interface Preflight {
   account: Address;
@@ -49,8 +52,35 @@ export function makeAccountWallet(pk: Hex, url: string) {
 
 export type AccountWallet = ReturnType<typeof makeAccountWallet>;
 
-export function makeMarkets(pk: Hex): SomniaMarkets {
-  return new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES, privateKey: pk });
+/** Read-only: the bot uses the SDK for reads only (the voucher read in preflight). It never hands the SDK a key, so no
+ *  SDK write can leave the bot (P6, 2026-11-12). */
+export function makeMarkets(): SomniaMarkets {
+  return new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES });
+}
+
+/** Binds send.ts to an account wallet, which signs locally, and the public client on the standard RPC (rpcHttp()),
+ *  which gives the nonce, takes the raw transaction and returns the receipt. */
+export function viemSender(wallet: AccountWallet, client: PublicClient): Sender {
+  const address = wallet.account.address;
+  return {
+    address,
+    pendingNonce: () => client.getTransactionCount({ address, blockTag: "pending" }),
+    sign: async (tx) => wallet.signTransaction(await wallet.prepareTransactionRequest(tx)),
+    sendRaw: (raw) => client.sendRawTransaction({ serializedTransaction: raw }),
+    waitReceipt: (hash, timeout) => client.waitForTransactionReceipt({ hash, timeout }),
+    receipt: (hash) => client.getTransactionReceipt({ hash }).catch(() => null),
+  };
+}
+
+/** The latest nonce is read before the effect, so a write that lands between the two reads is seen, not missed. */
+async function settle(client: PublicClient, account: Address, sent: SendResult, seen: () => Promise<boolean>): Promise<AccountWrite> {
+  const latest = await client.getTransactionCount({ address: account, blockTag: "latest" });
+  return { sent, effect: effectOf(sent, await seen(), latest) };
+}
+
+async function positionSize(client: PublicClient, account: Address): Promise<bigint> {
+  const p = await client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getPosition", args: [account, BTC_POOL] });
+  return p.size;
 }
 
 /** Reads only. Never claims a voucher: claim() reverts chain-wide (B14), so an account is ready when it is FUNDED,
@@ -93,19 +123,18 @@ export async function readBook(client: PublicClient): Promise<BookParams> {
   return { tickSize: p.tickSize, minQuantity: p.minQuantity, lotSize: p.lotSize };
 }
 
-/** Grants the referee place + cancel on the BTC pool only, if not already granted. */
-export async function ensureGrant(client: PublicClient, markets: SomniaMarkets, owner: Address, referee: Address): Promise<TxRecord | null> {
+/** Grants the referee place + cancel on the BTC pool only, if not already granted (null: nothing sent). viem-direct
+ *  (send.ts, P6); it counts only when the pool reports both selectors authorized. A grant is idempotent, so a re-run
+ *  after a stop re-reads it first. */
+export async function ensureGrant(client: PublicClient, wallet: AccountWallet, referee: Address): Promise<AccountWrite | null> {
+  const owner = wallet.account.address;
   const has = async (selector: Hex) =>
     client.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [owner, referee, selector] });
-  if ((await has(PLACE_ORDER_FOR_SELECTOR)) && (await has(CANCEL_ORDER_FOR_SELECTOR))) return null;
-  const r = await markets.trader.setOperatorApprovalForPool({
-    pool: BTC_POOL,
-    operator: referee,
-    selectors: [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR],
-    approved: true,
-    operatorRegistry: OPERATOR_REGISTRY,
-  });
-  return txRecord("grant", r.receipt);
+  const granted = async () => (await has(PLACE_ORDER_FOR_SELECTOR)) && (await has(CANCEL_ORDER_FOR_SELECTOR));
+  if (await granted()) return null;
+  const selectors = [PLACE_ORDER_FOR_SELECTOR, CANCEL_ORDER_FOR_SELECTOR];
+  const sent = await sendWrite(viemSender(wallet, client), "grant", grantCall(OPERATOR_REGISTRY, BTC_POOL, referee, selectors));
+  return settle(client, owner, sent, granted);
 }
 
 export function runIdFromLogs(logs: readonly { address: Address; data: Hex; topics: readonly Hex[] }[], registry: Address): bigint | null {
@@ -121,18 +150,24 @@ export function runIdFromLogs(logs: readonly { address: Address; data: Hex; topi
   return null;
 }
 
-/** The account itself enrolls (msg.sender == account); the registry reads its start equity in the same tx. */
-export async function startRunAs(wallet: AccountWallet, client: PublicClient, registry: Address, rulebookId: Hex): Promise<{ runId: bigint; tx: TxRecord }> {
-  const hash = await wallet.writeContract({
-    address: registry,
-    abi: basanosRegistryAbi,
-    functionName: "startRun",
-    args: [wallet.account.address, rulebookId],
+/** The account itself enrolls (msg.sender == account); the registry reads its start equity in the same tx. viem-direct
+ *  (send.ts, P6). The run is read back from activeRunOf, so it counts once the registry holds it, receipt or not. */
+export async function startRunAs(
+  client: PublicClient,
+  wallet: AccountWallet,
+  registry: Address,
+  rulebookId: Hex,
+): Promise<AccountWrite & { runId: bigint | null }> {
+  const account = wallet.account.address;
+  const activeRun = async () => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "activeRunOf", args: [account] });
+  const before = await activeRun();
+  const sent = await sendWrite(viemSender(wallet, client), "startRun", startRunCall(registry, account, rulebookId));
+  let after = before;
+  const w = await settle(client, account, sent, async () => {
+    after = await activeRun();
+    return after !== 0n && after !== before;
   });
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  const runId = runIdFromLogs(receipt.logs, registry);
-  if (runId === null) throw new Error(`startRun emitted no RunStarted: ${hash}`);
-  return { runId, tx: txRecord("startRun", receipt) };
+  return { ...w, runId: w.effect === "done" ? after : null };
 }
 
 /** Extra size so the account's notional strictly exceeds targetX x equity (the on-demand exposure breach). */
@@ -147,17 +182,31 @@ export function breachQuantity(currentSize: bigint, equity: bigint, targetX: num
 }
 
 /** An opening IOC capped from the book (best ask + 20 bps to buy, best bid - 20 bps to sell), never from the mark:
- *  the BTC-PERP book trades about 19 bps above the mark, so a mark + 20 bps buy does not fill (P5, 2026-11-12). */
-export async function openIoc(markets: SomniaMarkets, client: PublicClient, isBid: boolean, quantity: bigint): Promise<TxRecord> {
+ *  the BTC-PERP book trades about 19 bps above the mark, so a mark + 20 bps buy does not fill (P5, 2026-11-12).
+ *  viem-direct (send.ts, P6): it took effect only if the account's position size moved. An open is never re-sent. */
+export async function openIoc(
+  client: PublicClient,
+  wallet: AccountWallet,
+  isBid: boolean,
+  quantity: bigint,
+  label: string = isBid ? "open long" : "open short",
+): Promise<AccountWrite> {
+  const account = wallet.account.address;
   const params = await readBook(client);
   const levels = await readBookLevels(client, BTC_POOL);
-  if (!levels) throw new Error("the BTC-PERP book could not be read");
+  if (!levels) throw new Error("the BTC-PERP book could not be read; no order was sent");
   const plan = planOpenFromBook(isBid, quantity, levels, params);
-  const r = await markets.trader.placePerpOrder({ pool: BTC_POOL, isBid, price: plan.price, quantity: plan.quantity, orderType: ORDER_TYPE_IOC });
-  return txRecord(isBid ? "open long" : "open short", r.receipt);
+  const before = await positionSize(client, account);
+  const order = ownerOrderCall(BTC_POOL, isBid, plan.price, plan.quantity, ORDER_TYPE_IOC, farFutureNs());
+  const sent = await sendWrite(viemSender(wallet, client), label, order);
+  return settle(client, account, sent, async () => (await positionSize(client, account)) !== before);
 }
 
 export const DEMO_TAKES = "docs/evidence/demo-takes.json";
+
+/** Takes that aborted after a run started (P6b). Kept apart from DEMO_TAKES, which check-rehearsal and the money-shot
+ *  check judge: an aborted take's runs end FAIL TimeLimit without a close, and must not fail a later good take. */
+export const DEMO_ABORTED = "docs/evidence/demo-aborted.json";
 
 export function appendDemoTake(take: Record<string, unknown>, path: string = repoPath(DEMO_TAKES)): number {
   const all = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as unknown[]) : [];

@@ -5,12 +5,31 @@
 // held until the referee locks the target or a rule ends it. A PASS is not guaranteed with one account, which is why
 // the two-account demo is primary. Accounts must be FUNDED (own USDso deposited, spike:18 / spike:19); no voucher.
 // The referee daemon (packages/referee/src/cli.ts start) must already be running in another terminal.
+// Every account write (grant, startRun, opens) is viem-direct (send.ts, P6) and read back from the chain before the
+// take goes on. When one does not take effect, or anything throws (onFailure, P6b): before the take has started a run
+// it stops, and a re-run starts over; once a run has started the take aborts. Nothing is re-sent and no run is voided:
+// the referee ends each run by a rule or at its time limit, the demo waits for every verdict, checks the accounts are
+// flat, records the take in docs/evidence/demo-aborted.json (never demo-takes.json) and exits 1.
 import type { Address, Hex } from "viem";
-import { BTC_POOL, RULE_NAMES, RUN_STATUS, basanosRegistryAbi, explorerTx, quantityForLeverage, readSnapshot, rulebookId } from "@basanos/core";
+import { BTC_POOL, RULE_NAMES, RUN_STATUS, basanosRegistryAbi, explorerTx, quantityForLeverage, readSnapshot, rulebookId, type BookParams } from "@basanos/core";
 import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
-import { loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { loadDotEnv, loadRulebook, repoPath, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
 import { makePublicClient, type TxRecord } from "@basanos/referee";
-import { appendDemoTake, breachQuantity, ensureGrant, makeAccountWallet, makeMarkets, notReady, openIoc, preflight, readBook, startRunAs } from "./actions";
+import {
+  DEMO_ABORTED,
+  appendDemoTake,
+  breachQuantity,
+  ensureGrant,
+  makeAccountWallet,
+  makeMarkets,
+  notReady,
+  openIoc,
+  preflight,
+  readBook,
+  startRunAs,
+  type AccountWallet,
+} from "./actions";
+import { VERDICT_GRACE_SEC, describeWrite, onFailure, verdictDeadline, type AccountWrite, type WriteKind } from "./send";
 
 loadDotEnv();
 const argv = process.argv.slice(2);
@@ -23,139 +42,237 @@ const registry = requireAddress("REGISTRY_ADDRESS");
 const referee = requireAddress("REFEREE_ADDRESS");
 const rb = loadRulebook("tokyo-sprint-demo");
 const id: Hex = rulebookId(rb);
+const markets = makeMarkets();
+const mode = oneAccount ? "one-account" : "two-account";
 const txs: TxRecord[] = [];
+const notes: string[] = [];
+const started: { runId: bigint; account: Address }[] = [];
+let lastStartMs = 0;
 const say = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 say(
   oneAccount
     ? "Basanos demo (one-account fallback): account A is a burner operated by the builder; run 1 FAIL by exposure, run 2 the PASS attempt."
     : "Basanos demo: both challenge accounts are burners operated by the builder (A human-driven, B scripted).",
 );
-const accounts = (oneAccount ? (["ACCOUNT_A_PK"] as const) : (["ACCOUNT_A_PK", "ACCOUNT_B_PK"] as const)).map((name) => {
-  const pk = requirePrivateKey(name);
-  const wallet = makeAccountWallet(pk, rpcHttp());
-  return { name, wallet, markets: makeMarkets(pk), address: wallet.account.address as Address };
+interface Account {
+  name: string;
+  wallet: AccountWallet;
+  address: Address;
+}
+const accounts: Account[] = (oneAccount ? (["ACCOUNT_A_PK"] as const) : (["ACCOUNT_A_PK", "ACCOUNT_B_PK"] as const)).map((name) => {
+  const wallet = makeAccountWallet(requirePrivateKey(name), rpcHttp());
+  return { name, wallet, address: wallet.account.address };
 });
-for (const a of accounts) {
-  const pf = await preflight(client, a.markets, a.address);
-  say(`${a.name} ${a.address}: stt ${pf.stt} unlocked margin ${pf.unlockedCollateral} flat ${pf.flat} equity ${pf.equity}`);
-  const problems = notReady(pf);
-  if (problems.length > 0) {
-    say(`STOP: ${a.name} is not ready: ${problems.join("; ")}. No voucher is ever claimed here.`);
+
+class WriteFailed extends Error {
+  constructor(
+    readonly kind: WriteKind,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Keeps the write's receipt, and throws unless the write took effect on-chain. */
+function check(kind: WriteKind, w: AccountWrite | null): void {
+  if (!w) return;
+  if (w.sent.tx) txs.push(w.sent.tx);
+  if (w.effect !== "done") throw new WriteFailed(kind, describeWrite(w));
+}
+
+const statusOf = async (runId: bigint) => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [runId] });
+type Run = Awaited<ReturnType<typeof statusOf>>;
+const label = (r: Run | undefined) => (r ? `${RUN_STATUS[r.status] ?? r.status}${r.rule ? `/${RULE_NAMES[r.rule]}` : ""}` : "?");
+const activeRunOf = async (account: Address) => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "activeRunOf", args: [account] });
+
+async function startRun(a: Account): Promise<bigint> {
+  const { runId, ...w } = await startRunAs(client, a.wallet, registry, id);
+  check("start", w);
+  if (runId === null) throw new WriteFailed("start", describeWrite(w));
+  started.push({ runId, account: a.address });
+  lastStartMs = Date.now();
+  say(`${a.name} run ${runId} on ${rb.label}: ${w.sent.tx?.explorer ?? explorerTx(w.sent.hash)}`);
+  return runId;
+}
+
+/** Polls every 2 s until every run has left Active; null once `until` passes with one still Active. */
+async function waitVerdicts(runIds: readonly bigint[], until: number, onTick?: (rs: Run[]) => Promise<void>): Promise<Run[] | null> {
+  for (;;) {
+    const rs = await Promise.all(runIds.map((r) => statusOf(r)));
+    say(`runs ${runIds.join(", ")}: ${rs.map((r) => label(r)).join(" | ")}`);
+    if (rs.every((r) => r.status !== 1)) return rs;
+    if (Date.now() > until) return null;
+    if (onTick) await onTick(rs);
+    await sleep(2_000);
+  }
+}
+
+async function flatAll(addresses: readonly Address[], waitMs: number): Promise<boolean> {
+  const unique = [...new Set(addresses)];
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const s = await readSnapshot(client, unique, BTC_POOL);
+    if (s.accounts.every((a) => a.size === 0n && a.lockedCollateral === 0n && a.activePools.length === 0)) return true;
+    if (Date.now() > until) return false;
+    await sleep(3_000);
+  }
+}
+
+/** The on-demand exposure breach: size past the 15x cap. If it does not take effect it is noted, never re-sent, and
+ *  the take goes on (onFailure "note"). */
+async function topUp(a: Account, book: BookParams): Promise<boolean> {
+  const s = await readSnapshot(client, [a.address], BTC_POOL);
+  const p = s.accounts[0];
+  if (!p || p.size === 0n) return false;
+  try {
+    check("breach", await openIoc(client, a.wallet, p.size > 0n, breachQuantity(p.size, p.totalEquity, 16, s.markPrice, 8, book), "exposure top-up"));
+    return true;
+  } catch (e) {
+    if (onFailure("breach", started.length) !== "note") throw e;
+    const why = e instanceof Error ? e.message : String(e);
+    notes.push(`exposure top-up did not take effect: ${why}`);
+    say(`note: the exposure top-up did not take effect (${why}); nothing is re-sent and the runs go on`);
+    return false;
+  }
+}
+
+function runRows(final: readonly (Run | undefined)[]) {
+  return started.map((r, i) => ({ runId: r.runId, account: r.account, status: RUN_STATUS[final[i]?.status ?? 0], rule: RULE_NAMES[final[i]?.rule ?? 0] }));
+}
+
+async function twoAccountTake(): Promise<void> {
+  const [accA, accB] = accounts;
+  if (!accA || !accB) throw new Error("two accounts expected");
+  for (const a of accounts) await startRun(a);
+  const book = await readBook(client);
+  const snap = await readSnapshot(client, accounts.map((a) => a.address), BTC_POOL);
+  const qtyB = quantityForLeverage(snap.accounts[1]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
+  check("open", await openIoc(client, accB.wallet, false, qtyB));
+  say(`B short ${qtyB} at ${DEMO_LEVERAGE_X}x`);
+  if (manualA) {
+    say(`A: open the long from the Basanos terminal now (${DEMO_LEVERAGE_X}x).`);
+  } else {
+    const qtyA = quantityForLeverage(snap.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
+    check("open", await openIoc(client, accA.wallet, true, qtyA));
+    say(`A long ${qtyA} at ${DEMO_LEVERAGE_X}x`);
+  }
+  const openedAt = Date.now();
+  let tried = false;
+  let breached = false;
+  const final = await waitVerdicts(
+    started.map((r) => r.runId),
+    verdictDeadline(lastStartMs, rb.timeLimitSec),
+    async (rs) => {
+      if (tried || Date.now() - openedAt <= waitMin * 60_000 || rs[1]?.status !== 1) return;
+      tried = true; // one attempt only
+      say("market still: exposure breach on B (FAIL on demand); A resolves or hits its time limit");
+      breached = await topUp(accB, book);
+    },
+  );
+  if (!final) throw new Error(`a run is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after the last start; check the referee terminal`);
+  const flat = await flatAll(started.map((r) => r.account), 120_000);
+  const take = appendDemoTake({ at: new Date().toISOString(), mode, rulebook: { id, label: rb.label }, runs: runRows(final), breachedOnDemand: breached, flatAfter: flat, notes, txs });
+  say(`take ${take} recorded in docs/evidence/demo-takes.json`);
+  for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+  if (!flat) {
+    say("STOP: an account still holds a position after its verdict; check the referee terminal");
     process.exit(1);
   }
-  const g = await ensureGrant(client, a.markets, a.address, referee);
-  if (g) txs.push(g);
 }
-const statusOf = async (runId: bigint) => client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [runId] });
-const label = (r: Awaited<ReturnType<typeof statusOf>> | undefined) => (r ? `${RUN_STATUS[r.status] ?? r.status}${r.rule ? `/${RULE_NAMES[r.rule]}` : ""}` : "?");
 
-if (oneAccount) {
+async function oneAccountTake(): Promise<void> {
   const [accA] = accounts;
   if (!accA) throw new Error("account A expected");
   const book = await readBook(client);
-  const waitVerdict = async (runId: bigint) => {
-    for (;;) {
-      const r = await statusOf(runId);
-      say(`run ${runId}: ${label(r)}`);
-      if (r && r.status !== 1) return r;
-      await new Promise((res) => setTimeout(res, 2_000));
-    }
-  };
-  const waitFlat = async () => {
-    const until = Date.now() + 5 * 60_000;
-    for (;;) {
-      const a = (await readSnapshot(client, [accA.address], BTC_POOL)).accounts[0];
-      if (a && a.size === 0n && a.lockedCollateral === 0n && a.activePools.length === 0) return;
-      if (Date.now() > until) throw new Error("account A is not flat 5 min after run 1's verdict");
-      await new Promise((res) => setTimeout(res, 3_000));
-    }
-  };
-  const runIds: bigint[] = [];
   // Run 1: FAIL on demand by exposure.
-  const r1 = await startRunAs(accA.wallet, client, registry, id);
-  runIds.push(r1.runId);
-  txs.push(r1.tx);
-  say(`run 1 (${r1.runId}) on ${rb.label}: ${r1.tx.explorer}`);
+  const r1 = await startRun(accA);
   const s1 = await readSnapshot(client, [accA.address], BTC_POOL);
-  txs.push(await openIoc(accA.markets, client, true, quantityForLeverage(s1.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s1.markPrice, 8, book)));
-  const s1b = (await readSnapshot(client, [accA.address], BTC_POOL)).accounts[0];
-  if (s1b && s1b.size !== 0n) {
-    txs.push(await openIoc(accA.markets, client, true, breachQuantity(s1b.size, s1b.totalEquity, 16, s1.markPrice, 8, book)));
-    say("run 1: size added past the 15x exposure cap (FAIL on demand)");
-  }
-  const v1 = await waitVerdict(r1.runId);
-  await waitFlat();
+  check("open", await openIoc(client, accA.wallet, true, quantityForLeverage(s1.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s1.markPrice, 8, book)));
+  if (await topUp(accA, book)) say("run 1: size added past the 15x exposure cap (FAIL on demand)");
+  const v1 = await waitVerdicts([r1], verdictDeadline(lastStartMs, rb.timeLimitSec));
+  if (!v1) throw new Error(`run 1 is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after its start; check the referee terminal`);
+  if (!(await flatAll([accA.address], 5 * 60_000))) throw new Error("account A is not flat 5 min after run 1's verdict");
   // Run 2: the PASS attempt.
-  const r2 = await startRunAs(accA.wallet, client, registry, id);
-  runIds.push(r2.runId);
-  txs.push(r2.tx);
-  say(`run 2 (${r2.runId}) on ${rb.label}, ${passSide} ${DEMO_LEVERAGE_X}x: ${r2.tx.explorer}`);
+  const r2 = await startRun(accA);
+  say(`run 2 (${r2}): ${passSide} ${DEMO_LEVERAGE_X}x`);
   const s2 = await readSnapshot(client, [accA.address], BTC_POOL);
-  txs.push(await openIoc(accA.markets, client, passSide === "long", quantityForLeverage(s2.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s2.markPrice, 8, book)));
-  const v2 = await waitVerdict(r2.runId);
+  check("open", await openIoc(client, accA.wallet, passSide === "long", quantityForLeverage(s2.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s2.markPrice, 8, book)));
+  const v2 = await waitVerdicts([r2], verdictDeadline(lastStartMs, rb.timeLimitSec));
+  if (!v2) throw new Error(`run 2 is still Active ${rb.timeLimitSec + VERDICT_GRACE_SEC} s after its start; check the referee terminal`);
+  const flat = await flatAll([accA.address], 120_000);
+  const rows = runRows([...v1, ...v2]);
   const take = appendDemoTake({
     at: new Date().toISOString(),
-    mode: "one-account",
+    mode,
     rulebook: { id, label: rb.label },
-    runs: [
-      { runId: r1.runId, account: accA.address, status: RUN_STATUS[v1.status], rule: RULE_NAMES[v1.rule] },
-      { runId: r2.runId, account: accA.address, status: RUN_STATUS[v2.status], rule: RULE_NAMES[v2.rule], side: passSide },
-    ],
+    runs: rows.map((r, i) => (i === 1 ? { ...r, side: passSide } : r)),
     breachedOnDemand: true,
+    flatAfter: flat,
+    notes,
     txs,
   });
   say(`take ${take} recorded in docs/evidence/demo-takes.json (one-account fallback)`);
   for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
-  process.exit(0);
+  if (!flat) {
+    say("STOP: account A still holds a position after its verdict; check the referee terminal");
+    process.exit(1);
+  }
 }
 
-const runs: bigint[] = [];
-for (const a of accounts) {
-  const { runId, tx } = await startRunAs(a.wallet, client, registry, id);
-  runs.push(runId);
-  txs.push(tx);
-  say(`${a.name} run ${runId} on ${rb.label}: ${tx.explorer}`);
-}
-const book = await readBook(client);
-const snap = await readSnapshot(client, accounts.map((a) => a.address), BTC_POOL);
-const [accA, accB] = accounts;
-if (!accA || !accB) throw new Error("two accounts expected");
-const qtyB = quantityForLeverage(snap.accounts[1]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
-txs.push(await openIoc(accB.markets, client, false, qtyB));
-say(`B short ${qtyB} at ${DEMO_LEVERAGE_X}x`);
-if (manualA) {
-  say(`A: open the long from the Basanos terminal now (${DEMO_LEVERAGE_X}x).`);
-} else {
-  const qtyA = quantityForLeverage(snap.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
-  txs.push(await openIoc(accA.markets, client, true, qtyA));
-  say(`A long ${qtyA} at ${DEMO_LEVERAGE_X}x`);
-}
-const openedAt = Date.now();
-let breached = false;
-for (;;) {
-  const [ra, rbRun] = await Promise.all(runs.map((r) => statusOf(r)));
-  const states = [ra, rbRun].map((r) => label(r));
-  say(`runs ${runs.join(", ")}: ${states.join(" | ")}`);
-  if (ra && rbRun && ra.status !== 1 && rbRun.status !== 1) break;
-  if (!breached && Date.now() - openedAt > waitMin * 60_000 && rbRun?.status === 1) {
-    say("market still — take aborted: exposure breach on B (FAIL on demand); A resolves or hits its time limit");
-    const s = await readSnapshot(client, [accB.address], BTC_POOL);
-    const b = s.accounts[0];
-    if (b && b.size !== 0n) txs.push(await openIoc(accB.markets, client, b.size > 0n, breachQuantity(b.size, b.totalEquity, 16, s.markPrice, 8, book)));
-    breached = true;
+/** P6b, once the take has started a run: nothing is re-sent and no run is voided. The referee ends each run by a rule
+ *  or at its time limit; the demo waits for the verdicts, checks the accounts, records the take apart, and exits 1. */
+async function abortTake(reason: string): Promise<never> {
+  const ids = started.map((r) => r.runId);
+  say(`STOP: take aborted: ${reason}`);
+  say(
+    `Nothing is re-sent and no run is voided. The referee keeps judging run(s) ${ids.join(", ")} and ends each by a rule or at ` +
+      `its ${rb.timeLimitSec} s time limit, closing any position first. Keep the referee running until this exits.`,
+  );
+  const final = await waitVerdicts(ids, verdictDeadline(lastStartMs, rb.timeLimitSec));
+  const flat = await flatAll(started.map((r) => r.account), 120_000);
+  const stillActive: string[] = [];
+  for (const a of accounts) {
+    const r = await activeRunOf(a.address);
+    if (r !== 0n) stillActive.push(`${a.name} run ${r}`);
   }
-  await new Promise((r) => setTimeout(r, 2_000));
+  const n = appendDemoTake(
+    { at: new Date().toISOString(), mode, rulebook: { id, label: rb.label }, aborted: reason, runs: runRows(final ?? []), flatAfter: flat, stillActive, notes, txs },
+    repoPath(DEMO_ABORTED),
+  );
+  say(`aborted take ${n} recorded in ${DEMO_ABORTED} (not demo-takes.json, which check-rehearsal judges)`);
+  for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
+  if (!final || stillActive.length > 0) say(`STOP: still Active after the time limit + ${VERDICT_GRACE_SEC} s: ${stillActive.join(", ") || ids.join(", ")}; check the referee terminal`);
+  if (!flat) say("STOP: an account still holds a position after its verdict; check the referee terminal");
+  process.exit(1);
 }
-const final = await Promise.all(runs.map((r) => statusOf(r)));
-const take = appendDemoTake({
-  at: new Date().toISOString(),
-  mode: "two-account",
-  rulebook: { id, label: rb.label },
-  runs: runs.map((r, i) => ({ runId: r, account: accounts[i]?.address, status: RUN_STATUS[final[i]?.status ?? 0], rule: RULE_NAMES[final[i]?.rule ?? 0] })),
-  breachedOnDemand: breached,
-  txs,
-});
-say(`take ${take} recorded in docs/evidence/demo-takes.json`);
-for (const t of txs) say(`  ${t.label} ${t.status} ${explorerTx(t.hash)}`);
-process.exit(0);
+
+try {
+  // Every account passes preflight before anything is sent.
+  for (const a of accounts) {
+    const pf = await preflight(client, markets, a.address);
+    say(`${a.name} ${a.address}: stt ${pf.stt} unlocked margin ${pf.unlockedCollateral} flat ${pf.flat} equity ${pf.equity}`);
+    const problems = notReady(pf);
+    if (problems.length > 0) {
+      say(`STOP: ${a.name} is not ready: ${problems.join("; ")}. No voucher is ever claimed here.`);
+      process.exit(1);
+    }
+  }
+  for (const a of accounts) {
+    const g = await ensureGrant(client, a.wallet, referee);
+    check("grant", g);
+    if (g) say(`${a.name} granted the referee place + cancel on BTC-PERP: ${g.sent.tx?.explorer ?? explorerTx(g.sent.hash)}`);
+  }
+  if (oneAccount) await oneAccountTake();
+  else await twoAccountTake();
+  process.exit(0);
+} catch (e) {
+  const reason = e instanceof Error ? e.message : String(e);
+  const step = onFailure(e instanceof WriteFailed ? e.kind : "error", started.length);
+  if (step === "stop") {
+    say(`STOP: ${reason}. The take started no run, so nothing needs cleaning up, and nothing was re-sent. Re-run demo.ts once the cause is fixed.`);
+    process.exit(1);
+  }
+  await abortTake(reason);
+}
