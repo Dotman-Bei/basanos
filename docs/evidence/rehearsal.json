@@ -1,0 +1,25 @@
+{
+  "evidence": "rehearsal",
+  "writtenAt": "2026-11-12T16:19:30.934Z",
+  "registry": "0xf5D8099239200DF961E0910A42C105214D1E9370",
+  "firstVerdictRunId": "1",
+  "runs": [
+    {
+      "runId": "1",
+      "status": 3,
+      "rule": 1,
+      "closeTxs": 1,
+      "statusName": "Failed",
+      "ruleName": "DailyLoss"
+    },
+    {
+      "runId": "2",
+      "status": 3,
+      "rule": 1,
+      "closeTxs": 2,
+      "statusName": "Failed",
+      "ruleName": "DailyLoss"
+    }
+  ],
+  "problems": []
+}

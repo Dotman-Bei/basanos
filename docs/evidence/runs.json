@@ -1,0 +1,454 @@
+{
+  "1": {
+    "bundle": {
+      "runId": "1",
+      "account": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+      "rulebook": {
+        "name": "Tokyo Sprint",
+        "variant": "demo",
+        "label": "Tokyo Sprint · Demo",
+        "id": "0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757"
+      },
+      "startBlock": "48411141",
+      "startEquity": "49999025000000000000",
+      "gaps": [],
+      "verdict": "FAILED",
+      "rule": "DailyLoss",
+      "breach": {
+        "blockNumber": "48411742",
+        "equityOk": true,
+        "equity": "49249049431589214500",
+        "lockedCollateral": "0",
+        "positionSize": "350000",
+        "markOk": true,
+        "markPrice": "71339821266168347000000"
+      },
+      "judged": {
+        "equity": "49726025000000000000",
+        "book": {
+          "blockNumber": "48411742",
+          "bids": [
+            {
+              "price": "71476100000000000000000",
+              "quantity": "1401000"
+            },
+            {
+              "price": "71474300000000000000000",
+              "quantity": "2102000"
+            },
+            {
+              "price": "71473300000000000000000",
+              "quantity": "4204000"
+            },
+            {
+              "price": "71472600000000000000000",
+              "quantity": "6307000"
+            },
+            {
+              "price": "71471700000000000000000",
+              "quantity": "32234000"
+            },
+            {
+              "price": "71460500000000000000000",
+              "quantity": "1401000"
+            },
+            {
+              "price": "71458700000000000000000",
+              "quantity": "2803000"
+            },
+            {
+              "price": "71455600000000000000000",
+              "quantity": "16822000"
+            },
+            {
+              "price": "71448900000000000000000",
+              "quantity": "9814000"
+            },
+            {
+              "price": "71443500000000000000000",
+              "quantity": "63089000"
+            },
+            {
+              "price": "71397300000000000000000",
+              "quantity": "26310000"
+            },
+            {
+              "price": "71393000000000000000000",
+              "quantity": "558000"
+            },
+            {
+              "price": "71337000000000000000000",
+              "quantity": "23364000"
+            },
+            {
+              "price": "71324600000000000000000",
+              "quantity": "22213000"
+            },
+            {
+              "price": "71317700000000000000000",
+              "quantity": "329000"
+            },
+            {
+              "price": "71303400000000000000000",
+              "quantity": "592000"
+            },
+            {
+              "price": "71302800000000000000000",
+              "quantity": "28810000"
+            },
+            {
+              "price": "71282000000000000000000",
+              "quantity": "921000"
+            },
+            {
+              "price": "71280000000000000000000",
+              "quantity": "46764000"
+            },
+            {
+              "price": "71253400000000000000000",
+              "quantity": "657000"
+            }
+          ],
+          "asks": [
+            {
+              "price": "71478300000000000000000",
+              "quantity": "9814000"
+            },
+            {
+              "price": "71491700000000000000000",
+              "quantity": "63089000"
+            },
+            {
+              "price": "71494100000000000000000",
+              "quantity": "2803000"
+            },
+            {
+              "price": "71494200000000000000000",
+              "quantity": "1401000"
+            },
+            {
+              "price": "71498000000000000000000",
+              "quantity": "4204000"
+            },
+            {
+              "price": "71498100000000000000000",
+              "quantity": "16820000"
+            },
+            {
+              "price": "71498800000000000000000",
+              "quantity": "6307000"
+            },
+            {
+              "price": "71500900000000000000000",
+              "quantity": "32239000"
+            },
+            {
+              "price": "71577600000000000000000",
+              "quantity": "10000000"
+            },
+            {
+              "price": "71610400000000000000000",
+              "quantity": "10000000"
+            },
+            {
+              "price": "71641100000000000000000",
+              "quantity": "15000000"
+            },
+            {
+              "price": "71684400000000000000000",
+              "quantity": "25000000"
+            },
+            {
+              "price": "71688500000000000000000",
+              "quantity": "327000"
+            },
+            {
+              "price": "71717600000000000000000",
+              "quantity": "588000"
+            },
+            {
+              "price": "71774400000000000000000",
+              "quantity": "916000"
+            },
+            {
+              "price": "71813400000000000000000",
+              "quantity": "1309000"
+            },
+            {
+              "price": "77931900000000000000000",
+              "quantity": "6415000"
+            },
+            {
+              "price": "78765000000000000000000",
+              "quantity": "126000"
+            },
+            {
+              "price": "81246000000000000000000",
+              "quantity": "14991000"
+            },
+            {
+              "price": "81383400000000000000000",
+              "quantity": "100000000"
+            }
+          ]
+        }
+      },
+      "close": {
+        "flat": true,
+        "finalSize": "0",
+        "attempts": 1,
+        "txs": [
+          {
+            "label": "close",
+            "hash": "0x911cf71f696e4479ff82ff65ce70261e4c9e54da81a4f5d3392c5f27ebe5f283",
+            "status": "success",
+            "gasUsed": "1693601",
+            "costWei": "10161606000000000",
+            "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x911cf71f696e4479ff82ff65ce70261e4c9e54da81a4f5d3392c5f27ebe5f283"
+          }
+        ],
+        "notes": []
+      }
+    },
+    "evidenceHash": "0x0b4e60eed4466bd529ed5557becc3ccdbc9a1768dcdf278ec19b99257b4e2f84",
+    "verdictTx": {
+      "label": "recordFail",
+      "hash": "0x50ae1ed65e86ebca00643ca78754f8bf6bfe233630c7c58cf6418ea30db01add",
+      "status": "success",
+      "gasUsed": "2977294",
+      "costWei": "17863764000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x50ae1ed65e86ebca00643ca78754f8bf6bfe233630c7c58cf6418ea30db01add"
+    }
+  },
+  "2": {
+    "bundle": {
+      "runId": "2",
+      "account": "0x1609F6ABE3aD29B45D1F2fdd15a15d17AbB326aD",
+      "rulebook": {
+        "name": "Tokyo Sprint",
+        "variant": "demo",
+        "label": "Tokyo Sprint · Demo",
+        "id": "0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757"
+      },
+      "startBlock": "48411269",
+      "startEquity": "50000000000000000000",
+      "gaps": [],
+      "verdict": "FAILED",
+      "rule": "DailyLoss",
+      "breach": {
+        "blockNumber": "48411444",
+        "equityOk": true,
+        "equity": "50205852200980875750",
+        "lockedCollateral": "0",
+        "positionSize": "-350000",
+        "markOk": true,
+        "markPrice": "71417785085434035500000"
+      },
+      "judged": {
+        "equity": "49735400000000000000",
+        "book": {
+          "blockNumber": "48411444",
+          "bids": [
+            {
+              "price": "71551800000000000000000",
+              "quantity": "4200000"
+            },
+            {
+              "price": "71550800000000000000000",
+              "quantity": "6300000"
+            },
+            {
+              "price": "71544300000000000000000",
+              "quantity": "33601000"
+            },
+            {
+              "price": "71539600000000000000000",
+              "quantity": "2100000"
+            },
+            {
+              "price": "71537700000000000000000",
+              "quantity": "9802000"
+            },
+            {
+              "price": "71535100000000000000000",
+              "quantity": "26240000"
+            },
+            {
+              "price": "71531400000000000000000",
+              "quantity": "63010000"
+            },
+            {
+              "price": "71519800000000000000000",
+              "quantity": "16807000"
+            },
+            {
+              "price": "71494500000000000000000",
+              "quantity": "26250000"
+            },
+            {
+              "price": "71397300000000000000000",
+              "quantity": "26310000"
+            },
+            {
+              "price": "71393000000000000000000",
+              "quantity": "558000"
+            },
+            {
+              "price": "71375200000000000000000",
+              "quantity": "23351000"
+            },
+            {
+              "price": "71324600000000000000000",
+              "quantity": "22213000"
+            },
+            {
+              "price": "71318100000000000000000",
+              "quantity": "46739000"
+            },
+            {
+              "price": "71300300000000000000000",
+              "quantity": "329000"
+            },
+            {
+              "price": "71282900000000000000000",
+              "quantity": "592000"
+            },
+            {
+              "price": "71261500000000000000000",
+              "quantity": "921000"
+            },
+            {
+              "price": "71261000000000000000000",
+              "quantity": "70165000"
+            },
+            {
+              "price": "71232900000000000000000",
+              "quantity": "657000"
+            },
+            {
+              "price": "71230900000000000000000",
+              "quantity": "24410000"
+            }
+          ],
+          "asks": [
+            {
+              "price": "71552200000000000000000",
+              "quantity": "6302000"
+            },
+            {
+              "price": "71554100000000000000000",
+              "quantity": "2100000"
+            },
+            {
+              "price": "71556800000000000000000",
+              "quantity": "1400000"
+            },
+            {
+              "price": "71561000000000000000000",
+              "quantity": "16805000"
+            },
+            {
+              "price": "71564800000000000000000",
+              "quantity": "1400000"
+            },
+            {
+              "price": "71566500000000000000000",
+              "quantity": "9802000"
+            },
+            {
+              "price": "71576100000000000000000",
+              "quantity": "2800000"
+            },
+            {
+              "price": "71576200000000000000000",
+              "quantity": "4200000"
+            },
+            {
+              "price": "71581700000000000000000",
+              "quantity": "63010000"
+            },
+            {
+              "price": "71583800000000000000000",
+              "quantity": "32201000"
+            },
+            {
+              "price": "71641100000000000000000",
+              "quantity": "15000000"
+            },
+            {
+              "price": "71684400000000000000000",
+              "quantity": "25000000"
+            },
+            {
+              "price": "71688500000000000000000",
+              "quantity": "327000"
+            },
+            {
+              "price": "71717600000000000000000",
+              "quantity": "588000"
+            },
+            {
+              "price": "71724000000000000000000",
+              "quantity": "25000000"
+            },
+            {
+              "price": "71749900000000000000000",
+              "quantity": "25000000"
+            },
+            {
+              "price": "71761300000000000000000",
+              "quantity": "916000"
+            },
+            {
+              "price": "71819500000000000000000",
+              "quantity": "1309000"
+            },
+            {
+              "price": "77931900000000000000000",
+              "quantity": "6415000"
+            },
+            {
+              "price": "78765000000000000000000",
+              "quantity": "126000"
+            }
+          ]
+        }
+      },
+      "close": {
+        "flat": true,
+        "finalSize": "0",
+        "attempts": 2,
+        "txs": [
+          {
+            "label": "close",
+            "hash": "0xe9883410fa04938c3bed7caaf5775faebf663c778c02281d2623f9af7aeb9b12",
+            "status": "reverted",
+            "gasUsed": "117474",
+            "costWei": "704844000000000",
+            "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0xe9883410fa04938c3bed7caaf5775faebf663c778c02281d2623f9af7aeb9b12"
+          },
+          {
+            "label": "close",
+            "hash": "0x3089ec9f59af2f8e4f23f379a017403e2f0e9134a44a3e4799702ce075c9868a",
+            "status": "success",
+            "gasUsed": "1677674",
+            "costWei": "10066044000000000",
+            "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x3089ec9f59af2f8e4f23f379a017403e2f0e9134a44a3e4799702ce075c9868a"
+          }
+        ],
+        "notes": [
+          "close attempt 1 at 20 bps reverted"
+        ]
+      }
+    },
+    "evidenceHash": "0x03ca1c1b048ddca705087bf9fff98f377cb6e031273a058949a73d1efbc791d5",
+    "verdictTx": {
+      "label": "recordFail",
+      "hash": "0x2a4e54184986a2b554d24bedc4fd7e7ab4ed31f6d221220ab2fbab61c663aca7",
+      "status": "success",
+      "gasUsed": "3198912",
+      "costWei": "19193472000000000",
+      "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x2a4e54184986a2b554d24bedc4fd7e7ab4ed31f6d221220ab2fbab61c663aca7"
+    }
+  }
+}

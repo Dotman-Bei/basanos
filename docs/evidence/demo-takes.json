@@ -1,0 +1,70 @@
+[
+  {
+    "take": 1,
+    "at": "2026-11-12T14:57:24.946Z",
+    "mode": "two-account",
+    "rulebook": {
+      "id": "0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757",
+      "label": "Tokyo Sprint · Demo"
+    },
+    "runs": [
+      {
+        "runId": "1",
+        "account": "0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1",
+        "status": "Failed",
+        "rule": "DailyLoss"
+      },
+      {
+        "runId": "2",
+        "account": "0x1609F6ABE3aD29B45D1F2fdd15a15d17AbB326aD",
+        "status": "Failed",
+        "rule": "DailyLoss"
+      }
+    ],
+    "breachedOnDemand": false,
+    "flatAfter": true,
+    "notes": [],
+    "txs": [
+      {
+        "label": "grant",
+        "hash": "0x6afa8ffdb0357c3defcca50f1f2dcdf189d94e85b906f914ad2947e8ab3845a3",
+        "status": "success",
+        "gasUsed": "558405",
+        "costWei": "3350430000000000",
+        "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x6afa8ffdb0357c3defcca50f1f2dcdf189d94e85b906f914ad2947e8ab3845a3"
+      },
+      {
+        "label": "startRun",
+        "hash": "0x1c02e9a3e9cfc5f2921f95bf599ff63543dc6644d8a9c9726a3ca7a6e87a18fb",
+        "status": "success",
+        "gasUsed": "2580130",
+        "costWei": "15480780000000000",
+        "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x1c02e9a3e9cfc5f2921f95bf599ff63543dc6644d8a9c9726a3ca7a6e87a18fb"
+      },
+      {
+        "label": "startRun",
+        "hash": "0xaafa538299f7fb918cde9acb5c058565f115aa68f14598c0f4dd2b79351ad393",
+        "status": "success",
+        "gasUsed": "2180130",
+        "costWei": "13080780000000000",
+        "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0xaafa538299f7fb918cde9acb5c058565f115aa68f14598c0f4dd2b79351ad393"
+      },
+      {
+        "label": "open short",
+        "hash": "0x2f10f723743be9df0cf99c058938f03d13d2296dd99aebd361efae34c4a0e4ea",
+        "status": "success",
+        "gasUsed": "3219106",
+        "costWei": "19314636000000000",
+        "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x2f10f723743be9df0cf99c058938f03d13d2296dd99aebd361efae34c4a0e4ea"
+      },
+      {
+        "label": "open long",
+        "hash": "0x582deebd1acd578a85c87723b75fd166660dbc4eb220f91f130d6a50d502b413",
+        "status": "success",
+        "gasUsed": "1762880",
+        "costWei": "10577280000000000",
+        "explorer": "https://explorer.testnet.somnia.network/tokyo/tx/0x582deebd1acd578a85c87723b75fd166660dbc4eb220f91f130d6a50d502b413"
+      }
+    ]
+  }
+]
