@@ -24,6 +24,8 @@ const short = (h: string) => (h.length > 14 ? `${h.slice(0, 6)}…${h.slice(-4)}
 export function pageVars(f: FeaturedLike): Record<string, string> {
   const failed = f.status === "Failed";
   const close = f.closeTxs[0];
+  // A PASS records no close (the registry reads the end state itself), so its closes row names the certificate instead.
+  const cert = f.status === "Passed" ? f.links.certificate : null;
   return {
     runId: f.runId,
     label: f.rulebook.label,
@@ -42,6 +44,10 @@ export function pageVars(f: FeaturedLike): Record<string, string> {
     closeCount: String(f.closeTxs.length),
     closeTxShort: close ? short(close.hash) : "none",
     closeTxUrl: close ? close.url : f.links.verdict,
+    closeRowLabel: cert ? "Certificate" : "Referee closes",
+    closeRowLead: cert ? "Soulbound, held by the account:" : close ? `${f.closeTxs.length}, first` : "None recorded:",
+    closeRowHref: cert ?? (close ? close.url : f.links.verdict),
+    closeRowLink: cert ? `certificate #${f.runId}` : close ? short(close.hash) : "see the verdict",
     verdictTxShort: f.verdictTx ? short(f.verdictTx.hash) : "pending",
     verdictTxUrl: f.verdictTx ? f.verdictTx.url : f.links.verdict,
     oracleLine: f.oracle ? `${f.oracle.price} (${f.oracle.sources} sources)` : "no reading recorded",
