@@ -2519,7 +2519,7 @@ Message: `feat(referee): demo-cost check, rulebook registration and rehearsal ch
 - Modify: `rulebooks/tokyo-sprint-demo.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 7, Task 8, Task 9, Task 11, contracts:Task 10, contracts:Task 11, spike:Task 11
+**Depends on:** Task 7, Task 8, Task 9, Task 11, contracts:Task 10, contracts:Task 11, spike:Task 11, spike:Task 18, spike:Task 19
 **Effort:** medium
 **Model tier:** top
 **Provides:** `docs/evidence/rehearsal.json (first real verdict runs: firstVerdictRunId, runs with statusName, ruleName, closeTxs)`, `docs/evidence/runs.json (per-run evidence bundles + evidenceHash + verdictTx)`, `docs/evidence/demo-takes.json (demo takes with run ids and tx hashes)`

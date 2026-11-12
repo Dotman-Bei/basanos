@@ -13,6 +13,10 @@
 - **Task 14 (added 2026-11-11, after Task 10 landed):** account A's own writes in `skeleton-close` (grant, open, rest) move off the SDK's send path, which returned `TransactionOutcomeUnknownError` in the Step 3 preflight, onto viem: signed locally, sent to the standard RPC with `ORDER_GAS` and an explicit nonce. It runs after Task 10 and before Task 11 (Task 11 depends on it). `--sdk-send` keeps the SDK path as an opt-in fallback; the evidence records `sendPath`.
 - **Task 15 (added 2026-11-11, after Task 12's first run):** `oracle-probe` reads the outcome from SomniaAgents logs. SomniaAgents deletes a request once it finalizes, so `getRequest` reverts `RequestNotFound` and the first run recorded "Pending" for a request that finalized Failed. Task 15 also adds `--from-tx <hash>`, which rebuilds the evidence without a key or a send, and makes the `g1d-oracle` check strict. Task 12 depends on it and rebuilds its evidence from the request already sent.
 - **Task 16 (added 2026-11-11, guide GO):** adds the oracle probes P1 (`--symbols BTC/USDC:PERP`: one symbol, the registry's exact 4-argument Majority path) and P2 (`--advanced`: Threshold 2 of 3) to `oracle-probe`. The task is code and unit tests only. The gate-concierge runs P1 on the user's GO, and P2 only if P1 fails and the guide approves it. contracts:10 waits for the result; see its hold note.
+- **Tasks 17–19 (added 2026-11-12, B14/B15):** the voucher claim reverts chain-wide, so the organizers sent USDso to the wallets.
+  - Task 17 is the code. Tasks 18 (account A) and 19 (account B) are human-gated runs: each account's own key deposits its own wallet USDso into its own MarginBank balance. Nothing moves between accounts.
+  - Run each before any `startRun` on that account, because a deposit during a run voids it.
+  - Task 11 depends on Task 18; referee:10 depends on both.
 - The root `.npmrc` (`legacy-peer-deps=true`, Task 1) is required: without it `npm install` crashes in npm 10's resolver (`Cannot read properties of null (reading 'edgesOut')`) on Vite 8's optional peer graph, which vitest pulls in.
 - Commands run from the repo root. **The repo path contains a space** (`C:\Users\bamig\Documents\VIBE CODE…`); a prior campaign lost hours to a Node tool that shells out unquoted. Task 1's gate (install + test) must pass from this path. Do not move the build to a no-space clone to make a gate pass; if install or test fails because of the space, stop and report it as an environment blocker.
 
@@ -2462,7 +2466,7 @@ Message: `feat(spike): referee close skeleton and Price Oracle probe with dry-ru
 **Files:**
 - Create: `docs/evidence/g1a-close.json`
 
-**Depends on:** Task 7, Task 9, Task 10, Task 14
+**Depends on:** Task 7, Task 9, Task 10, Task 14, Task 18
 **Effort:** medium
 **Model tier:** top
 **Provides:** `docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage.voucherLeverageCapX, entry { markBefore, avgEntryPrice, costBps }, costs)`
@@ -4950,3 +4954,424 @@ Expected: PASS — `25 passed`.
 
 - [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
 Message: `feat(spike): oracle probes P1 (one symbol, Majority) and P2 (Threshold) with callback decoding and dry-runs`
+
+---
+
+### Task 17: Deposit tool — an account's own wallet USDso into its own MarginBank balance (approve + deposit, viem-direct, dry-run, evidence)
+
+**Files:**
+- Create: `packages/spike/src/funding.ts`
+- Create: `packages/spike/src/deposit.ts`
+- Test: `packages/spike/test/funding.test.ts`
+
+**Depends on:** Task 2, contracts:Task 8, Task 1, Task 3, Task 7, Task 10, Task 14
+**Effort:** medium
+**Model tier:** top
+**Provides:** `marginBankConfigAbi (getSystemConfig: collateralToken, maxLeverageLimit)`, `SKELETON_MIN_UNLOCKED = 1 USDso (1_000_000_000_000_000_000n)`, `type DemoAccount = "A" | "B"`, `parseUsdso(text: string): bigint`, `formatUsdso(wei: bigint): string`, `parseDepositArgs(argv: readonly string[]): DepositArgs`, `depositProblem(walletWei: bigint, amountWei: bigint): string | null`, `approveCall(token: Address, spender: Address, amountWei: bigint): UnsignedCall`, `depositCall(bank: Address, amountWei: bigint): UnsignedCall`, `fundedProblem(who: string, unlockedWei: bigint, needWei: bigint): string | null`, `capFromLeverage(lev: { voucherLeverageCapX: number; marketMaxLeverageBps: bigint | null; protocolMaxLeverageX: number }, voucherClaimed: boolean): { capX: number; capSource: "voucher" | "market" }`, `checkDeposit(data: Record<string, unknown> | null, account: DemoAccount): string[]`, `CLI: npx tsx packages/spike/src/deposit.ts --account A|B [--dry-run | --amount <USDso> | --check] (the account's own key deposits its own wallet USDso into its own MarginBank balance; refuses during a run; writes docs/evidence/deposit-a.json / deposit-b.json)`
+**Requires:** `USDSO`, `MARGIN_BANK`, `ORDER_GAS = 10_000_000n`, `STT_WRITE_HEADROOM = 600_000_000_000_000_000n`, `marginBankAbi`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `repoPath(rel: string): string`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `toJsonSafe(value: unknown): unknown`, `publicClient(): PublicClient`, `walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account`, `interface TxRecord { label: string; hash: Hex; status: "success" | "reverted"; gasUsed: bigint; costWei: bigint; explorer: string }`, `txRecord(label: string, receipt: { transactionHash: Hex; status: "success" | "reverted"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord`, `ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }`, `interface UnsignedCall { to: Address; data: Hex; value: bigint }`
+
+Why (guide, 2026-11-12):
+- **Where the money is:** USDso arrived in account A's **wallet** from an organizer send. The user then moved about 50 to account B (one transfer, organizer-approved; ledger `62e1287`). Neither account has claimed a voucher (`claim()` still reverts `0x3e31dcc2`), and neither joins the Arena (B15).
+- **What is missing:** no task deposits margin, and the repo has no approve or deposit code.
+- **What this task builds:** a tool with which each account's own key approves exactly the amount to the MarginBank and calls `MarginBank.deposit(amount)`, then reads `getAccountState(account).unlockedCollateralBalance` back.
+  - It sends viem-direct, as Task 14 does: signed locally, sent to the standard RPC, `ORDER_GAS`, explicit pending nonce.
+  - It writes `docs/evidence/deposit-a.json` or `deposit-b.json`.
+  - It refuses while the account has an active run, because a MarginBank flow during a run voids it.
+
+Verified read-only on Hideki on 2026-11-12:
+- **The bank's collateral token:** `MarginBank.getSystemConfig().collateralToken` is USDso `0xed79…4F72`, with `maxLeverageLimit` 40.
+- **Both accounts:** each holds 50 USDso in its wallet, with allowance 0 and unlocked margin 0.
+- **Simulations from A:** `approve(MarginBank, 50)` simulates OK, at about 1.39M gas. `deposit(50)` reverts without the allowance, as expected.
+- **`getPerpLeverage` for a non-voucher account:** `marketMaxLeverageBps` 400000 (40×), `protocolMaxLeverageX` 40, `voucherLeverageCapX` 20. The voucher cap does not apply, so `capFromLeverage` takes 40×.
+- **Dry-run with a throwaway key:** it reads all of the above and stops at the STT check.
+
+Key safety is as in Task 10: keys only through `requirePrivateKey`, never printed. This task writes code and runs unit tests; it sends nothing. Tasks 18 and 19 run it live.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/spike/test/funding.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { encodeFunctionData } from "viem";
+import { marginBankWriteAbi } from "@somnia-chain/markets-sdk";
+import { MARGIN_BANK, USDSO } from "@basanos/core";
+import {
+  SKELETON_MIN_UNLOCKED,
+  approveCall,
+  capFromLeverage,
+  checkDeposit,
+  depositCall,
+  depositProblem,
+  formatUsdso,
+  fundedProblem,
+  parseDepositArgs,
+  parseUsdso,
+} from "../src/funding";
+
+const E18 = 10n ** 18n;
+
+describe("funding a challenge account from its own wallet USDso", () => {
+  it("reads the account, the amount and the mode from the flags", () => {
+    expect(parseDepositArgs(["node", "deposit.ts", "--account", "A", "--dry-run"])).toEqual({ account: "A", amountWei: null, dryRun: true, check: false });
+    expect(parseDepositArgs(["node", "deposit.ts", "--account", "B", "--amount", "50"])).toEqual({ account: "B", amountWei: 50n * E18, dryRun: false, check: false });
+    expect(parseDepositArgs(["node", "deposit.ts", "--account", "A", "--check"]).check).toBe(true);
+    expect(() => parseDepositArgs(["node", "deposit.ts", "--amount", "50"])).toThrow(/--account/);
+    expect(() => parseDepositArgs(["node", "deposit.ts", "--account", "C"])).toThrow(/--account/);
+  });
+  it("parses and prints USDso amounts", () => {
+    expect(parseUsdso("50.25")).toBe(50n * E18 + 25n * 10n ** 16n);
+    expect(formatUsdso(50n * E18)).toBe("50");
+    expect(formatUsdso(50n * E18 + 25n * 10n ** 16n)).toBe("50.25");
+    expect(() => parseUsdso("-1")).toThrow(/USDso/);
+  });
+  it("refuses a deposit the wallet cannot cover", () => {
+    expect(depositProblem(50n * E18, 50n * E18)).toBeNull();
+    expect(depositProblem(50n * E18, 0n)).toMatch(/above 0/);
+    expect(depositProblem(50n * E18, 51n * E18)).toMatch(/holds 50 USDso/);
+  });
+  it("encodes an exact approve and the MarginBank deposit the SDK encodes", () => {
+    const a = approveCall(USDSO, MARGIN_BANK, 50n * E18);
+    expect(a.to).toBe(USDSO);
+    expect(a.data.slice(0, 10)).toBe("0x095ea7b3");
+    const d = depositCall(MARGIN_BANK, 50n * E18);
+    expect(d.to).toBe(MARGIN_BANK);
+    expect(d.data.slice(0, 10)).toBe("0xb6b55f25");
+    expect(d.data).toBe(encodeFunctionData({ abi: marginBankWriteAbi, functionName: "deposit", args: [50n * E18] }));
+  });
+  it("tests funded instead of a claimed voucher, and takes the market cap for a non-voucher account", () => {
+    expect(fundedProblem("account A", 0n, SKELETON_MIN_UNLOCKED)).toMatch(/below the 1 USDso this run needs; deposit/);
+    expect(fundedProblem("account A", 50n * E18, SKELETON_MIN_UNLOCKED)).toBeNull();
+    const lev = { voucherLeverageCapX: 20, marketMaxLeverageBps: 400_000n, protocolMaxLeverageX: 40 };
+    expect(capFromLeverage(lev, false)).toEqual({ capX: 40, capSource: "market" });
+    expect(capFromLeverage(lev, true)).toEqual({ capX: 20, capSource: "voucher" });
+  });
+  it("checks a deposit evidence file", () => {
+    const ok = { account: "A", ok: true, amountWei: "50000000000000000000", creditedWei: "50000000000000000000", txs: [{ label: "approve", status: "success" }, { label: "deposit", status: "success" }] };
+    expect(checkDeposit(ok, "A")).toEqual([]);
+    expect(checkDeposit({ ...ok, creditedWei: "0" }, "A")).not.toEqual([]);
+    expect(checkDeposit(ok, "B")).not.toEqual([]);
+    expect(checkDeposit(null, "A")).toEqual(["deposit-a: evidence file is missing"]);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/spike -- test/funding.test.ts`
+Expected: FAIL — `Cannot find module '../src/funding'`.
+
+- [ ] **Step 3: Write the funding helpers**
+
+`packages/spike/src/funding.ts`:
+```ts
+// Funding a challenge account from its own wallet USDso. B14/B15: the voucher claim reverts chain-wide, and the
+// organizers sent USDso to the wallets instead. An account's own key approves its own USDso to the MarginBank and
+// deposits it into its own MarginBank balance; nothing moves between accounts. Deposit before any startRun: a
+// MarginBank money flow during a run voids it.
+import { encodeFunctionData, erc20Abi, parseAbi, type Address } from "viem";
+import { marginBankWriteAbi } from "@somnia-chain/markets-sdk";
+import type { UnsignedCall } from "./live-lib";
+
+/** MarginBank.getSystemConfig (the SDK 0.33.0 read ABI): collateralToken is the token a deposit pulls. */
+export const marginBankConfigAbi = parseAbi([
+  "function getSystemConfig() view returns ((address marginBank, address collateralToken, address perpPoolFactory, address liquidationEngine, address insuranceFund, address feeRecipient, uint16 maxLeverageLimit, bool fullyWired))",
+]);
+
+const E18 = 10n ** 18n;
+
+/** The least unlocked MarginBank collateral spike:11's skeleton needs. Its minimum order (0.00013 BTC) is about
+ *  9.6 USDso of notional, about 0.24 USDso of margin at the 40x market cap; 1 USDso leaves room for fees. */
+export const SKELETON_MIN_UNLOCKED = E18;
+
+export type DemoAccount = "A" | "B";
+
+export interface DepositArgs {
+  account: DemoAccount;
+  amountWei: bigint | null;
+  dryRun: boolean;
+  check: boolean;
+}
+
+/** "50" or "50.25" USDso -> wei (18 decimals). */
+export function parseUsdso(text: string): bigint {
+  const m = /^(\d+)(?:\.(\d{1,18}))?$/.exec(text.trim());
+  if (!m) throw new Error(`not a USDso amount: ${text}`);
+  return BigInt(m[1] ?? "0") * E18 + BigInt((m[2] ?? "").padEnd(18, "0"));
+}
+
+/** wei -> "50" or "50.25". */
+export function formatUsdso(wei: bigint): string {
+  const neg = wei < 0n;
+  const abs = neg ? -wei : wei;
+  const frac = (abs % E18).toString().padStart(18, "0").replace(/0+$/, "");
+  return `${neg ? "-" : ""}${abs / E18}${frac ? `.${frac}` : ""}`;
+}
+
+/** --account A|B (required), --amount <USDso> (a live deposit), --dry-run (reads only), --check (the gate). */
+export function parseDepositArgs(argv: readonly string[]): DepositArgs {
+  const valueOf = (flag: string): string | null => {
+    const i = argv.indexOf(flag);
+    if (i < 0) return null;
+    const v = argv[i + 1];
+    if (!v || v.startsWith("--")) throw new Error(`${flag} needs a value`);
+    return v;
+  };
+  const account = valueOf("--account");
+  if (account !== "A" && account !== "B") throw new Error("--account must be A or B");
+  const amount = valueOf("--amount");
+  return { account, amountWei: amount === null ? null : parseUsdso(amount), dryRun: argv.includes("--dry-run"), check: argv.includes("--check") };
+}
+
+/** null when the wallet can fund the deposit; otherwise why not. */
+export function depositProblem(walletWei: bigint, amountWei: bigint): string | null {
+  if (amountWei <= 0n) return "the deposit amount must be above 0";
+  if (amountWei > walletWei) return `the wallet holds ${formatUsdso(walletWei)} USDso, less than the ${formatUsdso(amountWei)} asked`;
+  return null;
+}
+
+/** ERC-20 approve of exactly the deposit amount (never an unlimited allowance). */
+export function approveCall(token: Address, spender: Address, amountWei: bigint): UnsignedCall {
+  return { to: token, value: 0n, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [spender, amountWei] }) };
+}
+
+/** MarginBank.deposit(amount): the bank pulls the approved collateral into the caller's own balance. */
+export function depositCall(bank: Address, amountWei: bigint): UnsignedCall {
+  return { to: bank, value: 0n, data: encodeFunctionData({ abi: marginBankWriteAbi, functionName: "deposit", args: [amountWei] }) };
+}
+
+/** The funded test that replaces "holds a claimed voucher": unlocked MarginBank collateral at or above the need. */
+export function fundedProblem(who: string, unlockedWei: bigint, needWei: bigint): string | null {
+  if (unlockedWei >= needWei) return null;
+  return `${who} has ${formatUsdso(unlockedWei)} USDso of unlocked margin in the MarginBank, below the ${formatUsdso(needWei)} USDso this run needs; deposit its own wallet USDso first (deposit.ts, spike:18 for A, spike:19 for B)`;
+}
+
+/** The leverage cap that applies: the voucher's cap only for a claimed voucher, else the market maximum (40x on BTC-PERP). */
+export function capFromLeverage(
+  lev: { voucherLeverageCapX: number; marketMaxLeverageBps: bigint | null; protocolMaxLeverageX: number },
+  voucherClaimed: boolean,
+): { capX: number; capSource: "voucher" | "market" } {
+  const marketX = lev.marketMaxLeverageBps !== null ? Number(lev.marketMaxLeverageBps / 10_000n) : lev.protocolMaxLeverageX;
+  if (voucherClaimed) return { capX: Math.min(lev.voucherLeverageCapX, marketX), capSource: "voucher" };
+  return { capX: marketX, capSource: "market" };
+}
+
+/** The gate's check of a deposit evidence file. */
+export function checkDeposit(data: Record<string, unknown> | null, account: DemoAccount): string[] {
+  const name = `deposit-${account.toLowerCase()}`;
+  if (!data) return [`${name}: evidence file is missing`];
+  const p: string[] = [];
+  const need = (cond: boolean, msg: string) => {
+    if (!cond) p.push(`${name}: ${msg}`);
+  };
+  need(data.account === account, `account is ${String(data.account)}, expected ${account}`);
+  need(data.ok === true, "ok is not true");
+  const amount = BigInt(String(data.amountWei ?? "0"));
+  const credited = BigInt(String(data.creditedWei ?? "0"));
+  need(amount > 0n, "no deposit amount recorded");
+  need(credited >= amount, `credited ${credited} is below the deposited ${amount}`);
+  const txs = Array.isArray(data.txs) ? (data.txs as Record<string, unknown>[]) : [];
+  need(txs.some((t) => t.label === "deposit" && t.status === "success"), "no successful deposit transaction");
+  return p;
+}
+```
+
+- [ ] **Step 4: Run to confirm they pass**
+Run: `npm test -w @basanos/spike -- test/funding.test.ts`
+Expected: `6 passed`.
+
+- [ ] **Step 5: Write the deposit script**
+
+`packages/spike/src/deposit.ts`:
+```ts
+// LIVE, human-gated (spike:18 for account A, spike:19 for B): the account's own key approves its own wallet USDso
+// to the MarginBank and deposits it into its own MarginBank balance. viem-direct, as in spike:14: signed locally,
+// sent to the standard RPC with ORDER_GAS and an explicit pending nonce. It reads unlockedCollateralBalance back and
+// writes docs/evidence/deposit-a.json or deposit-b.json. Nothing moves between accounts. It refuses to run while the
+// account has an active run, because a deposit during a run voids it.
+//   --account A|B --dry-run            reads only and prints the plan
+//   --account A|B --amount <USDso>     approves (if the allowance is short) and deposits
+//   --account A|B --check              checks the evidence file (the gate; no key)
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { erc20Abi, type Address } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { MARGIN_BANK, ORDER_GAS, STT_WRITE_HEADROOM, USDSO, basanosRegistryAbi, marginBankAbi } from "@basanos/core";
+import { loadDotEnv, repoPath, requirePrivateKey } from "@basanos/core/node";
+import { toJsonSafe } from "./evidence";
+import { approveCall, checkDeposit, depositCall, depositProblem, formatUsdso, marginBankConfigAbi, parseDepositArgs, type DepositArgs } from "./funding";
+import { ownerTx, txRecord, type TxRecord, type UnsignedCall } from "./live-lib";
+import { publicClient, walletFor } from "./rpc";
+
+loadDotEnv();
+let args: DepositArgs;
+try {
+  args = parseDepositArgs(process.argv);
+} catch (e) {
+  console.error(`deposit: ${(e as Error).message}`);
+  process.exit(1);
+}
+const name = `deposit-${args.account.toLowerCase()}`;
+const evidencePath = repoPath(`docs/evidence/${name}.json`);
+
+if (args.check) {
+  const data = existsSync(evidencePath) ? (JSON.parse(readFileSync(evidencePath, "utf8")) as Record<string, unknown>) : null;
+  const problems = checkDeposit(data, args.account);
+  for (const p of problems) console.log(`FAIL ${p}`);
+  if (problems.length === 0) console.log(`PASS ${name}`);
+  process.exit(problems.length === 0 ? 0 : 1);
+}
+
+const pk = requirePrivateKey(args.account === "A" ? "ACCOUNT_A_PK" : "ACCOUNT_B_PK");
+const owner: Address = privateKeyToAccount(pk).address;
+const client = publicClient();
+const wallet = walletFor(pk);
+const txs: TxRecord[] = [];
+
+const reads = async () => {
+  const [walletWei, allowanceWei, state] = await Promise.all([
+    client.readContract({ address: USDSO, abi: erc20Abi, functionName: "balanceOf", args: [owner] }),
+    client.readContract({ address: USDSO, abi: erc20Abi, functionName: "allowance", args: [owner, MARGIN_BANK] }),
+    client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getAccountState", args: [owner] }),
+  ]);
+  return { walletWei, allowanceWei, unlockedWei: state.unlockedCollateralBalance, lockedWei: state.lockedCollateral, activePools: state.activePerpPools.length };
+};
+
+function record(ok: boolean, extra: Record<string, unknown>): void {
+  const body = { evidence: name, writtenAt: new Date().toISOString(), account: args.account, owner, token: USDSO, marginBank: MARGIN_BANK, txs, ok, ...extra };
+  writeFileSync(evidencePath, `${JSON.stringify(toJsonSafe(body), null, 2)}\n`);
+}
+
+function stop(reason: string): never {
+  console.error(`deposit ${args.account}: STOP — ${reason}`);
+  if (txs.length > 0) record(false, { reason });
+  process.exit(1);
+}
+
+const cfg = await client.readContract({ address: MARGIN_BANK, abi: marginBankConfigAbi, functionName: "getSystemConfig" });
+if (cfg.collateralToken.toLowerCase() !== USDSO.toLowerCase()) stop(`the MarginBank collateral is ${cfg.collateralToken}, not USDso ${USDSO}`);
+const before = await reads();
+const stt = await client.getBalance({ address: owner });
+const depPath = repoPath("deployments/hideki.json");
+const registry = existsSync(depPath) ? (JSON.parse(readFileSync(depPath, "utf8")) as { registry: Address }).registry : null;
+const activeRun = registry ? await client.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "activeRunOf", args: [owner] }) : 0n;
+console.log(
+  `deposit ${args.account}: owner ${owner}, wallet ${formatUsdso(before.walletWei)} USDso, allowance ${formatUsdso(before.allowanceWei)}, ` +
+    `unlocked margin ${formatUsdso(before.unlockedWei)} USDso, STT ${stt}, active run ${activeRun}`,
+);
+if (activeRun !== 0n) stop(`account ${args.account} has active run ${activeRun}: a deposit now would void it; deposit only before startRun`);
+if (stt < STT_WRITE_HEADROOM) stop(`STT ${stt} is below the 0.6 write headroom; top up from the Tokyo faucet`);
+if (args.amountWei !== null) {
+  const p = depositProblem(before.walletWei, args.amountWei);
+  if (p) stop(p);
+}
+if (args.dryRun) {
+  if (args.amountWei !== null) {
+    const steps = before.allowanceWei < args.amountWei ? "approve, then deposit" : "deposit (the allowance already covers it)";
+    console.log(`plan: ${steps} ${formatUsdso(args.amountWei)} USDso into account ${args.account}'s own MarginBank balance`);
+  }
+  console.log("dry-run: no transaction sent");
+  process.exit(0);
+}
+if (args.amountWei === null) stop("--amount <USDso> is required for a live deposit");
+const amountWei = args.amountWei;
+
+async function send(label: string, call: UnsignedCall): Promise<void> {
+  const nonce = await client.getTransactionCount({ address: owner, blockTag: "pending" });
+  const hash = await wallet.sendTransaction(ownerTx(call, nonce, ORDER_GAS));
+  const rec = txRecord(label, await client.waitForTransactionReceipt({ hash }));
+  txs.push(rec);
+  if (rec.status !== "success") stop(`${label} reverted: ${rec.explorer}`);
+}
+
+try {
+  if (before.allowanceWei < amountWei) await send("approve", approveCall(USDSO, MARGIN_BANK, amountWei));
+  await send("deposit", depositCall(MARGIN_BANK, amountWei));
+} catch (e) {
+  stop(`a send failed: ${(e as Error).message.slice(0, 200)}`);
+}
+const after = await reads();
+const creditedWei = after.unlockedWei - before.unlockedWei;
+const ok = creditedWei >= amountWei;
+record(ok, { amountWei, before, after, creditedWei });
+console.log(
+  `deposit ${args.account}: ${ok ? "OK" : "MISMATCH"} — unlocked margin ${formatUsdso(before.unlockedWei)} -> ${formatUsdso(after.unlockedWei)} USDso ` +
+    `(+${formatUsdso(creditedWei)}); wallet ${formatUsdso(before.walletWei)} -> ${formatUsdso(after.walletWei)} USDso`,
+);
+for (const t of txs) console.log(`  ${t.label} ${t.status} ${t.explorer}`);
+process.exit(ok ? 0 : 1);
+```
+
+- [ ] **Step 6: Type-check (Tasks 18 and 19 run the script)**
+Run: `npm run typecheck -w @basanos/spike`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 7: Run the test (the gate)**
+Run: `npm test -w @basanos/spike -- test/funding.test.ts`
+Expected: PASS — `6 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `feat(spike): deposit tool - an account's own USDso into its own MarginBank balance`
+
+---
+
+### Task 18: LIVE — deposit account A's own wallet USDso into its MarginBank balance
+
+**Files:**
+- Create: `docs/evidence/deposit-a.json`
+
+**Depends on:** Task 17
+**Effort:** low
+**Model tier:** top
+**Provides:** `docs/evidence/deposit-a.json (account A's own USDso deposited; unlockedCollateralBalance read back; approve and deposit tx hashes)`
+**Requires:** `CLI: npx tsx packages/spike/src/deposit.ts --account A|B [--dry-run | --amount <USDso> | --check] (the account's own key deposits its own wallet USDso into its own MarginBank balance; refuses during a run; writes docs/evidence/deposit-a.json / deposit-b.json)`
+
+**Human-gated.** This signs with `ACCOUNT_A_PK` from `.env`. It moves account A's **own** wallet USDso into account A's **own** MarginBank balance; nothing moves to or from account B.
+- **Needs:** account A holds its USDso in its wallet (about 50 after the user's one A→B transfer, ledger `62e1287`), ≥ 0.6 STT, and no active run.
+- **Order:** run it before any `startRun` on account A, because a MarginBank deposit during a run voids it. The script refuses while a run is active.
+- **Amount:** the user picks it. The whole wallet is the default suggestion.
+
+- [ ] **Step 1: Dry-run**
+Run: `npx tsx packages/spike/src/deposit.ts --account A --amount <USDso> --dry-run`
+Expected: `deposit A: owner 0x…, wallet <n> USDso, allowance 0, unlocked margin 0 USDso, STT …, active run 0`, then `plan: approve, then deposit <USDso> USDso into account A's own MarginBank balance`, then `dry-run: no transaction sent`. A `STOP —` line means a prerequisite is missing: fix it and re-run.
+
+- [ ] **Step 2: Deposit**
+Run: `npx tsx packages/spike/src/deposit.ts --account A --amount <USDso>`
+Expected: `deposit A: OK — unlocked margin 0 -> <USDso> USDso (+<USDso>); wallet <n> -> <n − USDso> USDso`, then the approve and deposit explorer links.
+
+- [ ] **Step 3: Check the evidence (the gate)**
+Run: `npx tsx packages/spike/src/deposit.ts --account A --check`
+Expected: PASS — `PASS deposit-a`.
+
+- [ ] **Step 4: Commit (kernel-performed — no agent runs this)**
+Message: `docs(evidence): account A's own USDso deposited into its MarginBank balance`
+
+---
+
+### Task 19: LIVE — deposit account B's own wallet USDso into its MarginBank balance
+
+**Files:**
+- Create: `docs/evidence/deposit-b.json`
+
+**Depends on:** Task 17
+**Effort:** low
+**Model tier:** top
+**Provides:** `docs/evidence/deposit-b.json (account B's own USDso deposited; unlockedCollateralBalance read back; approve and deposit tx hashes)`
+**Requires:** `CLI: npx tsx packages/spike/src/deposit.ts --account A|B [--dry-run | --amount <USDso> | --check] (the account's own key deposits its own wallet USDso into its own MarginBank balance; refuses during a run; writes docs/evidence/deposit-a.json / deposit-b.json)`
+
+**Human-gated.** This signs with `ACCOUNT_B_PK` from `.env`. It moves account B's **own** wallet USDso into account B's **own** MarginBank balance; nothing moves to or from account A.
+- **Needs:** account B holds its USDso in its wallet (about 50 after the user's one A→B transfer, ledger `62e1287`), ≥ 0.6 STT, and no active run.
+- **Order:** run it before any `startRun` on account B, because a MarginBank deposit during a run voids it. The script refuses while a run is active.
+- **Amount:** the user picks it. The whole wallet is the default suggestion.
+
+- [ ] **Step 1: Dry-run**
+Run: `npx tsx packages/spike/src/deposit.ts --account B --amount <USDso> --dry-run`
+Expected: `deposit B: owner 0x…, wallet <n> USDso, allowance 0, unlocked margin 0 USDso, STT …, active run 0`, then `plan: approve, then deposit <USDso> USDso into account B's own MarginBank balance`, then `dry-run: no transaction sent`. A `STOP —` line means a prerequisite is missing: fix it and re-run.
+
+- [ ] **Step 2: Deposit**
+Run: `npx tsx packages/spike/src/deposit.ts --account B --amount <USDso>`
+Expected: `deposit B: OK — unlocked margin 0 -> <USDso> USDso (+<USDso>); wallet <n> -> <n − USDso> USDso`, then the approve and deposit explorer links.
+
+- [ ] **Step 3: Check the evidence (the gate)**
+Run: `npx tsx packages/spike/src/deposit.ts --account B --check`
+Expected: PASS — `PASS deposit-b`.
+
+- [ ] **Step 4: Commit (kernel-performed — no agent runs this)**
+Message: `docs(evidence): account B's own USDso deposited into its MarginBank balance`

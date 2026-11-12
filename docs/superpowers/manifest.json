@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both.",
   "subsystems": [
     "spike",
     "contracts",
@@ -43,9 +43,10 @@
     {
       "name": "ACCOUNT_A_PK",
       "secret": true,
-      "holder": "human challenge account burner (voucher claimed in the Step 3 preflight)",
+      "holder": "human challenge account burner (own wallet USDso deposited into its MarginBank balance by spike:18; no voucher)",
       "usedBy": [
         "spike:11",
+        "spike:18",
         "demo (pasted into the browser challenge wallet)"
       ]
     },
@@ -60,8 +61,9 @@
     {
       "name": "ACCOUNT_B_PK",
       "secret": true,
-      "holder": "bot challenge account burner (voucher claimed in the Step 3 preflight)",
+      "holder": "bot challenge account burner (own wallet USDso deposited into its MarginBank balance by spike:19; no voucher)",
       "usedBy": [
+        "spike:19",
         "bot",
         "demo"
       ]
@@ -682,7 +684,8 @@
         "spike:7",
         "spike:9",
         "spike:10",
-        "spike:14"
+        "spike:14",
+        "spike:18"
       ],
       "effort": "medium",
       "model_tier": "top",
@@ -1045,6 +1048,140 @@
       },
       "commit": "feat(spike): oracle probes P1 (one symbol, Majority) and P2 (Threshold) with callback decoding and dry-runs",
       "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:17",
+      "subsystem": "spike",
+      "title": "Deposit tool — an account's own wallet USDso into its own MarginBank balance (approve + deposit, viem-direct, dry-run, evidence)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:2",
+        "contracts:8",
+        "spike:1",
+        "spike:3",
+        "spike:7",
+        "spike:10",
+        "spike:14"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/spike/src/funding.ts",
+          "packages/spike/src/deposit.ts"
+        ],
+        "modify": [],
+        "test": [
+          "packages/spike/test/funding.test.ts"
+        ]
+      },
+      "provides": [
+        "marginBankConfigAbi (getSystemConfig: collateralToken, maxLeverageLimit)",
+        "SKELETON_MIN_UNLOCKED = 1 USDso (1_000_000_000_000_000_000n)",
+        "type DemoAccount = \"A\" | \"B\"",
+        "parseUsdso(text: string): bigint",
+        "formatUsdso(wei: bigint): string",
+        "parseDepositArgs(argv: readonly string[]): DepositArgs",
+        "depositProblem(walletWei: bigint, amountWei: bigint): string | null",
+        "approveCall(token: Address, spender: Address, amountWei: bigint): UnsignedCall",
+        "depositCall(bank: Address, amountWei: bigint): UnsignedCall",
+        "fundedProblem(who: string, unlockedWei: bigint, needWei: bigint): string | null",
+        "capFromLeverage(lev: { voucherLeverageCapX: number; marketMaxLeverageBps: bigint | null; protocolMaxLeverageX: number }, voucherClaimed: boolean): { capX: number; capSource: \"voucher\" | \"market\" }",
+        "checkDeposit(data: Record<string, unknown> | null, account: DemoAccount): string[]",
+        "CLI: npx tsx packages/spike/src/deposit.ts --account A|B [--dry-run | --amount <USDso> | --check] (the account's own key deposits its own wallet USDso into its own MarginBank balance; refuses during a run; writes docs/evidence/deposit-a.json / deposit-b.json)"
+      ],
+      "requires": [
+        "USDSO",
+        "MARGIN_BANK",
+        "ORDER_GAS = 10_000_000n",
+        "STT_WRITE_HEADROOM = 600_000_000_000_000_000n",
+        "marginBankAbi",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "repoPath(rel: string): string",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "toJsonSafe(value: unknown): unknown",
+        "publicClient(): PublicClient",
+        "walletFor(pk: Hex): viem WalletClient bound to CHAIN and the key's account",
+        "interface TxRecord { label: string; hash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; costWei: bigint; explorer: string }",
+        "txRecord(label: string, receipt: { transactionHash: Hex; status: \"success\" | \"reverted\"; gasUsed: bigint; effectiveGasPrice: bigint }): TxRecord",
+        "ownerTx(call: UnsignedCall, nonce: number, gas: bigint): { to: Address; data: Hex; value: bigint; gas: bigint; nonce: number }",
+        "interface UnsignedCall { to: Address; data: Hex; value: bigint }"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/spike -- test/funding.test.ts",
+        "expect": "PASS — `6 passed`."
+      },
+      "commit": "feat(spike): deposit tool - an account's own USDso into its own MarginBank balance",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:18",
+      "subsystem": "spike",
+      "title": "LIVE — deposit account A's own wallet USDso into its MarginBank balance",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:17"
+      ],
+      "effort": "low",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "docs/evidence/deposit-a.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/deposit-a.json (account A's own USDso deposited; unlockedCollateralBalance read back; approve and deposit tx hashes)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/spike/src/deposit.ts --account A|B [--dry-run | --amount <USDso> | --check] (the account's own key deposits its own wallet USDso into its own MarginBank balance; refuses during a run; writes docs/evidence/deposit-a.json / deposit-b.json)"
+      ],
+      "gate": {
+        "run": "npx tsx packages/spike/src/deposit.ts --account A --check",
+        "expect": "PASS — `PASS deposit-a`."
+      },
+      "commit": "docs(evidence): account A's own USDso deposited into its MarginBank balance",
+      "human_gate": true,
+      "gate_profile": "wallet",
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:19",
+      "subsystem": "spike",
+      "title": "LIVE — deposit account B's own wallet USDso into its MarginBank balance",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:17"
+      ],
+      "effort": "low",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "docs/evidence/deposit-b.json"
+        ],
+        "modify": [],
+        "test": []
+      },
+      "provides": [
+        "docs/evidence/deposit-b.json (account B's own USDso deposited; unlockedCollateralBalance read back; approve and deposit tx hashes)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/spike/src/deposit.ts --account A|B [--dry-run | --amount <USDso> | --check] (the account's own key deposits its own wallet USDso into its own MarginBank balance; refuses during a run; writes docs/evidence/deposit-a.json / deposit-b.json)"
+      ],
+      "gate": {
+        "run": "npx tsx packages/spike/src/deposit.ts --account B --check",
+        "expect": "PASS — `PASS deposit-b`."
+      },
+      "commit": "docs(evidence): account B's own USDso deposited into its MarginBank balance",
+      "human_gate": true,
+      "gate_profile": "wallet",
       "allow_empty": false,
       "status": "pending"
     },
@@ -2182,7 +2319,9 @@
         "referee:11",
         "contracts:10",
         "contracts:11",
-        "spike:11"
+        "spike:11",
+        "spike:18",
+        "spike:19"
       ],
       "effort": "medium",
       "model_tier": "top",
