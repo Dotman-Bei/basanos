@@ -1008,15 +1008,17 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 - Create: `deployments/site.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, Task 10, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, web:Task 11, web:Task 12, web:Task 13, web:Task 14, referee:Task 18, landing:Task 3, landing:Task 5, landing:Task 7, contracts:Task 10
+**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, Task 10, Task 13, Task 14, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, web:Task 11, web:Task 12, web:Task 13, web:Task 14, referee:Task 18, landing:Task 3, landing:Task 5, landing:Task 7, contracts:Task 10
 **Effort:** medium
 **Model tier:** top
-**Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`
-**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, the registry's baseUrl() is the live certificate route, and no live page or assembled site/basanos file carries the sample marker)`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json`
+**Provides:** `deployments/site.json ({ url: "https://basanos.suitz.xyz", deploymentUrl, deployedAt, baseUrlTx })`, `public site https://basanos.suitz.xyz: landing at /, app at /app/`
+**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (https://basanos.suitz.xyz) (/ and /app/ answer 200 unauthenticated over https and stay on the domain, polled up to 2 minutes; deployments/site.json names the domain; the registry's baseUrl() is https://basanos.suitz.xyz/app/#/cert/; no live page or assembled site/basanos file carries the sample marker)`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> vercel whoami (names the scope), deploys site/basanos to the Vercel project basanos (production; the first run creates it), aliases basanos.suitz.xyz to that deployment (STOP naming the scope if the alias fails), writes deployments/site.json { url: https://basanos.suitz.xyz, deploymentUrl }; VERCEL_TOKEN in the child env only, optional VERCEL_SCOPE as --scope`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(https://basanos.suitz.xyz/app/#/cert/) as the owner (refuses unless deployments/site.json names the domain), reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json`
 
 **Human-gated (deploy).**
-- **Needs:** a Vercel account and `VERCEL_TOKEN` in `.env`, both from the concierge signup gate. `setBaseUrl` signs with `REFEREE_PK`, the registry owner.
-- **Rules:** the site is public. Run the public-flip secret scan first (runsheet B5/B11). Never deploy a build that holds a key; the app build already refuses `VITE_*_PK`.
+- **Needs:** the user's own Vercel account (personal Hobby). `suitz.xyz` is on Vercel DNS and `basanos.suitz.xyz` already resolves to Vercel with a wildcard certificate, so no DNS work is needed. `setBaseUrl` signs with `REFEREE_PK`, the registry owner.
+  - `VERCEL_TOKEN` is in `.env`. It lasts 7 days: if it has lapsed, Step 2 stops at `vercel whoami` with "missing, invalid or expired", before anything is deployed.
+  - `VERCEL_SCOPE` stays unset: the domain is in the personal account. Set it (a team slug) only if the domain moves to a team.
+- **Rules:** the site is public. Run the public-flip secret scan first (runsheet B5/B11). Never deploy a build that holds a key; the app build already refuses `VITE_*_PK`. The scripts touch only the Vercel project `basanos` and the domain `basanos.suitz.xyz`; touch no other project or domain in the account.
 
 - [ ] **Step 1: Build both apps with the public build values**
 Set `VITE_REGISTRY_ADDRESS` (the registry from `deployments/hideki.json`) and `VITE_REFEREE_ADDRESS` (the referee address) in the shell, both public values.
@@ -1025,21 +1027,31 @@ Expected: `check-env: no VITE_*_PK variables` and `✓ built`.
 Run: `npm run build -w @basanos/landing`
 Expected: `PASS truth` and `✓ built`.
 
-- [ ] **Step 2: Assemble and deploy**
+- [ ] **Step 2: Assemble, deploy, and alias the domain**
 Run: `npx tsx packages/ship/src/assemble-site.ts`
 Expected: `assembled site/basanos (landing at /, app at /app/)`.
 Run: `npx tsx packages/ship/src/deploy-vercel.ts`
-Expected: `deployed https://<project>.vercel.app`; it writes `deployments/site.json` with `baseUrlTx: null`.
+Expected, in order:
+1. `vercel scope: <account> (the token's own account)`.
+2. `deployed https://basanos-….vercel.app (production)`. The first run creates the Vercel project `basanos` (`--project basanos --create-if-missing --yes`); later runs reuse it. This per-deployment URL changes on every deploy and may sit behind Vercel's login; nothing public links to it.
+3. `aliased https://basanos.suitz.xyz -> https://basanos-….vercel.app`.
+4. `wrote deployments/site.json (url https://basanos.suitz.xyz)`, with the raw `deploymentUrl` and `baseUrlTx: null`.
+
+If it prints `STOP: vercel alias set failed: the scope "<name>" …`, the token's scope does not own the domain: stop and report the scope it names. Do not retry under another scope without the user. The production deployment exists; only the alias is missing.
 
 - [ ] **Step 3: Point the certificates at the live site**
 Run: `npx tsx packages/ship/src/set-base-url.ts`
-Expected: `setBaseUrl success 0x… -> https://<project>.vercel.app/app/#/cert/`, then `baseUrl() read back: https://<project>.vercel.app/app/#/cert/`.
+Expected: `setBaseUrl success 0x… -> https://basanos.suitz.xyz/app/#/cert/`, then `baseUrl() read back: https://basanos.suitz.xyz/app/#/cert/`.
+- It refuses to send unless `deployments/site.json` names `https://basanos.suitz.xyz` (Step 2 writes it after the alias).
 - This replaces the constructor's placeholder `https://basanos.vercel.app/app/#/cert/` in the registry and in `deployments/hideki.json`.
 - A `FAIL registry baseUrl() …` line means the read-back differs: stop, and fix it before Step 4.
 - [ ] **Step 4: Check the live site (the gate)**
-This also reads the registry's `baseUrl()` and fails unless it is the live certificate route. It also fails if a live page or the assembled `site/basanos` output carries the landing's sample-fixture marker (ship:10).
+`check-deploy` fetches `/` and `/app/` on `https://basanos.suitz.xyz` with no login. Each must answer 200 and still be on the domain after redirects; it polls every 5 s for up to 2 minutes while the alias propagates. It also fails unless the registry's `baseUrl()` is `https://basanos.suitz.xyz/app/#/cert/`, and if a live page or the assembled `site/basanos` output carries the landing's sample-fixture marker (ship:10).
+- `returned 401 (a login wall …)` or `ended at https://vercel.com/…`: Vercel's deployment protection covers the domain. Stop and report; do not change project settings without the user.
+- `returned 404 (nothing is served there yet)` after 2 minutes: the alias did not take. Stop and report.
+
 Run: `npx tsx packages/ship/src/check-deploy.ts`
-Expected: PASS — `PASS deploy (https://<project>.vercel.app)`.
+Expected: PASS — `PASS deploy (https://basanos.suitz.xyz)`.
 
 - [ ] **Step 5: Commit (kernel-performed — no agent runs this)**
 Message: `chore(deploy): Basanos site live on Vercel; certificates point at it`
@@ -1055,7 +1067,7 @@ Message: `chore(deploy): Basanos site live on Vercel; certificates point at it`
 **Depends on:** Task 1, Task 3, Task 6
 **Effort:** low
 **Provides:** `docs/gates/x-posts-draft.md (3 drafts generated from the featured run and the live URL)`, `docs/evidence/INDEX.md (evidence files and their tx links)`
-**Requires:** `CLI: npx tsx packages/ship/src/x-posts.ts -> writes docs/gates/x-posts-draft.md`, `CLI: npx tsx packages/ship/src/evidence-index.ts -> writes docs/evidence/INDEX.md`, `deployments/site.json ({ url, deployedAt, baseUrlTx })`
+**Requires:** `CLI: npx tsx packages/ship/src/x-posts.ts -> writes docs/gates/x-posts-draft.md`, `CLI: npx tsx packages/ship/src/evidence-index.ts -> writes docs/evidence/INDEX.md`, `deployments/site.json ({ url: "https://basanos.suitz.xyz", deploymentUrl, deployedAt, baseUrlTx })`
 
 Publishing the posts is the user's human gate (Step 3 closing); this task only drafts them from the same facts the landing shows.
 
@@ -1622,3 +1634,835 @@ Expected: PASS — `PASS`.
 
 - [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
 Message: `docs(readme): demo v2 from the replay, the one-round-trip closer, the close-gap and oracle limitations (P7)`
+
+---
+
+### Task 13: Deploy to the user's domain — the deployment read from the CLI's JSON, https://basanos.suitz.xyz aliased to it, optional VERCEL_SCOPE (P9)
+
+**Files:**
+- Modify: `packages/ship/src/base-url.ts`
+- Modify: `packages/ship/src/vercel.ts`
+- Modify: `packages/ship/src/deploy-vercel.ts`
+- Modify: `.env.example`
+- Test: `packages/ship/test/vercel.test.ts`
+- Test: `packages/ship/test/base-url.test.ts`
+
+**Depends on:** Task 1, Task 8, Task 9, spike:Task 1, spike:Task 3, web:Task 9
+**Effort:** medium
+**Model tier:** standard
+**Provides:** `SITE_DOMAIN = "basanos.suitz.xyz"`, `SITE_URL = "https://basanos.suitz.xyz"`, `VERCEL_PROJECT = "basanos"`, `interface VercelInvocation { command: string; args: string[]; env: NodeJS.ProcessEnv }`, `vercelDeployInvocation(token: string, baseEnv: NodeJS.ProcessEnv, scope?: string): VercelInvocation (npx --yes vercel@65.3.1 deploy . --prod --yes --project basanos --create-if-missing --json [--scope <slug>])`, `vercelAliasInvocation(token: string, baseEnv: NodeJS.ProcessEnv, deploymentUrl: string, domain: string, scope?: string): VercelInvocation`, `vercelWhoamiInvocation(token: string, baseEnv: NodeJS.ProcessEnv, scope?: string): VercelInvocation`, `interface DeployResult { deploymentUrl: string; productionUrl: string | null }`, `parseDeployOutput(stdout: string): DeployResult (vercel deploy --json, plain or the agent payload; READY and production only)`, `parseWhoami(stdout: string): string (the team slug, else the username; throws when logged out)`, `aliasStop(domain: string, scope: string): string`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> vercel whoami (names the scope), deploys site/basanos to the Vercel project basanos (production; the first run creates it), aliases basanos.suitz.xyz to that deployment (STOP naming the scope if the alias fails), writes deployments/site.json { url: https://basanos.suitz.xyz, deploymentUrl }; VERCEL_TOKEN in the child env only, optional VERCEL_SCOPE as --scope`, `.env.example lists VERCEL_SCOPE (optional, empty)`
+**Requires:** `VERCEL_CLI = "vercel@65.3.1"`, `argvLeaksToken(args: readonly string[], token: string): boolean`, `PLACEHOLDER_BASE_URL = "https://basanos.vercel.app/app/#/cert/"`, `certBaseUrl(siteUrl: string): string`, `baseUrlProblem(expected: string, onChain: string): string | null`, `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `repoPath(rel: string): string`, `loadDotEnv(path?: string): boolean`, `.env.example with ORACLE_ENABLED=true`
+
+Why (architect P9, 2026-11-12, on the guide's read-only facts):
+- **The site:** `https://basanos.suitz.xyz`, on the user's own Vercel account (personal Hobby). `suitz.xyz` is on Vercel DNS, and `basanos.suitz.xyz` already answers from Vercel with a wildcard certificate (404 `DEPLOYMENT_NOT_FOUND` today), so no DNS work is needed. `basanos.vercel.app`, the constructor's placeholder, is someone else's site.
+- **The defect:** `deploy-vercel.ts` took the last `*.vercel.app` in the CLI's stdout and wrote it as the site. That is a per-deployment URL: it changes on every deploy and may sit behind Vercel's login. Nothing pointed the domain at the deployment.
+- **What vercel@65.3.1 prints** (read in its published source, `dist/commands/deploy/index.js`, and its `--help`):
+  - With `--json`, `deploy` prints one JSON object on stdout, `{ id, url, productionUrl, inspectorUrl, readyState, target, … }`, where `url` is the deployment URL.
+  - When the CLI detects an AI agent and no TTY (the concierge), it runs non-interactive and prints `{ status: "ok", deployment: {…}, message, next }` instead. Its `message` names the production alias after the deployment URL, so "the last *.vercel.app" picks the wrong host.
+  - `--project <name>` with `--yes` needs `--create-if-missing` to create a missing project.
+  - `alias set <deployment> <domain>` reports failure through its exit code.
+  - `whoami --json` prints `{ team, username, … }`, or `{ loggedIn: false, … }` with exit 1 when no valid token is set (captured locally with no token).
+- **The fix:**
+  - `whoami` runs first, so the run names its scope, and an expired token (it lasts 7 days) stops before anything is deployed.
+  - The deploy goes to the project `basanos` (`--project basanos --create-if-missing --yes --json`): the first run creates it, later runs reuse it. The deployment URL is read from the JSON in either shape, never by a regex over the text. A deploy that is not READY or not production is refused.
+  - Then `vercel alias set <deployment> basanos.suitz.xyz`. A failure stops with `STOP: …` naming the scope (`aliasStop`).
+  - `deployments/site.json` gets `url: "https://basanos.suitz.xyz"` and the raw `deploymentUrl`.
+  - `VERCEL_SCOPE` (optional, a team slug) adds `--scope <slug>` to every call. It stays unset for the personal account; `.env.example` lists it, empty.
+- **Safety:** the token reaches the CLI only as `VERCEL_TOKEN` in the child env, and every invocation passes `argvLeaksToken` first. Because the CLI runs through a shell, every other argument is validated: the scope as a slug, the deployment URL as an `https://*.vercel.app` origin, the domain as a host name. `npx --yes` avoids an install prompt in an unattended run. The scripts touch only the project `basanos` and the domain `basanos.suitz.xyz`.
+- **The samples:** the deploy JSON in the test follows the two shapes in the CLI's source (ids and scope made up); a real capture needs a deploy with the user's token, which is ship:6's job. The logged-out `whoami` answer is a real capture.
+- **Verified by the architect** in a test bed from HEAD: the tests fail first (7 of 8), then pass; the ship suite is 15 tests. With no token, `deploy-vercel.ts` stops at `VERCEL_TOKEN is not set (.env)` before calling Vercel. Nothing was deployed and no Vercel account was called.
+- **Do not run `deploy-vercel.ts` in this task:** the repo's `.env` holds the real token. ship:6 runs it on GO.
+
+- [ ] **Step 1: Write the failing tests**
+
+Replace `packages/ship/test/vercel.test.ts` with:
+```ts
+import { describe, expect, it } from "vitest";
+import {
+  aliasStop,
+  argvLeaksToken,
+  parseDeployOutput,
+  parseWhoami,
+  vercelAliasInvocation,
+  vercelDeployInvocation,
+  vercelWhoamiInvocation,
+} from "../src/vercel";
+
+const token = "vc_test_7d3f9a1e";
+const DEPLOY = "https://basanos-4k2j9x7qe-acme-projects.vercel.app";
+const PROD = "https://basanos-acme-projects.vercel.app";
+// `vercel deploy --json` stdout in the two shapes vercel@65.3.1 prints (its getDeploymentOutputJson, and the
+// non-interactive agent payload that wraps it); the ids and the scope are made up.
+const deployment = {
+  id: "dpl_9xQe4Kc2Lr7TnB1sVw3Yh5Zf",
+  url: DEPLOY,
+  productionUrl: PROD,
+  inspectorUrl: "https://vercel.com/acme-projects/basanos/9xQe4Kc2Lr7TnB1sVw3Yh5Zf",
+  readyState: "READY",
+  target: "production",
+  deploymentApiUrl: "https://api.vercel.com/v13/deployments/dpl_9xQe4Kc2Lr7TnB1sVw3Yh5Zf",
+};
+const HUMAN = `${JSON.stringify(deployment, null, 2)}\n`;
+const AGENT = `${JSON.stringify(
+  {
+    status: "ok",
+    deployment,
+    message: `Deployment ${DEPLOY} ready. Production URL: ${PROD}`,
+    next: [{ command: "vercel inspect basanos-4k2j9x7qe-acme-projects.vercel.app", when: "Inspect deployment" }],
+  },
+  null,
+  2,
+)}\n`;
+
+describe("Vercel invocations", () => {
+  it("deploys with the token in the child env only, JSON on stdout, and --scope only when set", () => {
+    const base: NodeJS.ProcessEnv = { PATH: "/usr/bin" };
+    const inv = vercelDeployInvocation(token, base);
+    expect(inv.command).toBe("npx");
+    expect(inv.args).toEqual(["--yes", "vercel@65.3.1", "deploy", ".", "--prod", "--yes", "--project", "basanos", "--create-if-missing", "--json"]);
+    expect(argvLeaksToken(inv.args, token)).toBe(false);
+    expect(inv.env.VERCEL_TOKEN).toBe(token);
+    expect(inv.env.PATH).toBe("/usr/bin");
+    expect(base).toEqual({ PATH: "/usr/bin" });
+    expect(vercelDeployInvocation(token, base, "my-team").args.slice(-2)).toEqual(["--scope", "my-team"]);
+    expect(() => vercelDeployInvocation(token, base, "x; rm -rf /")).toThrow(/slug/);
+    expect(() => vercelDeployInvocation("", {})).toThrow(/VERCEL_TOKEN/);
+  });
+  it("aliases one deployment to the domain, refusing anything that is not a deployment URL or a host name", () => {
+    expect(vercelAliasInvocation(token, {}, DEPLOY, "basanos.suitz.xyz").args).toEqual(["--yes", "vercel@65.3.1", "alias", "set", DEPLOY, "basanos.suitz.xyz"]);
+    expect(vercelAliasInvocation(token, {}, DEPLOY, "basanos.suitz.xyz", "my-team").args.slice(-2)).toEqual(["--scope", "my-team"]);
+    expect(() => vercelAliasInvocation(token, {}, "https://evil.example", "basanos.suitz.xyz")).toThrow(/deployment URL/);
+    expect(() => vercelAliasInvocation(token, {}, `${DEPLOY} && whoami`, "basanos.suitz.xyz")).toThrow(/deployment URL/);
+    expect(() => vercelAliasInvocation(token, {}, DEPLOY, "basanos.suitz.xyz;ls")).toThrow(/domain/);
+    expect(vercelWhoamiInvocation(token, {}).args).toEqual(["--yes", "vercel@65.3.1", "whoami", "--json"]);
+  });
+  it("flags any argv that would carry the token", () => {
+    expect(argvLeaksToken(["deploy", "--token", "x"], "zz")).toBe(true);
+    expect(argvLeaksToken(["deploy", "--token=x"], "zz")).toBe(true);
+    expect(argvLeaksToken(["deploy", "abczzdef"], "zz")).toBe(true);
+  });
+});
+
+describe("reading the CLI's answers", () => {
+  it("takes the deployment URL from the deploy JSON, in both shapes, not the production alias printed after it", () => {
+    expect(parseDeployOutput(HUMAN)).toEqual({ deploymentUrl: DEPLOY, productionUrl: PROD });
+    expect(parseDeployOutput(AGENT)).toEqual({ deploymentUrl: DEPLOY, productionUrl: PROD });
+    expect(AGENT.lastIndexOf(PROD)).toBeGreaterThan(AGENT.lastIndexOf(DEPLOY));
+  });
+  it("refuses a failed, unfinished or preview deploy, and output with no JSON", () => {
+    expect(() => parseDeployOutput(JSON.stringify({ status: "error", reason: "deploy_failed", message: "boom" }))).toThrow(/deploy_failed: boom/);
+    expect(() => parseDeployOutput(JSON.stringify({ ...deployment, readyState: "ERROR" }))).toThrow(/not READY/);
+    expect(() => parseDeployOutput(JSON.stringify({ ...deployment, target: null }))).toThrow(/not production/);
+    expect(() => parseDeployOutput(JSON.stringify({ ...deployment, url: "https://example.com" }))).toThrow(/no deployment URL/);
+    expect(() => parseDeployOutput(`Production: ${DEPLOY} [3s]`)).toThrow(/no JSON/);
+  });
+  it("names the scope from whoami, and the stop message names it", () => {
+    expect(parseWhoami(JSON.stringify({ team: null, plan: "hobby", username: "someone" }))).toBe("someone");
+    expect(parseWhoami(JSON.stringify({ team: { id: "team_1", slug: "my-team", name: "My team", plan: "pro" }, username: "someone" }))).toBe("my-team");
+    expect(() => parseWhoami("{}")).toThrow(/no team or user/);
+    // Captured from vercel@65.3.1 with no token (exit 1): an expired VERCEL_TOKEN reads the same.
+    expect(() => parseWhoami('{\n  "loggedIn": false,\n  "cliVersion": "65.3.1",\n  "linkedProject": null\n}\n')).toThrow(/missing, invalid or expired/);
+    const stop = aliasStop("basanos.suitz.xyz", "someone");
+    expect(stop).toMatch(/^STOP: /);
+    expect(stop).toContain('the scope "someone"');
+    expect(stop).toContain("basanos.suitz.xyz");
+  });
+});
+```
+
+Replace `packages/ship/test/base-url.test.ts` with:
+```ts
+import { describe, expect, it } from "vitest";
+import { PLACEHOLDER_BASE_URL, SITE_DOMAIN, SITE_URL, baseUrlProblem, certBaseUrl } from "../src/base-url";
+
+describe("the live site and the certificate base URL", () => {
+  it("is the user's domain, and its certificate route", () => {
+    expect(SITE_DOMAIN).toBe("basanos.suitz.xyz");
+    expect(SITE_URL).toBe("https://basanos.suitz.xyz");
+    expect(certBaseUrl(SITE_URL)).toBe("https://basanos.suitz.xyz/app/#/cert/");
+    expect(certBaseUrl(`${SITE_URL}/`)).toBe("https://basanos.suitz.xyz/app/#/cert/");
+    expect(() => certBaseUrl("http://basanos.suitz.xyz")).toThrow(/https/);
+  });
+  it("accepts only an on-chain value equal to the deployed route, and names the placeholder", () => {
+    const route = certBaseUrl(SITE_URL);
+    expect(baseUrlProblem(route, route)).toBeNull();
+    expect(baseUrlProblem(route, PLACEHOLDER_BASE_URL)).toMatch(/placeholder/);
+    expect(baseUrlProblem(route, "https://other.example/app/#/cert/")).toMatch(/expected/);
+    expect(PLACEHOLDER_BASE_URL).not.toContain(SITE_DOMAIN);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm they fail**
+Run: `npm test -w @basanos/ship -- test/vercel.test.ts test/base-url.test.ts`
+Expected: FAIL — `Tests  7 failed | 1 passed (8)` (`TypeError: vercelAliasInvocation is not a function`, `expected undefined to be 'basanos.suitz.xyz'`).
+
+- [ ] **Step 3: Name the live site**
+
+Replace `packages/ship/src/base-url.ts` with:
+```ts
+// The live site and the certificates' base URL. The site is the user's own domain on their own Vercel account (P9):
+// the landing at /, the app at /app/. deployments/hideki.json starts with the constructor's placeholder; ship:6 sets
+// the real route with setBaseUrl and reads baseUrl() back.
+export const SITE_DOMAIN = "basanos.suitz.xyz";
+export const SITE_URL = `https://${SITE_DOMAIN}`;
+
+/** The constructor's placeholder, kept only to detect "not set yet" (basanos.vercel.app is someone else's site). */
+export const PLACEHOLDER_BASE_URL = "https://basanos.vercel.app/app/#/cert/";
+
+/** The certificate route on the deployed site (https only; any path on the site URL is dropped). */
+export function certBaseUrl(siteUrl: string): string {
+  const u = new URL(siteUrl);
+  if (u.protocol !== "https:") throw new Error(`the site URL must be https: ${siteUrl}`);
+  return `${u.origin}/app/#/cert/`;
+}
+
+/** null when the registry's baseUrl() equals the deployed route; otherwise what is wrong. */
+export function baseUrlProblem(expected: string, onChain: string): string | null {
+  if (onChain === expected) return null;
+  const why = onChain === PLACEHOLDER_BASE_URL ? " (still the constructor's placeholder)" : "";
+  return `registry baseUrl() is ${onChain}${why}; expected ${expected}`;
+}
+```
+
+- [ ] **Step 4: Call the CLI and read its JSON**
+
+Replace `packages/ship/src/vercel.ts` with:
+```ts
+// How the ship scripts call the Vercel CLI. The token travels in the child's environment as VERCEL_TOKEN, which
+// vercel@65.3.1 reads when no --token flag is given. It never goes on the command line, where the process list and
+// the shell (spawnSync with shell: true) could expose it. Every other argument is checked before it reaches that
+// shell: the scope is a slug, the deployment URL a *.vercel.app origin, the domain a host name.
+export const VERCEL_CLI = "vercel@65.3.1";
+/** The Vercel project the site deploys to; the first deploy creates it. */
+export const VERCEL_PROJECT = "basanos";
+
+export interface VercelInvocation {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+}
+
+const SCOPE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const DEPLOYMENT_URL = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
+const DOMAIN = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+function invocation(token: string, baseEnv: NodeJS.ProcessEnv, scope: string | undefined, args: string[]): VercelInvocation {
+  if (!token) throw new Error("VERCEL_TOKEN is empty");
+  if (scope && !SCOPE.test(scope)) throw new Error(`VERCEL_SCOPE is not a Vercel team slug: ${scope}`);
+  return { command: "npx", args: ["--yes", VERCEL_CLI, ...args, ...(scope ? ["--scope", scope] : [])], env: { ...baseEnv, VERCEL_TOKEN: token } };
+}
+
+/**
+ * A production deploy of the current directory to the project "basanos": --create-if-missing makes the first run create
+ * it (the CLI requires it with --yes), and later runs reuse it. --json makes the CLI print one JSON object on stdout.
+ */
+export function vercelDeployInvocation(token: string, baseEnv: NodeJS.ProcessEnv, scope?: string): VercelInvocation {
+  return invocation(token, baseEnv, scope, ["deploy", ".", "--prod", "--yes", "--project", VERCEL_PROJECT, "--create-if-missing", "--json"]);
+}
+
+/** Points the domain at one deployment. */
+export function vercelAliasInvocation(token: string, baseEnv: NodeJS.ProcessEnv, deploymentUrl: string, domain: string, scope?: string): VercelInvocation {
+  if (!DEPLOYMENT_URL.test(deploymentUrl)) throw new Error(`not a Vercel deployment URL: ${deploymentUrl}`);
+  if (!DOMAIN.test(domain)) throw new Error(`not a domain: ${domain}`);
+  return invocation(token, baseEnv, scope, ["alias", "set", deploymentUrl, domain]);
+}
+
+/** Who the token acts as, as JSON. */
+export function vercelWhoamiInvocation(token: string, baseEnv: NodeJS.ProcessEnv, scope?: string): VercelInvocation {
+  return invocation(token, baseEnv, scope, ["whoami", "--json"]);
+}
+
+/** True when a --token flag, or the token itself, appears anywhere in the arguments. */
+export function argvLeaksToken(args: readonly string[], token: string): boolean {
+  return args.some((a) => a === "--token" || a.startsWith("--token=") || (token.length > 0 && a.includes(token)));
+}
+
+function jsonObject(stdout: string, what: string): Record<string, unknown> {
+  const start = stdout.indexOf("{");
+  try {
+    if (start < 0) throw new Error("no JSON");
+    const v: unknown = JSON.parse(stdout.slice(start));
+    if (v === null || typeof v !== "object") throw new Error("not an object");
+    return v as Record<string, unknown>;
+  } catch {
+    throw new Error(`${what} printed no JSON object: ${stdout.slice(0, 200)}`);
+  }
+}
+
+export interface DeployResult {
+  /** The per-deployment URL (it changes on every deploy and may sit behind Vercel's login). */
+  deploymentUrl: string;
+  /** The project's automatic production alias, when Vercel assigned one. */
+  productionUrl: string | null;
+}
+
+/**
+ * The deployment from `vercel deploy --json` (vercel@65.3.1): the object its getDeploymentOutputJson prints or,
+ * when the CLI runs non-interactive (an agent without a TTY), that object under `deployment` with status "ok". Never
+ * "the last *.vercel.app" in the output: it also names the production alias and follow-up commands.
+ */
+export function parseDeployOutput(stdout: string): DeployResult {
+  const raw = jsonObject(stdout, "vercel deploy");
+  if (raw.status === "error") throw new Error(`vercel deploy failed: ${String(raw.reason)}: ${String(raw.message)}`);
+  const d = (raw.status === "ok" ? raw.deployment : raw) as Record<string, unknown> | undefined;
+  if (!d || typeof d.url !== "string" || !DEPLOYMENT_URL.test(d.url)) throw new Error("vercel deploy printed no deployment URL");
+  if (d.readyState !== "READY") throw new Error(`deployment ${d.url} is ${String(d.readyState)}, not READY`);
+  if (d.target !== "production") throw new Error(`deployment ${d.url} targets ${String(d.target)}, not production`);
+  return { deploymentUrl: d.url, productionUrl: typeof d.productionUrl === "string" ? d.productionUrl : null };
+}
+
+/** The scope the token acts in, from `vercel whoami --json`: the selected team's slug, else the username. */
+export function parseWhoami(stdout: string): string {
+  const raw = jsonObject(stdout, "vercel whoami") as { loggedIn?: unknown; team?: { slug?: unknown } | null; username?: unknown };
+  if (raw.loggedIn === false) throw new Error("the Vercel CLI is not logged in: VERCEL_TOKEN is missing, invalid or expired");
+  const name = raw.team?.slug ?? raw.username;
+  if (typeof name !== "string" || name === "") throw new Error("vercel whoami printed no team or user");
+  return name;
+}
+
+/** The stop message when the alias fails: the token's scope must own the domain. */
+export function aliasStop(domain: string, scope: string): string {
+  return (
+    `STOP: vercel alias set failed: the scope "${scope}" could not point ${domain} at the deployment. ` +
+    `The token's scope must own the domain: check that ${domain} belongs to "${scope}", or set VERCEL_SCOPE to the team ` +
+    "that owns it, then re-run. The production deployment exists; only the alias is missing."
+  );
+}
+```
+
+- [ ] **Step 5: Deploy, then alias the domain**
+
+Replace `packages/ship/src/deploy-vercel.ts` with:
+```ts
+// Deploys the assembled site/basanos to Vercel production and points https://basanos.suitz.xyz at it (P9), then writes
+// deployments/site.json. VERCEL_TOKEN comes from the git-ignored .env; VERCEL_SCOPE (a team slug) is optional and
+// passed as --scope to every call when set (the personal account needs none). It deploys to the project "basanos",
+// which the first deploy creates, and touches no other project or domain. Runs from inside site/basanos, so no
+// argument holds a path with a space. The token reaches the CLI in the child environment only, never on the command
+// line (see vercel.ts).
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { loadDotEnv, repoPath } from "@basanos/core/node";
+import { SITE_DOMAIN, SITE_URL } from "./base-url";
+import {
+  aliasStop,
+  argvLeaksToken,
+  parseDeployOutput,
+  parseWhoami,
+  vercelAliasInvocation,
+  vercelDeployInvocation,
+  vercelWhoamiInvocation,
+  type DeployResult,
+  type VercelInvocation,
+} from "./vercel";
+
+loadDotEnv();
+const token = process.env.VERCEL_TOKEN ?? "";
+if (!token) {
+  console.error("VERCEL_TOKEN is not set (.env)");
+  process.exit(1);
+}
+const scope = process.env.VERCEL_SCOPE || undefined;
+const dir = repoPath("site/basanos");
+if (!existsSync(`${dir}/index.html`)) {
+  console.error("site/basanos is not assembled (run assemble-site.ts first)");
+  process.exit(1);
+}
+const run = (inv: VercelInvocation) => {
+  if (argvLeaksToken(inv.args, token)) {
+    console.error("refusing to put the Vercel token on the command line");
+    process.exit(1);
+  }
+  return spawnSync(inv.command, inv.args, { cwd: dir, encoding: "utf8", shell: true, env: inv.env });
+};
+const tail = (s: string | null | undefined) => `${s ?? ""}`.trim().split("\n").slice(-8).join("\n");
+
+const who = run(vercelWhoamiInvocation(token, process.env, scope));
+let name: string;
+try {
+  name = parseWhoami(who.stdout);
+} catch (e) {
+  console.error(`vercel whoami failed (exit ${who.status}): ${(e as Error).message}\n${tail(who.stderr)}`);
+  process.exit(1);
+}
+console.log(`vercel scope: ${name}${scope ? " (VERCEL_SCOPE)" : " (the token's own account)"}`);
+
+const dep = run(vercelDeployInvocation(token, process.env, scope));
+let deployed: DeployResult;
+try {
+  deployed = parseDeployOutput(dep.stdout);
+  if (dep.status !== 0) throw new Error(`exit ${dep.status}`);
+} catch (e) {
+  console.error(`vercel deploy failed: ${(e as Error).message}\n${tail(dep.stderr)}`);
+  process.exit(1);
+}
+console.log(`deployed ${deployed.deploymentUrl} (production)`);
+
+const al = run(vercelAliasInvocation(token, process.env, deployed.deploymentUrl, SITE_DOMAIN, scope));
+if (al.status !== 0) {
+  console.error(aliasStop(SITE_DOMAIN, name));
+  console.error(tail(al.stderr));
+  process.exit(1);
+}
+console.log(`aliased ${SITE_URL} -> ${deployed.deploymentUrl}`);
+
+const site = { url: SITE_URL, deploymentUrl: deployed.deploymentUrl, deployedAt: new Date().toISOString(), baseUrlTx: null };
+mkdirSync(dirname(repoPath("deployments/site.json")), { recursive: true });
+writeFileSync(repoPath("deployments/site.json"), `${JSON.stringify(site, null, 2)}\n`);
+console.log(`wrote deployments/site.json (url ${SITE_URL})`);
+process.exit(0);
+```
+
+- [ ] **Step 6: List VERCEL_SCOPE in .env.example**
+In `.env.example`, add one line, `VERCEL_SCOPE=`, right after the line `VERCEL_TOKEN=` (the file uses CRLF line endings; keep them). Nothing else changes.
+
+- [ ] **Step 7: Type-check**
+Run: `npm run typecheck -w @basanos/ship`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 8: Run the whole ship suite**
+Run: `npm test -w @basanos/ship`
+Expected: `Tests  15 passed (15)`.
+
+- [ ] **Step 9: Run the new tests (the gate)**
+Run: `npm test -w @basanos/ship -- test/vercel.test.ts test/base-url.test.ts`
+Expected: PASS — `8 passed`.
+
+- [ ] **Step 10: Commit (kernel-performed — no agent runs this)**
+Message: `fix(ship): deploy reads the deployment from the CLI's JSON and aliases basanos.suitz.xyz; optional VERCEL_SCOPE (P9)`
+
+---
+
+### Task 14: The live site everywhere — check-deploy polls the domain unauthenticated; setBaseUrl, README, submission draft and X posts use https://basanos.suitz.xyz (P9)
+
+**Files:**
+- Create: `packages/ship/src/site-check.ts`
+- Modify: `packages/ship/src/check-deploy.ts`
+- Modify: `packages/ship/src/set-base-url.ts`
+- Modify: `README.md`
+- Modify: `docs/gates/submission-draft.md`
+- Test: `packages/ship/test/site-check.test.ts`
+- Test: `packages/ship/test/public-surfaces.test.ts`
+- Test: `packages/ship/test/ship.test.ts`
+
+**Depends on:** Task 1, Task 9, Task 10, Task 12, Task 13, landing:Task 6, referee:Task 6, contracts:Task 8, spike:Task 1, spike:Task 3
+**Effort:** medium
+**Model tier:** standard
+**Provides:** `interface Page { status: number; finalUrl: string; body: string }`, `pageProblems(domain: string, path: string, page: Page): string[]`, `fetchPage(url: string): Promise<Page> (no cookie or token; redirects followed)`, `pollSite(get: (url: string) => Promise<Page>, siteUrl: string, paths: readonly string[], opts: PollOptions): Promise<PollResult>`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (https://basanos.suitz.xyz) (/ and /app/ answer 200 unauthenticated over https and stay on the domain, polled up to 2 minutes; deployments/site.json names the domain; the registry's baseUrl() is https://basanos.suitz.xyz/app/#/cert/; no live page or assembled site/basanos file carries the sample marker)`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(https://basanos.suitz.xyz/app/#/cert/) as the owner (refuses unless deployments/site.json names the domain), reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json`, `README.md and docs/gates/submission-draft.md name https://basanos.suitz.xyz as the live site`, `public-surface test: no README, submission draft, X-post draft, evidence index, landing or app source contains basanos.vercel.app`
+**Requires:** `SITE_URL = "https://basanos.suitz.xyz"`, `PLACEHOLDER_BASE_URL = "https://basanos.vercel.app/app/#/cert/"`, `certBaseUrl(siteUrl: string): string`, `baseUrlProblem(expected: string, onChain: string): string | null`, `sampleInBuild(pages: Record<string, string>): string[]`, `buildPosts(f: FeaturedRun, siteUrl: string | null): string[]`, `FEATURED_PATH = "docs/evidence/featured-run.json"`, `interface FeaturedRun { schema: "basanos.featured/1"; chainId: 50383; registry: Address; runId: string; status: string; rule: string | null; rulebook: { label: string; id: Hex; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number }; account: Address; start: ReadOut; breach: ReadOut | null; end: ReadOut; closeTxs: { hash: Hex; url: string }[]; verdictTx: { hash: Hex; url: string } | null; oracle: { price: string; sources: number } | null; links: { verdict: string; certificate: string | null }; trustLine: string; demoDisclosure: string; testnetNotice: string }`, `README.md (demo v2 chosen by the replay; the one-round-trip closer and the PASS lock buffer; the close-gap and Price Oracle limitations)`, `docs/gates/submission-draft.md third-party assets list (seven kit files with paths and sha256, plus docs/design/frontend.md)`, `makePublicClient(url: string): PublicClient`, `makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)`, `basanosRegistryAbi (as const, generated from the forge artifact)`, `repoPath(rel: string): string`, `loadDotEnv(path?: string): boolean`, `requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex`, `rpcHttp(env?: NodeJS.ProcessEnv): string`
+
+Why (architect P9, 2026-11-12):
+- **P9b, one name for the site.** `SITE_URL` (Task 13) is the only source.
+  - `set-base-url.ts` sets `https://basanos.suitz.xyz/app/#/cert/`, and refuses to send unless `deployments/site.json` names the domain. A per-deployment URL can never go on-chain.
+  - The README's "Live site" line and the submission draft's live-site field now read `https://basanos.suitz.xyz` (they said `TBD-post-build:vercel-url`). The featured-verdict URL stays TBD: it needs the money-shot run id (ship:3).
+  - The X-post drafts (ship:7) already take the site from `deployments/site.json`, which Task 13 writes as the domain. The test fixture now uses the domain too.
+  - The landing and the app link relatively (`/app/#/challenge`, `#/run/<id>`), so they are right on the domain as they stand; no change.
+  - `PLACEHOLDER_BASE_URL` stays only as the "not set yet" detector in `baseUrlProblem`.
+  - **The new test** reads every public surface (the README, the submission draft, the X-post draft and evidence index once ship:7 writes them, and the landing and app sources) and fails on `basanos.vercel.app`.
+  - The placeholder still sits in `contracts/script/deploy.ts` (the deployed registry's constructor argument, history) and in `deployments/hideki.json` until ship:6's `setBaseUrl` replaces it; neither is public.
+- **P9c, check-deploy on the domain.** `/` and `/app/` on `https://basanos.suitz.xyz`, fetched with no cookie or token, must answer 200 and still be on the domain after redirects.
+  - A 401/403 (deployment protection), a 404 (nothing attached) and a redirect to a Vercel login page all fail, each with its reason.
+  - It polls every 5 s for up to 2 minutes after the alias, and also fails unless `deployments/site.json` names the domain.
+- **Verified by the architect** in a test bed from HEAD after Task 13: the tests fail first, then pass; the ship suite is 21 tests; `check-readme` PASS. Run read-only against the live domain from the bed today, check-deploy polled 19 times over about 2 minutes and failed with `/ returned 404 (nothing is served there yet)`, the same for `/app/`, and the registry's placeholder `baseUrl()`, as it should before ship:6.
+- **Do not run `check-deploy.ts` or `set-base-url.ts` in this task:** `set-base-url` signs with `REFEREE_PK`, and both belong to ship:6.
+
+- [ ] **Step 1: Write the failing tests**
+
+`packages/ship/test/site-check.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { pageProblems, pollSite, type Page } from "../src/site-check";
+
+const D = "basanos.suitz.xyz";
+const ok = (path: string): Page => ({ status: 200, finalUrl: `https://${D}${path}`, body: "<title>Basanos</title>" });
+
+describe("a live page on its own domain (P9)", () => {
+  it("passes only a 200 that stays on https://basanos.suitz.xyz and is the site", () => {
+    expect(pageProblems(D, "/", ok("/"))).toEqual([]);
+    expect(pageProblems(D, "/", { ...ok("/"), status: 401 })).toEqual(["/ returned 401 (a login wall: deployment protection covers the domain)"]);
+    expect(pageProblems(D, "/app/", { status: 404, finalUrl: `https://${D}/app/`, body: "DEPLOYMENT_NOT_FOUND" })).toEqual(["/app/ returned 404 (nothing is served there yet)"]);
+    // A login page reached by redirect can answer 200: the final host gives it away.
+    expect(pageProblems(D, "/", { status: 200, finalUrl: "https://vercel.com/login?next=%2Fsso-api", body: "Log in to Vercel" })).toEqual([
+      "/ ended at https://vercel.com/login?next=%2Fsso-api, not on https://basanos.suitz.xyz",
+      "/ does not mention Basanos",
+    ]);
+    expect(pageProblems(D, "/", { ...ok("/"), finalUrl: `http://${D}/` })).toEqual([`/ ended at http://${D}/, not on https://${D}`]);
+    expect(pageProblems(D, "/", { status: 0, finalUrl: "", body: "getaddrinfo ENOTFOUND" })).toEqual(["/ could not be fetched: getaddrinfo ENOTFOUND"]);
+  });
+});
+
+describe("polling the site after the alias", () => {
+  const clock = () => {
+    let t = 0;
+    return { now: () => t, sleep: async (ms: number) => void (t += ms), elapsed: () => t };
+  };
+  it("waits for a fresh alias to answer, then passes", async () => {
+    const c = clock();
+    let calls = 0;
+    const get = async (url: string): Promise<Page> => {
+      calls++;
+      const path = new URL(url).pathname;
+      return calls <= 4 ? { status: 404, finalUrl: url, body: "DEPLOYMENT_NOT_FOUND" } : ok(path);
+    };
+    const r = await pollSite(get, `https://${D}`, ["/", "/app/"], { timeoutMs: 120_000, intervalMs: 5_000, now: c.now, sleep: c.sleep });
+    expect(r.problems).toEqual([]);
+    expect(r.attempts).toBe(3);
+    expect(c.elapsed()).toBe(10_000);
+    expect(Object.keys(r.bodies)).toEqual([`https://${D}/`, `https://${D}/app/`]);
+  });
+  it("gives up after about 2 minutes and reports the last answer", async () => {
+    const c = clock();
+    const get = async (url: string): Promise<Page> => ({ status: 401, finalUrl: url, body: "Authentication Required" });
+    const r = await pollSite(get, `https://${D}`, ["/", "/app/"], { timeoutMs: 120_000, intervalMs: 5_000, now: c.now, sleep: c.sleep });
+    expect(r.attempts).toBe(25);
+    expect(c.elapsed()).toBe(120_000);
+    expect(r.problems).toEqual([
+      "/ returned 401 (a login wall: deployment protection covers the domain)",
+      "/app/ returned 401 (a login wall: deployment protection covers the domain)",
+    ]);
+  });
+});
+```
+
+`packages/ship/test/public-surfaces.test.ts`:
+```ts
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { repoPath } from "@basanos/core/node";
+import { PLACEHOLDER_BASE_URL, SITE_URL, certBaseUrl } from "../src/base-url";
+import { FEATURED_PATH, type FeaturedRun } from "../src/featured";
+import { buildPosts } from "../src/x-posts";
+
+// Every surface a judge or a reader sees: the README, the submission draft, the X-post drafts and the evidence index
+// (once ship:7 writes them), and the sources of the landing and the app.
+const SURFACES = ["README.md", "docs/gates/submission-draft.md", "docs/gates/x-posts-draft.md", "docs/evidence/INDEX.md", "apps/landing/src", "apps/web/src", "apps/web/index.html"];
+const TEXT = /\.(md|html|css|ts|tsx|json|js|mjs|txt)$/;
+const walk = (p: string): string[] => (statSync(p).isDirectory() ? readdirSync(p).flatMap((n) => walk(join(p, n))) : TEXT.test(p) ? [p] : []);
+const files = SURFACES.map((s) => repoPath(s)).filter((p) => existsSync(p)).flatMap(walk);
+const PLACEHOLDER_HOST = new URL(PLACEHOLDER_BASE_URL).host;
+
+describe("public surfaces name the live site, never the placeholder (P9)", () => {
+  it("no public surface contains basanos.vercel.app, someone else's site", () => {
+    expect(PLACEHOLDER_HOST).toBe("basanos.vercel.app");
+    expect(files.length).toBeGreaterThan(20);
+    expect(files.filter((f) => readFileSync(f, "utf8").includes(PLACEHOLDER_HOST))).toEqual([]);
+  });
+  it("the README and the submission draft give https://basanos.suitz.xyz as the live site", () => {
+    const lf = (rel: string) => readFileSync(repoPath(rel), "utf8").replace(/\r\n/g, "\n");
+    const readme = lf("README.md");
+    const draft = lf("docs/gates/submission-draft.md");
+    expect(readme).toContain("- Live site (landing, terminal at `/app/#/challenge`): https://basanos.suitz.xyz\n");
+    expect(draft).toContain("- Live site (landing at `/`, terminal at `/app/#/challenge`):\n  https://basanos.suitz.xyz\n");
+    for (const text of [readme, draft]) expect(text).not.toContain("TBD-post-build:vercel-url");
+  });
+  it("the X posts link the verdict on the live site, and the certificates point there", () => {
+    const featured = JSON.parse(readFileSync(repoPath(FEATURED_PATH), "utf8")) as FeaturedRun;
+    const posts = buildPosts(featured, SITE_URL);
+    expect(posts[0]).toContain(`https://basanos.suitz.xyz/app/#/run/${featured.runId}`);
+    for (const p of posts) expect(p).not.toContain(PLACEHOLDER_HOST);
+    expect(certBaseUrl(SITE_URL)).toBe("https://basanos.suitz.xyz/app/#/cert/");
+  });
+});
+```
+
+Replace `packages/ship/test/ship.test.ts` with:
+```ts
+import { describe, expect, it } from "vitest";
+import { SITE_URL } from "../src/base-url";
+import { checkFeedbackText } from "../src/check-feedback";
+import { moneyShotOk } from "../src/check-money-shot";
+import { renderEvidenceIndex } from "../src/evidence-index";
+import { buildFeatured } from "../src/featured";
+import { DEMO_DISCLOSURE, FORBIDDEN_CLAIMS, TRUST_LINE } from "../src/text";
+import { buildPosts } from "../src/x-posts";
+
+const E18 = 10n ** 18n;
+const read = (equity: bigint, block: bigint) => ({ blockNumber: block, equityOk: true, equity, lockedCollateral: 0n, positionSize: 0n, markOk: true, markPrice: 74_500n * E18 });
+const featured = buildFeatured({
+  registry: "0x00000000000000000000000000000000000000f0",
+  runId: 3n,
+  run: {
+    account: "0x00000000000000000000000000000000000000a1",
+    rulebookId: `0x${"11".repeat(32)}`,
+    status: 2,
+    rule: 0,
+    start: read(1_000n * E18, 100n),
+    breach: read(0n, 0n),
+    end: read(1_006n * E18, 900n),
+    oraclePrice: 74_510n * E18,
+    oracleSources: 3,
+    oracleDone: true,
+  },
+  rulebook: { label: "Tokyo Sprint · Demo", profitTargetBps: 50, dailyLossBps: 50, trailingDrawdownBps: 75, maxExposureX: 15, minDurationSec: 60, timeLimitSec: 900 },
+  closeTxs: [`0x${"aa".repeat(32)}`],
+  verdictTx: `0x${"bb".repeat(32)}`,
+});
+
+describe("buildFeatured", () => {
+  it("formats the run from chain values and carries the trust line and disclosure", () => {
+    expect(featured.status).toBe("Passed");
+    expect(featured.rule).toBeNull();
+    expect(featured.start.equity).toBe("1,000.00");
+    expect(featured.end.equity).toBe("1,006.00");
+    expect(featured.breach).toBeNull();
+    expect(featured.links).toEqual({ verdict: "/app/#/run/3", certificate: "/app/#/cert/3" });
+    expect(featured.closeTxs[0]?.url).toBe(`https://explorer.testnet.somnia.network/tokyo/tx/0x${"aa".repeat(32)}`);
+    expect(featured.trustLine).toBe(TRUST_LINE);
+    expect(featured.demoDisclosure).toBe(DEMO_DISCLOSURE);
+    expect(featured.oracle).toEqual({ price: "74,510.00", sources: 3 });
+  });
+});
+
+describe("buildPosts", () => {
+  it("writes three posts that tag @DreamDEXSomnia, fit 280 characters and say nothing forbidden", () => {
+    const posts = buildPosts(featured, SITE_URL);
+    expect(posts).toHaveLength(3);
+    for (const p of posts) {
+      expect(p).toContain("@DreamDEXSomnia");
+      expect(p.length).toBeLessThanOrEqual(280);
+      for (const bad of FORBIDDEN_CLAIMS) expect(p.toLowerCase()).not.toContain(bad);
+    }
+    expect(posts.some((p) => p.includes(TRUST_LINE))).toBe(true);
+    expect(posts.some((p) => p.includes("operated by the builder"))).toBe(true);
+    expect(posts[0]).toContain("https://basanos.suitz.xyz/app/#/run/3");
+  });
+  it("leaves a marked placeholder when the site URL is not known yet", () => {
+    expect(buildPosts(featured, null)[0]).toContain("TBD-post-build:vercel-url");
+  });
+});
+
+describe("checks", () => {
+  it("accepts a take with one PASS and one FAIL only", () => {
+    expect(moneyShotOk({ runs: [{ status: "Passed" }, { status: "Failed" }] })).toBe(true);
+    expect(moneyShotOk({ runs: [{ status: "Failed" }, { status: "Failed" }] })).toBe(false);
+  });
+  it("validates the event's feedback template", () => {
+    const good = [
+      "# The SDK's Hideki constants omit the operator registry",
+      "Severity: normal",
+      "Area: SDK",
+      "",
+      "## Steps to reproduce",
+      "1. Read SOMNIA_HIDEKI_TESTNET_ADDRESSES.",
+      "",
+      "## Expected",
+      "It names the OperatorPermissionsRegistry.",
+      "",
+      "## Actual",
+      "It has no operatorPermissionsRegistry key.",
+      "",
+      "## Evidence",
+      "Output: undefined",
+      "",
+      "## Environment",
+      "SDK version 0.33.0, network Somnia Tokyo testnet (Hideki 50383), wallet address: read-only (no wallet)",
+    ].join("\n");
+    expect(checkFeedbackText("a.md", good)).toEqual([]);
+    expect(checkFeedbackText("b.md", good.replace("Severity: normal", "Severity: low"))).not.toEqual([]);
+    expect(checkFeedbackText("c.md", good.replace("## Evidence\nOutput: undefined\n", "## Evidence\n"))).not.toEqual([]);
+  });
+  it("renders an evidence index with links", () => {
+    const md = renderEvidenceIndex([{ title: "Referee close", path: "docs/evidence/g1a-close.json", links: ["https://x/tx/1"] }]);
+    expect(md).toContain("# Basanos evidence index");
+    expect(md).toContain("[docs/evidence/g1a-close.json](g1a-close.json)");
+    expect(md).toContain("https://x/tx/1");
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm they fail**
+Run: `npm test -w @basanos/ship -- test/site-check.test.ts test/public-surfaces.test.ts`
+Expected: FAIL — `Cannot find module '../src/site-check'`, and in public-surfaces `1 failed | 2 passed` (the README still says `TBD-post-build:vercel-url`).
+
+- [ ] **Step 3: Check the live site on its domain**
+
+`packages/ship/src/site-check.ts`:
+```ts
+// check-deploy's view of the live site (P9). Each page is fetched unauthenticated over https and must answer 200 and
+// still be on the domain after redirects. A login wall (Vercel deployment protection) shows as 401/403 or as a redirect
+// off the domain; a domain with nothing attached answers 404. Polled, because a fresh alias can take a moment to answer.
+export interface Page {
+  status: number;
+  finalUrl: string;
+  body: string;
+}
+
+/** What is wrong with one fetched page; [] when it is the site on its own domain. */
+export function pageProblems(domain: string, path: string, page: Page): string[] {
+  if (page.status === 0) return [`${path} could not be fetched: ${page.body}`];
+  const problems: string[] = [];
+  if (page.status !== 200) {
+    const why =
+      page.status === 401 || page.status === 403
+        ? " (a login wall: deployment protection covers the domain)"
+        : page.status === 404
+          ? " (nothing is served there yet)"
+          : "";
+    problems.push(`${path} returned ${page.status}${why}`);
+  }
+  let final: URL | null = null;
+  try {
+    final = new URL(page.finalUrl);
+  } catch {
+    final = null;
+  }
+  if (!final || final.protocol !== "https:" || final.host !== domain) problems.push(`${path} ended at ${page.finalUrl || "no URL"}, not on https://${domain}`);
+  if (page.status === 200 && !page.body.includes("Basanos")) problems.push(`${path} does not mention Basanos`);
+  return problems;
+}
+
+/** One GET with no cookies and no token; redirects are followed so the final URL is known. */
+export async function fetchPage(url: string): Promise<Page> {
+  try {
+    const res = await fetch(url, { redirect: "follow", headers: { "cache-control": "no-cache" } });
+    return { status: res.status, finalUrl: res.url, body: await res.text() };
+  } catch (e) {
+    return { status: 0, finalUrl: "", body: (e as Error).message };
+  }
+}
+
+export interface PollOptions {
+  timeoutMs: number;
+  intervalMs: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export interface PollResult {
+  problems: string[];
+  attempts: number;
+  bodies: Record<string, string>;
+}
+
+/** Fetches every path until all pass or the time is up; the problems are those of the last attempt. */
+export async function pollSite(get: (url: string) => Promise<Page>, siteUrl: string, paths: readonly string[], opts: PollOptions): Promise<PollResult> {
+  const now = opts.now ?? Date.now;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const domain = new URL(siteUrl).host;
+  const deadline = now() + opts.timeoutMs;
+  for (let attempts = 1; ; attempts++) {
+    const problems: string[] = [];
+    const bodies: Record<string, string> = {};
+    for (const path of paths) {
+      const url = `${siteUrl}${path}`;
+      const page = await get(url);
+      bodies[url] = page.body;
+      problems.push(...pageProblems(domain, path, page));
+    }
+    if (problems.length === 0 || now() + opts.intervalMs > deadline) return { problems, attempts, bodies };
+    await sleep(opts.intervalMs);
+  }
+}
+```
+
+Replace `packages/ship/src/check-deploy.ts` with:
+```ts
+// The live site answers on its own domain (P9): / and /app/ on https://basanos.suitz.xyz, fetched unauthenticated, must
+// answer 200 and stay on the domain after redirects, polled for up to 2 minutes after the alias. deployments/site.json
+// names that site, the registry's baseUrl() points the certificates at it, and neither the live pages nor the assembled
+// site/basanos output carries the landing's sample-fixture marker (ship:10).
+import { existsSync, readFileSync } from "node:fs";
+import type { Address } from "viem";
+import { basanosRegistryAbi } from "@basanos/core";
+import { loadDotEnv, repoPath, rpcHttp } from "@basanos/core/node";
+import { makePublicClient } from "@basanos/referee";
+import { SITE_URL, baseUrlProblem, certBaseUrl } from "./base-url";
+import { sampleInBuild } from "./sample";
+import { fetchPage, pollSite } from "./site-check";
+
+loadDotEnv();
+const site = JSON.parse(readFileSync(repoPath("deployments/site.json"), "utf8")) as { url: string };
+const { registry } = JSON.parse(readFileSync(repoPath("deployments/hideki.json"), "utf8")) as { registry: Address };
+const problems: string[] = [];
+if (site.url !== SITE_URL) problems.push(`deployments/site.json names ${site.url}; expected ${SITE_URL}`);
+const live = await pollSite(fetchPage, SITE_URL, ["/", "/app/"], { timeoutMs: 120_000, intervalMs: 5_000 });
+console.log(`${SITE_URL}: ${live.problems.length === 0 ? "/ and /app/ answer 200 on the domain" : "still failing"} (${live.attempts} attempt${live.attempts === 1 ? "" : "s"})`);
+problems.push(...live.problems);
+const bodies: Record<string, string> = { ...live.bodies };
+for (const rel of ["site/basanos/index.html", "site/basanos/app/index.html"]) {
+  const p = repoPath(rel);
+  if (existsSync(p)) bodies[rel] = readFileSync(p, "utf8");
+}
+problems.push(...sampleInBuild(bodies));
+const onChain = String(await makePublicClient(rpcHttp()).readContract({ address: registry, abi: basanosRegistryAbi, functionName: "baseUrl" }));
+const wrong = baseUrlProblem(certBaseUrl(SITE_URL), onChain);
+if (wrong) problems.push(wrong);
+for (const p of problems) console.log(`FAIL ${p}`);
+console.log(problems.length === 0 ? `PASS deploy (${SITE_URL})` : "FAIL deploy");
+process.exit(problems.length === 0 ? 0 : 1);
+```
+
+- [ ] **Step 4: Point the certificates only at the domain**
+
+Replace `packages/ship/src/set-base-url.ts` with:
+```ts
+// Owner-only (REFEREE_PK): points the certificates' external_url at the live site, https://basanos.suitz.xyz/app/#/cert/
+// (P9), then reads baseUrl() back and refuses to finish unless it equals that route. It refuses to send at all unless
+// deployments/site.json names that site (deploy-vercel.ts writes it after the alias). On success deployments/hideki.json's
+// baseUrl (the constructor's placeholder) is replaced by the real value.
+import { readFileSync, writeFileSync } from "node:fs";
+import type { Address } from "viem";
+import { basanosRegistryAbi } from "@basanos/core";
+import { loadDotEnv, repoPath, requirePrivateKey, rpcHttp } from "@basanos/core/node";
+import { makePublicClient, makeRefereeWallet } from "@basanos/referee";
+import { SITE_URL, baseUrlProblem, certBaseUrl } from "./base-url";
+
+loadDotEnv();
+const sitePath = repoPath("deployments/site.json");
+const depPath = repoPath("deployments/hideki.json");
+const site = JSON.parse(readFileSync(sitePath, "utf8")) as { url: string; deployedAt: string; baseUrlTx: string | null; baseUrl?: string };
+const dep = JSON.parse(readFileSync(depPath, "utf8")) as Record<string, unknown> & { registry: Address; baseUrl?: string };
+if (site.url !== SITE_URL) {
+  console.log(`FAIL deployments/site.json names ${site.url}; expected ${SITE_URL} (run deploy-vercel.ts first: it aliases the domain)`);
+  process.exit(1);
+}
+const wallet = makeRefereeWallet(requirePrivateKey("REFEREE_PK"), rpcHttp());
+const client = makePublicClient(rpcHttp());
+const url = certBaseUrl(SITE_URL);
+const hash = await wallet.writeContract({ address: dep.registry, abi: basanosRegistryAbi, functionName: "setBaseUrl", args: [url] });
+const receipt = await client.waitForTransactionReceipt({ hash });
+const onChain = String(await client.readContract({ address: dep.registry, abi: basanosRegistryAbi, functionName: "baseUrl" }));
+const problem = receipt.status === "success" ? baseUrlProblem(url, onChain) : `setBaseUrl reverted (${hash})`;
+site.baseUrlTx = hash;
+site.baseUrl = onChain;
+writeFileSync(sitePath, `${JSON.stringify(site, null, 2)}\n`);
+if (!problem) {
+  dep.baseUrl = onChain;
+  writeFileSync(depPath, `${JSON.stringify(dep, null, 2)}\n`);
+}
+console.log(`setBaseUrl ${receipt.status} ${hash} -> ${url}`);
+console.log(`baseUrl() read back: ${onChain}`);
+if (problem) console.log(`FAIL ${problem}`);
+process.exit(problem ? 1 : 0);
+```
+
+- [ ] **Step 5: Name the live site in the README and the submission draft**
+
+Old (exactly once in `README.md`, and exactly once in `docs/gates/submission-draft.md`):
+```text
+TBD-post-build:vercel-url
+```
+New (in both files; the rest of each line, and its indentation, stays):
+```text
+https://basanos.suitz.xyz
+```
+
+- [ ] **Step 6: Type-check and check the README**
+Run: `npm run typecheck -w @basanos/ship`
+Expected: exits 0 with no `error TS` lines.
+Run: `powershell -NoProfile -File scripts/check-readme.ps1`
+Expected: `PASS`.
+
+- [ ] **Step 7: Run the whole ship suite**
+Run: `npm test -w @basanos/ship`
+Expected: `Tests  21 passed (21)`.
+
+- [ ] **Step 8: Run the new tests (the gate)**
+Run: `npm test -w @basanos/ship -- test/public-surfaces.test.ts test/site-check.test.ts`
+Expected: PASS — `6 passed`.
+
+- [ ] **Step 9: Commit (kernel-performed — no agent runs this)**
+Message: `fix(ship): check-deploy polls https://basanos.suitz.xyz unauthenticated; setBaseUrl, README and submission draft name the domain (P9)`

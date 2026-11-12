@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10. 2026-11-12 (P5, the book trades ~19 bps above the mark): referee:13 (core: book reads, the evaluator judges closeable equity, book-capped opens, DEMO_LEVERAGE_X 5), referee:14 (the referee judges with the book of the same block; FAIL evidence records it), referee:15 (bot opens from the book, 5x demo, demo-check measures the spread), spike:21 (skeleton opens from the book; the dry-run simulates the open), web:11 (terminal orders from the book, closeable equity, 5x ticket), web:12 (verdict replays the judged equity) and ship:11 (README) added; spike:11 depends on spike:21, referee:10 on referee:14 and referee:15, ship:3 on referee:14, referee:15 and web:11, ship:6 on web:11 and web:12. 2026-11-12 (P6, the SDK's send path ended 'outcome unknown' twice, B18): referee:16 (account-write builders move to @basanos/core/owner-tx, byte-identical to the SDK's encoding; the spike's live-lib re-exports them) and referee:17 (the bot's grant, startRun and opens go viem-direct, read back from the chain, never re-sent; a take that fails after a run started aborts into demo-aborted.json) added; referee:10 and ship:3 depend on referee:17. 2026-11-12 (P7, referee:10's two FAILs: price noise at 5x, staggered entries, a 7.7 s closer): referee:18 (demo v2 + 10x, chosen by a 12 h replay; demo v1 kept), referee:19 (the replay tool), referee:20 (closes capped from the book, one round trip from the push; PASS lock buffer), referee:21 (same-block pair, FAIL on demand after the first PASS, check-pass gate), referee:22 (LIVE rehearsal take 2: the first PASS and certificate) and ship:12 (README) added; ship:3 depends on referee:18, 20, 21, 22; ship:6 on referee:18. 2026-11-12 (P8, the guide viewed run 3 and certificate #3 on real data): web:13 (the certificate page in plain words and money), web:14 (the verdict page: a PASS's lock close from the evidence bundle, sizes in BTC, the canonical rulebook JSON) and landing:7 (a PASS's closes row names its certificate) added; ship:3 depends on web:13 and web:14 (its screenshot and recording show these pages); ship:6 on web:13, web:14 and landing:7.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10. 2026-11-12 (P5, the book trades ~19 bps above the mark): referee:13 (core: book reads, the evaluator judges closeable equity, book-capped opens, DEMO_LEVERAGE_X 5), referee:14 (the referee judges with the book of the same block; FAIL evidence records it), referee:15 (bot opens from the book, 5x demo, demo-check measures the spread), spike:21 (skeleton opens from the book; the dry-run simulates the open), web:11 (terminal orders from the book, closeable equity, 5x ticket), web:12 (verdict replays the judged equity) and ship:11 (README) added; spike:11 depends on spike:21, referee:10 on referee:14 and referee:15, ship:3 on referee:14, referee:15 and web:11, ship:6 on web:11 and web:12. 2026-11-12 (P6, the SDK's send path ended 'outcome unknown' twice, B18): referee:16 (account-write builders move to @basanos/core/owner-tx, byte-identical to the SDK's encoding; the spike's live-lib re-exports them) and referee:17 (the bot's grant, startRun and opens go viem-direct, read back from the chain, never re-sent; a take that fails after a run started aborts into demo-aborted.json) added; referee:10 and ship:3 depend on referee:17. 2026-11-12 (P7, referee:10's two FAILs: price noise at 5x, staggered entries, a 7.7 s closer): referee:18 (demo v2 + 10x, chosen by a 12 h replay; demo v1 kept), referee:19 (the replay tool), referee:20 (closes capped from the book, one round trip from the push; PASS lock buffer), referee:21 (same-block pair, FAIL on demand after the first PASS, check-pass gate), referee:22 (LIVE rehearsal take 2: the first PASS and certificate) and ship:12 (README) added; ship:3 depends on referee:18, 20, 21, 22; ship:6 on referee:18. 2026-11-12 (P8, the guide viewed run 3 and certificate #3 on real data): web:13 (the certificate page in plain words and money), web:14 (the verdict page: a PASS's lock close from the evidence bundle, sizes in BTC, the canonical rulebook JSON) and landing:7 (a PASS's closes row names its certificate) added; ship:3 depends on web:13 and web:14 (its screenshot and recording show these pages); ship:6 on web:13, web:14 and landing:7. 2026-11-12 (P9, the live site is https://basanos.suitz.xyz on the user's own Vercel account; basanos.vercel.app is someone else's): ship:13 (deploy reads the deployment from the CLI's --json output, aliases basanos.suitz.xyz to it, stops naming the scope if the alias fails; optional VERCEL_SCOPE) and ship:14 (check-deploy polls the domain unauthenticated and fails on any non-200 or off-domain final host; setBaseUrl, README, submission draft and X posts use the domain; a test keeps basanos.vercel.app off every public surface) added; ship:6 depends on both, and its runbook and Requires name the domain; ship:7's site.json Requires follows ship:6's Provides.",
   "subsystems": [
     "spike",
     "contracts",
@@ -124,6 +124,14 @@
       "name": "VERCEL_TOKEN",
       "secret": true,
       "holder": "Vercel deploy token (closing; concierge signup gate)",
+      "usedBy": [
+        "ship deploy"
+      ]
+    },
+    {
+      "name": "VERCEL_SCOPE",
+      "secret": false,
+      "holder": "optional Vercel team slug, passed as --scope; unset for the personal account that owns suitz.xyz (P9)",
       "usedBy": [
         "ship deploy"
       ]
@@ -4522,6 +4530,8 @@
         "ship:8",
         "ship:9",
         "ship:10",
+        "ship:13",
+        "ship:14",
         "web:2",
         "web:7",
         "web:8",
@@ -4549,21 +4559,21 @@
         "test": []
       },
       "provides": [
-        "deployments/site.json ({ url, deployedAt, baseUrlTx })",
-        "public site: landing at /, app at /app/"
+        "deployments/site.json ({ url: \"https://basanos.suitz.xyz\", deploymentUrl, deployedAt, baseUrlTx })",
+        "public site https://basanos.suitz.xyz: landing at /, app at /app/"
       ],
       "requires": [
         "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)",
-        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, the registry's baseUrl() is the live certificate route, and no live page or assembled site/basanos file carries the sample marker)",
+        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (https://basanos.suitz.xyz) (/ and /app/ answer 200 unauthenticated over https and stay on the domain, polled up to 2 minutes; deployments/site.json names the domain; the registry's baseUrl() is https://basanos.suitz.xyz/app/#/cert/; no live page or assembled site/basanos file carries the sample marker)",
         "CLI: npm run build -w @basanos/web (check-env, then vite build)",
         "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
         "deployments/hideki.json (registry address, deploy block, rulebook ids)",
-        "CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json",
-        "CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json"
+        "CLI: npx tsx packages/ship/src/deploy-vercel.ts -> vercel whoami (names the scope), deploys site/basanos to the Vercel project basanos (production; the first run creates it), aliases basanos.suitz.xyz to that deployment (STOP naming the scope if the alias fails), writes deployments/site.json { url: https://basanos.suitz.xyz, deploymentUrl }; VERCEL_TOKEN in the child env only, optional VERCEL_SCOPE as --scope",
+        "CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(https://basanos.suitz.xyz/app/#/cert/) as the owner (refuses unless deployments/site.json names the domain), reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json"
       ],
       "gate": {
         "run": "npx tsx packages/ship/src/check-deploy.ts",
-        "expect": "PASS — `PASS deploy (https://<project>.vercel.app)`."
+        "expect": "PASS — `PASS deploy (https://basanos.suitz.xyz)`."
       },
       "commit": "chore(deploy): Basanos site live on Vercel; certificates point at it",
       "human_gate": true,
@@ -4597,7 +4607,7 @@
       "requires": [
         "CLI: npx tsx packages/ship/src/x-posts.ts -> writes docs/gates/x-posts-draft.md",
         "CLI: npx tsx packages/ship/src/evidence-index.ts -> writes docs/evidence/INDEX.md",
-        "deployments/site.json ({ url, deployedAt, baseUrlTx })"
+        "deployments/site.json ({ url: \"https://basanos.suitz.xyz\", deploymentUrl, deployedAt, baseUrlTx })"
       ],
       "gate": {
         "run": "npx tsx packages/ship/src/evidence-index.ts",
@@ -4818,6 +4828,142 @@
         "expect": "PASS — `PASS`."
       },
       "commit": "docs(readme): demo v2 from the replay, the one-round-trip closer, the close-gap and oracle limitations (P7)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:13",
+      "subsystem": "ship",
+      "title": "Deploy to the user's domain — the deployment read from the CLI's JSON, https://basanos.suitz.xyz aliased to it, optional VERCEL_SCOPE (P9)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "ship:8",
+        "ship:9",
+        "spike:1",
+        "spike:3",
+        "web:9"
+      ],
+      "effort": "medium",
+      "model_tier": "standard",
+      "files": {
+        "create": [],
+        "modify": [
+          "packages/ship/src/base-url.ts",
+          "packages/ship/src/vercel.ts",
+          "packages/ship/src/deploy-vercel.ts",
+          ".env.example"
+        ],
+        "test": [
+          "packages/ship/test/vercel.test.ts",
+          "packages/ship/test/base-url.test.ts"
+        ]
+      },
+      "provides": [
+        "SITE_DOMAIN = \"basanos.suitz.xyz\"",
+        "SITE_URL = \"https://basanos.suitz.xyz\"",
+        "VERCEL_PROJECT = \"basanos\"",
+        "interface VercelInvocation { command: string; args: string[]; env: NodeJS.ProcessEnv }",
+        "vercelDeployInvocation(token: string, baseEnv: NodeJS.ProcessEnv, scope?: string): VercelInvocation (npx --yes vercel@65.3.1 deploy . --prod --yes --project basanos --create-if-missing --json [--scope <slug>])",
+        "vercelAliasInvocation(token: string, baseEnv: NodeJS.ProcessEnv, deploymentUrl: string, domain: string, scope?: string): VercelInvocation",
+        "vercelWhoamiInvocation(token: string, baseEnv: NodeJS.ProcessEnv, scope?: string): VercelInvocation",
+        "interface DeployResult { deploymentUrl: string; productionUrl: string | null }",
+        "parseDeployOutput(stdout: string): DeployResult (vercel deploy --json, plain or the agent payload; READY and production only)",
+        "parseWhoami(stdout: string): string (the team slug, else the username; throws when logged out)",
+        "aliasStop(domain: string, scope: string): string",
+        "CLI: npx tsx packages/ship/src/deploy-vercel.ts -> vercel whoami (names the scope), deploys site/basanos to the Vercel project basanos (production; the first run creates it), aliases basanos.suitz.xyz to that deployment (STOP naming the scope if the alias fails), writes deployments/site.json { url: https://basanos.suitz.xyz, deploymentUrl }; VERCEL_TOKEN in the child env only, optional VERCEL_SCOPE as --scope",
+        ".env.example lists VERCEL_SCOPE (optional, empty)"
+      ],
+      "requires": [
+        "VERCEL_CLI = \"vercel@65.3.1\"",
+        "argvLeaksToken(args: readonly string[], token: string): boolean",
+        "PLACEHOLDER_BASE_URL = \"https://basanos.vercel.app/app/#/cert/\"",
+        "certBaseUrl(siteUrl: string): string",
+        "baseUrlProblem(expected: string, onChain: string): string | null",
+        "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)",
+        "repoPath(rel: string): string",
+        "loadDotEnv(path?: string): boolean",
+        ".env.example with ORACLE_ENABLED=true"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/ship -- test/vercel.test.ts test/base-url.test.ts",
+        "expect": "PASS — `8 passed`."
+      },
+      "commit": "fix(ship): deploy reads the deployment from the CLI's JSON and aliases basanos.suitz.xyz; optional VERCEL_SCOPE (P9)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:14",
+      "subsystem": "ship",
+      "title": "The live site everywhere — check-deploy polls the domain unauthenticated; setBaseUrl, README, submission draft and X posts use https://basanos.suitz.xyz (P9)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "ship:9",
+        "ship:10",
+        "ship:12",
+        "ship:13",
+        "landing:6",
+        "referee:6",
+        "contracts:8",
+        "spike:1",
+        "spike:3"
+      ],
+      "effort": "medium",
+      "model_tier": "standard",
+      "files": {
+        "create": [
+          "packages/ship/src/site-check.ts"
+        ],
+        "modify": [
+          "packages/ship/src/check-deploy.ts",
+          "packages/ship/src/set-base-url.ts",
+          "README.md",
+          "docs/gates/submission-draft.md"
+        ],
+        "test": [
+          "packages/ship/test/site-check.test.ts",
+          "packages/ship/test/public-surfaces.test.ts",
+          "packages/ship/test/ship.test.ts"
+        ]
+      },
+      "provides": [
+        "interface Page { status: number; finalUrl: string; body: string }",
+        "pageProblems(domain: string, path: string, page: Page): string[]",
+        "fetchPage(url: string): Promise<Page> (no cookie or token; redirects followed)",
+        "pollSite(get: (url: string) => Promise<Page>, siteUrl: string, paths: readonly string[], opts: PollOptions): Promise<PollResult>",
+        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (https://basanos.suitz.xyz) (/ and /app/ answer 200 unauthenticated over https and stay on the domain, polled up to 2 minutes; deployments/site.json names the domain; the registry's baseUrl() is https://basanos.suitz.xyz/app/#/cert/; no live page or assembled site/basanos file carries the sample marker)",
+        "CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(https://basanos.suitz.xyz/app/#/cert/) as the owner (refuses unless deployments/site.json names the domain), reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json",
+        "README.md and docs/gates/submission-draft.md name https://basanos.suitz.xyz as the live site",
+        "public-surface test: no README, submission draft, X-post draft, evidence index, landing or app source contains basanos.vercel.app"
+      ],
+      "requires": [
+        "SITE_URL = \"https://basanos.suitz.xyz\"",
+        "PLACEHOLDER_BASE_URL = \"https://basanos.vercel.app/app/#/cert/\"",
+        "certBaseUrl(siteUrl: string): string",
+        "baseUrlProblem(expected: string, onChain: string): string | null",
+        "sampleInBuild(pages: Record<string, string>): string[]",
+        "buildPosts(f: FeaturedRun, siteUrl: string | null): string[]",
+        "FEATURED_PATH = \"docs/evidence/featured-run.json\"",
+        "interface FeaturedRun { schema: \"basanos.featured/1\"; chainId: 50383; registry: Address; runId: string; status: string; rule: string | null; rulebook: { label: string; id: Hex; profitTargetBps: number; dailyLossBps: number; trailingDrawdownBps: number; maxExposureX: number; minDurationSec: number; timeLimitSec: number }; account: Address; start: ReadOut; breach: ReadOut | null; end: ReadOut; closeTxs: { hash: Hex; url: string }[]; verdictTx: { hash: Hex; url: string } | null; oracle: { price: string; sources: number } | null; links: { verdict: string; certificate: string | null }; trustLine: string; demoDisclosure: string; testnetNotice: string }",
+        "README.md (demo v2 chosen by the replay; the one-round-trip closer and the PASS lock buffer; the close-gap and Price Oracle limitations)",
+        "docs/gates/submission-draft.md third-party assets list (seven kit files with paths and sha256, plus docs/design/frontend.md)",
+        "makePublicClient(url: string): PublicClient",
+        "makeRefereeWallet(pk: Hex, url: string) (viem WalletClient bound to CHAIN and the key's account)",
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "repoPath(rel: string): string",
+        "loadDotEnv(path?: string): boolean",
+        "requirePrivateKey(name: SecretName, env?: NodeJS.ProcessEnv): Hex",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/ship -- test/public-surfaces.test.ts test/site-check.test.ts",
+        "expect": "PASS — `6 passed`."
+      },
+      "commit": "fix(ship): check-deploy polls https://basanos.suitz.xyz unauthenticated; setBaseUrl, README and submission draft name the domain (P9)",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"
