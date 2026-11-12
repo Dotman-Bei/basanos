@@ -2660,3 +2660,759 @@ Expected: PASS — `3 passed`.
 
 - [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
 Message: `fix(web): the kit's header markup and plain empty states`
+
+---
+
+### Task 11: The terminal's market orders are capped from the book; it shows closeable equity; the ticket opens at 5× (P5)
+
+**Files:**
+- Create: `apps/web/src/lib/order.ts`
+- Create: `apps/web/src/hooks/useBook.ts`
+- Modify: `apps/web/src/pages/Terminal.tsx`
+- Modify: `apps/web/src/components/Ticket.tsx`
+- Test: `apps/web/test/order.test.tsx`
+
+**Depends on:** Task 3, Task 5, referee:Task 13, spike:Task 2, spike:Task 4, spike:Task 6
+**Effort:** medium
+**Model tier:** standard
+**Provides:** `Ticket(props: { equity: bigint; mark: bigint; busy: boolean; defaultLeverage?: number; onOrder: (isBid: boolean, quantity: bigint) => void })`, `BTC_BOOK_PARAMS: BookParams (tick 0.1 USDso, min 13,000, lot 1,000)`, `ticketOrder(isBid: boolean, quantity: bigint, book: BookSides | null): OrderPlan`, `judgedNow(acct: AccountSnapshot | undefined, mark: bigint, book: BookSides | null): bigint | null`, `useBookAt(blockNumber: bigint | undefined): BookRead | null`, `Terminal() (market orders capped from the book; shows closeable equity and plots it on the rails; the ticket opens at DEMO_LEVERAGE_X)`
+**Requires:** `Terminal()`, `Ticket(props: { equity: bigint; mark: bigint; busy: boolean; onOrder: (isBid: boolean, quantity: bigint) => void })`, `useAccountSnapshot(address: Address | null): Snapshot | null`, `browserClient(): PublicClient`, `sendCall(key: Hex, call: ContractCall): Promise<{ hash: Hex; status: "success" | "reverted" }>`, `placeOrderCall(isBid: boolean, price: bigint, quantity: bigint, orderType: number): ContractCall`, `interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }`, `interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }`, `interface OrderPlan { isBid: boolean; quantity: bigint; price: bigint }`, `iocPrice(isBid: boolean, mark: bigint, tickSize: bigint, slippageBps: number): bigint`, `BTC_POOL`, `ORDER_TYPE_IOC = 2`, `interface BookSides { bids: readonly BookLevel[]; asks: readonly BookLevel[] } (best level first: bids descending, asks ascending)`, `interface BookRead extends BookSides { blockNumber: bigint }`, `closeableEquity(totalEquity: bigint, size: bigint, mark: bigint, book: BookSides, baseDecimals: number): bigint | null`, `planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps?: number): OrderPlan`, `readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>`, `DEMO_LEVERAGE_X = 5`
+
+Why (guide plan-bug P5 and the architect's ruling, 2026-11-12; spec §5 and §10):
+- **The buy button:** the terminal's **Buy / long** priced its IOC at mark + 20 bps. The BTC-PERP book trades about 19 bps above the mark, so a user's buy would revert the same way spike:11's open did.
+  - `ticketOrder()` now reads the book when the button is pressed and caps the IOC 20 bps past the best opposite level.
+- **What the panel shows:**
+  - The account panel leads with **closeable equity**, the number the referee judges, above the equity at the mark.
+  - The rails plot closeable equity, so the floors and the target sit against the same number the referee uses.
+  - The book is read at each snapshot's block (`useBookAt`).
+- **The ticket:** it takes an optional `defaultLeverage` and the terminal passes `DEMO_LEVERAGE_X` (5×). Without the prop it keeps 12, so web:5's existing test is untouched.
+- **UI rules:** all UI follows `docs/design/frontend.md`. This task adds only rows inside the existing `kv` list, with the existing `figure` class; no new components or styles.
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/web/test/order.test.tsx`:
+```tsx
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { iocPrice, type AccountSnapshot } from "@basanos/core";
+import { closeableEquity, type BookSides } from "@basanos/core/book";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
+import { Ticket } from "../src/components/Ticket";
+import { BTC_BOOK_PARAMS, judgedNow, ticketOrder } from "../src/lib/order";
+
+const E18 = 10n ** 18n;
+const MARK = 72_800n * E18;
+const px = (bps: number): bigint => (MARK * BigInt(1_000_000 + bps * 100)) / 1_000_000n;
+// The measured book (guide, 2026-11-12): best bid +19 bps and best ask +21 bps above the mark.
+const BOOK: BookSides = { bids: [{ price: px(19), quantity: 1_373_000n }], asks: [{ price: px(21), quantity: 1_373_000n }] };
+const acct = (total: bigint, size: bigint, equityOk = true): AccountSnapshot => ({
+  account: "0x00000000000000000000000000000000000000a1",
+  equityOk,
+  equity: total,
+  lockedCollateral: 0n,
+  totalEquity: total,
+  activePools: [],
+  size,
+});
+
+describe("the terminal's market order (P5)", () => {
+  it("caps the IOC from the book, 20 bps past the best opposite level, never from the mark", () => {
+    expect(ticketOrder(true, 342_000n, BOOK)).toEqual({ isBid: true, quantity: 342_000n, price: iocPrice(true, px(21), BTC_BOOK_PARAMS.tickSize, 20) });
+    expect(ticketOrder(false, 342_000n, BOOK).price).toBe(iocPrice(false, px(19), BTC_BOOK_PARAMS.tickSize, 20));
+    expect(() => ticketOrder(true, 342_000n, null)).toThrow(/book could not be read/);
+  });
+  it("shows the equity the referee judges: closeable when holding, marked when flat", () => {
+    expect(judgedNow(acct(50n * E18, 0n), MARK, null)).toBe(50n * E18);
+    expect(judgedNow(acct(50n * E18, 342_000n), MARK, BOOK)).toBe(closeableEquity(50n * E18, 342_000n, MARK, BOOK, 8));
+    expect(judgedNow(acct(50n * E18, 342_000n), MARK, null)).toBeNull();
+    expect(judgedNow(acct(50n * E18, 0n, false), MARK, BOOK)).toBeNull();
+    expect(judgedNow(undefined, MARK, BOOK)).toBeNull();
+  });
+  it("opens the ticket at the demo leverage", () => {
+    const onOrder = vi.fn();
+    render(<Ticket equity={1_000n * E18} mark={74_500n * E18} busy={false} defaultLeverage={DEMO_LEVERAGE_X} onOrder={onOrder} />);
+    fireEvent.click(screen.getByRole("button", { name: "Buy / long" }));
+    expect(onOrder).toHaveBeenCalledWith(true, 6_711_000n);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/web -- test/order.test.tsx`
+Expected: FAIL — `Failed to resolve import "../src/lib/order"` (`Test Files  1 failed (1)`, no tests).
+
+- [ ] **Step 3: Add the order helpers and the book hook**
+
+`apps/web/src/lib/order.ts`:
+```ts
+import type { AccountSnapshot, BookParams, OrderPlan } from "@basanos/core";
+import { closeableEquity, planOpenFromBook, type BookSides } from "@basanos/core/book";
+
+/** BTC-PERP order-book parameters (getOrderBookParameters, read 2026-11-10). */
+export const BTC_BOOK_PARAMS: BookParams = { tickSize: 10n ** 17n, minQuantity: 13_000n, lotSize: 1_000n };
+
+/** The ticket's market order: an IOC capped from the book (best ask + 20 bps to buy, best bid - 20 bps to sell), never
+ *  from the mark, which sat about 19 bps below the whole book on 2026-11-12 (P5). */
+export function ticketOrder(isBid: boolean, quantity: bigint, book: BookSides | null): OrderPlan {
+  if (!book) throw new Error("the BTC-PERP book could not be read; try again");
+  return planOpenFromBook(isBid, quantity, book, BTC_BOOK_PARAMS);
+}
+
+/** The equity the referee judges now (spec §5): closeable equity, which is the marked equity when flat; null when the
+ *  account is unpriceable or the book is not known yet. */
+export function judgedNow(acct: AccountSnapshot | undefined, mark: bigint, book: BookSides | null): bigint | null {
+  if (!acct?.equityOk) return null;
+  if (acct.size === 0n) return acct.totalEquity;
+  return book ? closeableEquity(acct.totalEquity, acct.size, mark, book, 8) : null;
+}
+```
+
+`apps/web/src/hooks/useBook.ts`:
+```ts
+import { useEffect, useState } from "react";
+import { BTC_POOL } from "@basanos/core";
+import { readBookLevels, type BookRead } from "@basanos/core/book";
+import { browserClient } from "../chain/client";
+
+/** The BTC-PERP book in the given block (the terminal shows the closeable equity the referee judges, spec §5). Keeps
+ *  the last book while the next read is in flight. */
+export function useBookAt(blockNumber: bigint | undefined): BookRead | null {
+  const [book, setBook] = useState<BookRead | null>(null);
+  useEffect(() => {
+    if (blockNumber === undefined) return;
+    let live = true;
+    void readBookLevels(browserClient(), BTC_POOL, blockNumber).then((b) => {
+      if (live && b) setBook(b);
+    });
+    return () => {
+      live = false;
+    };
+  }, [blockNumber]);
+  return book;
+}
+```
+
+- [ ] **Step 4: Wire the terminal and the ticket**
+
+Replace `apps/web/src/pages/Terminal.tsx` with:
+```tsx
+import { useEffect, useState } from "react";
+import type { Address, Hex } from "viem";
+import { BTC_POOL, CANCEL_ORDER_FOR_SELECTOR, ORDER_TYPE_IOC, PLACE_ORDER_FOR_SELECTOR, VOUCHER_DISTRIBUTOR, explorerTx, perpPoolAbi } from "@basanos/core";
+import { readBookLevels } from "@basanos/core/book";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
+import { initRunState } from "@basanos/core/evaluate";
+import { claimVoucherCall, grantRefereeCall, placeOrderCall, startRunCall, voucherAbi } from "../chain/calls";
+import { browserClient, sendCall } from "../chain/client";
+import { RailsChart } from "../components/RailsChart";
+import { StartFlow } from "../components/StartFlow";
+import { Ticket } from "../components/Ticket";
+import { WalletPanel } from "../components/WalletPanel";
+import { REFEREE, REGISTRY } from "../config";
+import { useBookAt } from "../hooks/useBook";
+import { useAccountSnapshot, useActiveRun } from "../hooks/useChain";
+import { formatUsdso, shortHash } from "../lib/format";
+import { judgedNow, ticketOrder } from "../lib/order";
+import { computeRails } from "../lib/rails";
+import { rulebookById } from "../lib/rulebooks";
+import { routeHref } from "../routes";
+import { addressOf, loadKey } from "../wallet/challengeWallet";
+
+const FAUCET = "https://explorer.testnet.somnia.network/tokyo/faucet";
+
+export function Terminal() {
+  const registry = REGISTRY;
+  const referee = REFEREE;
+  const [key, setKey] = useState<Hex | null>(() => loadKey(window.sessionStorage));
+  const address: Address | null = key ? addressOf(key) : null;
+  const snap = useAccountSnapshot(address);
+  const active = useActiveRun(address);
+  const [claimed, setClaimed] = useState(false);
+  const [granted, setGranted] = useState(false);
+  const [stt, setStt] = useState<bigint | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [log, setLog] = useState<{ label: string; hash: Hex; status: string }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [points, setPoints] = useState<bigint[]>([]);
+  const acct = snap?.accounts[0];
+  const levels = useBookAt(snap?.blockNumber);
+  // The referee judges closeable equity (spec §5): the position valued at the book prices that would close it now.
+  const judged = snap ? judgedNow(acct, snap.markPrice, levels) : null;
+
+  useEffect(() => {
+    if (!address || !referee) return;
+    const c = browserClient();
+    void Promise.all([
+      c.readContract({ address: VOUCHER_DISTRIBUTOR, abi: voucherAbi, functionName: "isClaimed", args: [address] }),
+      c.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [address, referee, PLACE_ORDER_FOR_SELECTOR] }),
+      c.readContract({ address: BTC_POOL, abi: perpPoolAbi, functionName: "isOperatorAuthorized", args: [address, referee, CANCEL_ORDER_FOR_SELECTOR] }),
+      c.getBalance({ address }),
+    ])
+      .then(([cl, p, x, bal]) => {
+        setClaimed(cl);
+        setGranted(p && x);
+        setStt(bal);
+      })
+      .catch(() => undefined);
+  }, [address, referee, log.length]);
+
+  useEffect(() => {
+    if (judged !== null && active) setPoints((ps) => [...ps.slice(-299), judged]);
+  }, [judged, active]);
+
+  const run = async (label: string, fn: () => Promise<{ hash: Hex; status: string }>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fn();
+      setLog((l) => [{ label, ...r }, ...l]);
+    } catch (e) {
+      setError((e as Error).message.slice(0, 240));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rb = active ? rulebookById(active.run.rulebookId) : null;
+  const rails =
+    active && rb
+      ? computeRails(rb, { ...initRunState(active.run.startTime, active.run.start.equity), hwm: points.reduce((m, p) => (p > m ? p : m), active.run.start.equity) })
+      : null;
+
+  return (
+    <div className="wrap">
+      <h1 className="figure">Challenge terminal</h1>
+      {!registry || !referee ? <p className="error">This build has no registry or referee address set.</p> : null}
+      <div className="app-grid">
+        <div className="app-col-4">
+          <WalletPanel store={window.sessionStorage} onChange={setKey} />
+          {key && registry && referee && address ? (
+            <StartFlow
+              claimed={claimed}
+              granted={granted}
+              running={active !== null}
+              busy={busy}
+              onClaim={() => void run("claim paper USDso", () => sendCall(key, claimVoucherCall()))}
+              onGrant={() => void run("grant the referee", () => sendCall(key, grantRefereeCall(referee)))}
+              onStart={(id) => void run("start the run", () => sendCall(key, startRunCall(registry, address, id)))}
+            />
+          ) : null}
+          {key && active && snap && acct ? (
+            <Ticket
+              equity={acct.totalEquity}
+              mark={snap.markPrice}
+              defaultLeverage={DEMO_LEVERAGE_X}
+              busy={busy}
+              onOrder={(isBid, qty) =>
+                void run(isBid ? "buy / long" : "sell / short", async () => {
+                  const plan = ticketOrder(isBid, qty, await readBookLevels(browserClient(), BTC_POOL));
+                  return sendCall(key, placeOrderCall(isBid, plan.price, plan.quantity, ORDER_TYPE_IOC));
+                })
+              }
+            />
+          ) : null}
+        </div>
+        <div className="app-col-8">
+          <section className="panel" aria-labelledby="status-h">
+            <h2 id="status-h" className="label">
+              Account
+            </h2>
+            <dl className="kv">
+              <dt>Closeable equity (what the referee judges)</dt>
+              <dd className="figure">{judged !== null ? `${formatUsdso(judged)} USDso` : "—"}</dd>
+              <dt>Equity at the mark</dt>
+              <dd>{acct?.equityOk ? `${formatUsdso(acct.totalEquity)} USDso` : "—"}</dd>
+              <dt>STT for gas</dt>
+              <dd>
+                {stt === null ? "—" : `${formatUsdso(stt)} STT`}{" "}
+                <a className="link" href={FAUCET} target="_blank" rel="noreferrer">
+                  Tokyo faucet
+                </a>
+              </dd>
+              <dt>Paper USDso voucher</dt>
+              <dd>{address ? (claimed ? "claimed" : "not claimed (one claim per address)") : "—"}</dd>
+              <dt>Run</dt>
+              <dd>
+                {active ? (
+                  <a className="link" href={routeHref({ name: "run", runId: active.runId })}>
+                    Run {active.runId.toString()} on {rb?.label ?? "an unknown rulebook"}
+                  </a>
+                ) : (
+                  "No active run"
+                )}
+              </dd>
+            </dl>
+          </section>
+          {rails ? <RailsChart rails={rails} points={points} /> : null}
+          <section className="panel" aria-labelledby="log-h">
+            <h2 id="log-h" className="label">
+              Transactions
+            </h2>
+            {error ? (
+              <p role="alert" className="error">
+                {error}
+              </p>
+            ) : null}
+            <ul className="log">
+              {log.map((t) => (
+                <li key={t.hash}>
+                  {t.label}: {t.status}{" "}
+                  <a className="link mono" href={explorerTx(t.hash)} target="_blank" rel="noreferrer">
+                    {shortHash(t.hash)}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+Replace `apps/web/src/components/Ticket.tsx` with:
+```tsx
+import { useState } from "react";
+import { quantityForLeverage } from "@basanos/core";
+
+const BOOK = { tickSize: 10n ** 17n, minQuantity: 13_000n, lotSize: 1_000n };
+
+export function Ticket(props: { equity: bigint; mark: bigint; busy: boolean; defaultLeverage?: number; onOrder: (isBid: boolean, quantity: bigint) => void }) {
+  const [leverage, setLeverage] = useState(props.defaultLeverage ?? 12);
+  const qty = props.mark > 0n ? quantityForLeverage(props.equity, leverage, props.mark, 8, BOOK) : 0n;
+  return (
+    <section className="panel" aria-labelledby="ticket-h">
+      <h2 id="ticket-h" className="label">
+        BTC-PERP ticket (market, IOC)
+      </h2>
+      <div className="field">
+        <label htmlFor="lev">Leverage (x equity)</label>
+        <input id="lev" type="number" min={1} max={15} value={leverage} onChange={(e) => setLeverage(Number(e.target.value))} />
+      </div>
+      <p className="label">Size: {(Number(qty) / 1e8).toFixed(5)} BTC</p>
+      <div className="btn-row">
+        <button type="button" className="btn btn--primary" disabled={props.busy || qty === 0n} onClick={() => props.onOrder(true, qty)}>
+          Buy / long
+        </button>
+        <button type="button" className="btn btn--secondary" disabled={props.busy || qty === 0n} onClick={() => props.onOrder(false, qty)}>
+          Sell / short
+        </button>
+      </div>
+    </section>
+  );
+}
+```
+
+- [ ] **Step 5: Type-check and build**
+Run: `npm run typecheck -w @basanos/web`
+Expected: exits 0 with no `error TS` lines.
+Run: `npm run build -w @basanos/web`
+Expected: `check-env` passes, then Vite prints `built in` (the existing chunk-size warning is expected).
+
+- [ ] **Step 6: Run the whole web suite**
+Run: `npm test -w @basanos/web`
+Expected: no failed tests.
+
+- [ ] **Step 7: Run the new test (the gate)**
+Run: `npm test -w @basanos/web -- test/order.test.tsx`
+Expected: PASS — `3 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `fix(web): the terminal's orders are capped from the book and it shows closeable equity (P5)`
+
+---
+
+### Task 12: The verdict page replays the judged equity: the breach revalued at the book of its block (P5)
+
+**Files:**
+- Create: `apps/web/src/lib/judged.ts`
+- Modify: `apps/web/src/components/VerdictView.tsx`
+- Modify: `apps/web/src/pages/Verdict.tsx`
+- Test: `apps/web/test/verdict-judged.test.tsx`
+
+**Depends on:** Task 4, Task 6, Task 8, Task 9, Task 10, referee:Task 13
+**Effort:** low
+**Model tier:** standard
+**Provides:** `interface JudgedView { equity: bigint | null; served: boolean }`, `judgedFromBook(read: StoredRead, book: BookSides | null): JudgedView`, `replayJudged(client: PublicClient, pool: Address, read: StoredRead): Promise<JudgedView>`, `VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void; breachJudged?: JudgedView | null })`
+**Requires:** `VerdictView(props: { data: VerdictData; replay: Record<"start" | "breach" | "end", ReplayRow[] | null>; onReplay: () => void })`, `VerdictPage(props: { runId: bigint })`, `interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }`, `interface StoredRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }`, `replayRead(client: PublicClient, account: Address, pool: Address, stored: StoredRead): Promise<ReplayRow[]>`, `formatUsdso(raw: bigint, decimals?: number): string`, `interface BookSides { bids: readonly BookLevel[]; asks: readonly BookLevel[] } (best level first: bids descending, asks ascending)`, `closeableEquity(totalEquity: bigint, size: bigint, mark: bigint, book: BookSides, baseDecimals: number): bigint | null`, `readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>`
+
+Why (architect ruling P5, 2026-11-12; spec §2 and §10):
+- **The gap:** the rules now judge closeable equity (referee:13 and referee:14). The stored breach read is the marked equity, because the registry's `Read` struct is fixed.
+  - For a long, the marked equity is the lower of the two, so a stored equity at or below the floor already shows the breach.
+  - For a short, it reads higher by the basis, so the stored equity alone could sit above the floor of a real breach.
+- **The replay:** when a FAIL is replayed, the page also re-reads the book at the breach block. It shows the stored equity revalued at that book, the closeable equity the rule judged, labelled as such.
+  - Past the RPC's history it says the book is no longer served.
+  - The referee's evidence bundle carries the same number and its book (referee:14).
+- **Unchanged:** start and end are flat, so they need no book; nothing changes for them.
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/web/test/verdict-judged.test.tsx`:
+```tsx
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type { BookSides } from "@basanos/core/book";
+import { VerdictView, type VerdictData } from "../src/components/VerdictView";
+import { judgedFromBook } from "../src/lib/judged";
+
+const E18 = 10n ** 18n;
+const MARK = 72_800n * E18;
+const px = (bps: number): bigint => (MARK * BigInt(1_000_000 + bps * 100)) / 1_000_000n;
+const BOOK: BookSides = { bids: [{ price: px(19), quantity: 1_373_000n }], asks: [{ price: px(21), quantity: 1_373_000n }] };
+const read = (equity: bigint, block: bigint, positionSize = 0n) => ({ blockNumber: block, equityOk: true, equity, lockedCollateral: 0n, positionSize, markOk: true, markPrice: MARK });
+// A short that breached daily loss: the stored (marked) equity reads high by the basis; the book shows the real loss.
+const breach = read(4_990n * 10n ** 16n, 160n, -342_000n);
+const data: VerdictData = {
+  runId: 4n,
+  account: "0x00000000000000000000000000000000000000a1",
+  status: 3,
+  rule: 1,
+  voidReason: 0,
+  rulebookLabel: "Tokyo Sprint · Demo",
+  rulebookId: `0x${"11".repeat(32)}`,
+  rulebookJson: null,
+  start: read(50n * E18, 100n),
+  breach,
+  end: read(4_960n * 10n ** 16n, 165n),
+  closeTxs: [],
+  oraclePrice: 0n,
+  oracleSources: 0,
+  oracleDone: false,
+};
+
+describe("the verdict page replays the judged equity (spec §5, P5)", () => {
+  it("revalues the stored breach read at the book of its block", () => {
+    const j = judgedFromBook(breach, BOOK);
+    expect(j).toEqual({ equity: breach.equity - ((px(21) - MARK) * 342_000n) / 10n ** 8n, served: true });
+    expect(judgedFromBook(breach, null)).toEqual({ equity: null, served: false });
+    expect(judgedFromBook({ ...breach, equityOk: false }, BOOK)).toEqual({ equity: null, served: true });
+  });
+  it("shows the closeable equity beside the stored reads after Replay, and says how it was judged", () => {
+    const j = judgedFromBook(breach, BOOK);
+    render(<VerdictView data={data} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} breachJudged={j} />);
+    expect(screen.getByText("Closeable equity (judged)")).toBeTruthy();
+    expect(screen.getByText("49.37 USDso")).toBeTruthy();
+    expect(screen.getByText(/revalued at the book in this block/)).toBeTruthy();
+  });
+  it("labels a book the public RPC no longer serves, and shows nothing before Replay", () => {
+    const { rerender } = render(<VerdictView data={data} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} breachJudged={{ equity: null, served: false }} />);
+    expect(screen.getByText("book no longer served by the public RPC")).toBeTruthy();
+    rerender(<VerdictView data={data} replay={{ start: null, breach: null, end: null }} onReplay={vi.fn()} />);
+    expect(screen.queryByText("Closeable equity (judged)")).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/web -- test/verdict-judged.test.tsx`
+Expected: FAIL — `Failed to resolve import "../src/lib/judged"` (`Test Files  1 failed (1)`, no tests).
+
+- [ ] **Step 3: Add the judged-equity replay**
+
+`apps/web/src/lib/judged.ts`:
+```ts
+import type { Address, PublicClient } from "viem";
+import { closeableEquity, readBookLevels, type BookSides } from "@basanos/core/book";
+import type { StoredRead } from "./replay";
+
+/** A breach as the referee judged it (spec §5): the stored equity revalued at the book in the breach block. */
+export interface JudgedView {
+  /** Closeable equity in USDso wei; null when the read was unpriceable or the book could not price the position. */
+  equity: bigint | null;
+  /** false when the public RPC no longer serves the book at that block. */
+  served: boolean;
+}
+
+export function judgedFromBook(read: StoredRead, book: BookSides | null): JudgedView {
+  if (!book) return { equity: null, served: false };
+  if (!read.equityOk || !read.markOk) return { equity: null, served: true };
+  return { equity: closeableEquity(read.equity + read.lockedCollateral, read.positionSize, read.markPrice, book, 8), served: true };
+}
+
+/** Re-reads the book at the breach block and revalues the stored read at it. */
+export async function replayJudged(client: PublicClient, pool: Address, read: StoredRead): Promise<JudgedView> {
+  return judgedFromBook(read, await readBookLevels(client, pool, read.blockNumber));
+}
+```
+
+- [ ] **Step 4: Show it on the verdict page**
+
+Replace `apps/web/src/components/VerdictView.tsx` with:
+```tsx
+import type { Address, Hex } from "viem";
+import { RULE_NAMES, RUN_STATUS, VOID_REASONS, explorerTx } from "@basanos/core";
+import { formatUsdso, shortHash } from "../lib/format";
+import type { JudgedView } from "../lib/judged";
+import type { ReplayRow, StoredRead } from "../lib/replay";
+import { routeHref } from "../routes";
+
+export const TRUST_LINE = "Every certificate is chain-checked at mint; every verdict is replayable.";
+
+/** Shown when a verdict has no recorded Price Oracle reading (the registry asks at each verdict, best-effort, inside try). */
+export const ORACLE_NO_READING_LINE = "No Price Oracle reading was recorded for this verdict.";
+
+export interface VerdictData {
+  runId: bigint;
+  account: Address;
+  status: number;
+  rule: number;
+  voidReason: number;
+  rulebookLabel: string;
+  rulebookId: Hex;
+  rulebookJson: string | null;
+  start: StoredRead;
+  breach: StoredRead;
+  end: StoredRead;
+  closeTxs: readonly Hex[];
+  oraclePrice: bigint;
+  oracleSources: number;
+  oracleDone: boolean;
+}
+
+const MATCH_TEXT: Record<ReplayRow["match"], string> = {
+  exact: "matches",
+  "within-tolerance": "matches within 10 bps (end of block vs inside the transaction)",
+  differs: "differs",
+  "not-served": "stored on-chain; state no longer served by the public RPC",
+};
+
+function heading(d: VerdictData): string {
+  const status = RUN_STATUS[d.status] ?? "Unknown";
+  if (status === "Failed") return `FAILED — ${RULE_NAMES[d.rule] ?? "rule"}`;
+  if (status === "Voided") return `VOID — ${VOID_REASONS[d.voidReason] ?? "reason"}`;
+  return status.toUpperCase();
+}
+
+function judgedText(j: JudgedView): string {
+  if (!j.served) return "book no longer served by the public RPC";
+  return j.equity === null ? "the book in this block cannot price the position" : `${formatUsdso(j.equity)} USDso`;
+}
+
+function ReadBlock(props: { title: string; who: string; read: StoredRead; rows: ReplayRow[] | null; judged?: JudgedView | null }) {
+  return (
+    <section className="panel">
+      <h2 className="label">
+        {props.title} — block {props.read.blockNumber.toString()} ({props.who})
+      </h2>
+      <dl className="kv">
+        <dt>Equity</dt>
+        <dd className="mono">{props.read.equityOk ? `${formatUsdso(props.read.equity + props.read.lockedCollateral)} USDso` : "unpriceable"}</dd>
+        <dt>Position size</dt>
+        <dd className="mono">{props.read.positionSize.toString()}</dd>
+        <dt>Mark</dt>
+        <dd className="mono">{props.read.markOk ? formatUsdso(props.read.markPrice) : "no fresh mark"}</dd>
+        {props.judged ? (
+          <>
+            <dt>Closeable equity (judged)</dt>
+            <dd className="mono">{judgedText(props.judged)}</dd>
+          </>
+        ) : null}
+      </dl>
+      {props.judged ? (
+        <p className="label">The rules judge closeable equity: the stored equity revalued at the book in this block (bids for a long, asks for a short).</p>
+      ) : null}
+      {props.rows ? (
+        <ul className="log">
+          {props.rows.map((r) => (
+            <li key={r.field}>
+              <span className="mono">{r.call}</span>: {MATCH_TEXT[r.match]}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+export function VerdictView(props: {
+  data: VerdictData;
+  replay: Record<"start" | "breach" | "end", ReplayRow[] | null>;
+  onReplay: () => void;
+  /** The breach revalued at the replayed book (spec §5); absent until Replay is pressed. */
+  breachJudged?: JudgedView | null;
+}) {
+  const d = props.data;
+  const passed = d.status === 2;
+  const failed = d.status === 3;
+  return (
+    <div className="wrap">
+      <p className="label">Run {d.runId.toString()}</p>
+      <h1 className="figure">{heading(d)}</h1>
+      <p>
+        <span className={`state ${passed ? "state--passed" : failed ? "state--failed" : ""}`}>{d.rulebookLabel}</span>
+      </p>
+      <p>{TRUST_LINE}</p>
+      {passed ? (
+        <p>
+          <a className="link" href={routeHref({ name: "cert", runId: d.runId })}>
+            View the certificate
+          </a>
+        </p>
+      ) : null}
+      <div className="btn-row">
+        <button type="button" className="btn btn--primary" onClick={props.onReplay}>
+          Replay at the pinned blocks
+        </button>
+      </div>
+      <div className="app-grid">
+        <div className="app-col-8">
+          <ReadBlock title="Start" who="read by the registry in the transaction" read={d.start} rows={props.replay.start} />
+          {failed ? <ReadBlock title="Breach" who="attested by the referee" read={d.breach} rows={props.replay.breach} judged={props.breachJudged ?? null} /> : null}
+          <ReadBlock title="End" who="read by the registry in the transaction" read={d.end} rows={props.replay.end} />
+        </div>
+        <div className="app-col-4">
+          <section className="panel">
+            <h2 className="label">Account</h2>
+            <p className="mono">{d.account}</p>
+            <h2 className="label">Rulebook id</h2>
+            <p className="mono">{d.rulebookId}</p>
+            {d.rulebookJson ? (
+              <details>
+                <summary className="label">Rulebook JSON (its id is the keccak256 of this canonical JSON)</summary>
+                <pre className="mono">{d.rulebookJson}</pre>
+              </details>
+            ) : null}
+          </section>
+          {d.closeTxs.length > 0 ? (
+            <section className="panel">
+              <h2 className="label">Referee close transactions</h2>
+              <ul className="log">
+                {d.closeTxs.map((h) => (
+                  <li key={h}>
+                    <a className="link mono" href={explorerTx(h)} target="_blank" rel="noreferrer">
+                      {shortHash(h)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          <section className="panel">
+            <h2 className="label">Price Oracle cross-check</h2>
+            <p className="mono">
+              {d.oracleDone && d.oracleSources > 0
+                ? `${formatUsdso(d.oraclePrice)} (${d.oracleSources} sources) vs mark ${formatUsdso(d.end.markPrice)}`
+                : ORACLE_NO_READING_LINE}
+            </p>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+Replace `apps/web/src/pages/Verdict.tsx` with:
+```tsx
+import { useEffect, useState } from "react";
+import { basanosRegistryAbi } from "@basanos/core";
+import { browserClient } from "../chain/client";
+import { VerdictView, type VerdictData } from "../components/VerdictView";
+import { REGISTRY } from "../config";
+import { replayJudged, type JudgedView } from "../lib/judged";
+import { replayRead, type ReplayRow } from "../lib/replay";
+import { rulebookById } from "../lib/rulebooks";
+import { routeHref } from "../routes";
+
+/** A run id the registry never issued reads back as an empty record (status None, zero account). */
+export function runMissing(run: { status: number; account: string }): boolean {
+  return run.status === 0 && /^0x0{40}$/i.test(run.account);
+}
+
+/** The plain empty state for a missing run (docs/design/frontend.md), instead of an empty verdict. */
+export function RunNotFound(props: { runId: bigint }) {
+  const id = props.runId.toString();
+  return (
+    <div className="wrap">
+      <h1 className="figure">Run {id} not found</h1>
+      <p>
+        No run {id} is in the registry. <a className="link" href={routeHref({ name: "home" })}>See the recent verdicts</a>.
+      </p>
+    </div>
+  );
+}
+
+export function VerdictPage(props: { runId: bigint }) {
+  const [data, setData] = useState<VerdictData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [pool, setPool] = useState<`0x${string}` | null>(null);
+  const [replay, setReplay] = useState<Record<"start" | "breach" | "end", ReplayRow[] | null>>({ start: null, breach: null, end: null });
+  const [breachJudged, setBreachJudged] = useState<JudgedView | null>(null);
+  useEffect(() => {
+    if (!REGISTRY) {
+      setError("This build has no registry address set.");
+      return;
+    }
+    const registry = REGISTRY;
+    const c = browserClient();
+    void (async () => {
+      try {
+        const run = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRun", args: [props.runId] });
+        if (runMissing(run)) {
+          setMissing(true);
+          return;
+        }
+        const closeTxs = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getCloseTxs", args: [props.runId] });
+        const params = await c.readContract({ address: registry, abi: basanosRegistryAbi, functionName: "getRulebook", args: [run.rulebookId] });
+        setPool(params.pool);
+        setData({
+          runId: props.runId,
+          account: run.account,
+          status: run.status,
+          rule: run.rule,
+          voidReason: run.voidReason,
+          rulebookLabel: rulebookById(run.rulebookId)?.label ?? "Unpublished rulebook",
+          rulebookId: run.rulebookId,
+          rulebookJson: (() => {
+            const rb = rulebookById(run.rulebookId);
+            return rb ? JSON.stringify(rb, null, 2) : null;
+          })(),
+          start: run.start,
+          breach: run.breach,
+          end: run.end,
+          closeTxs,
+          oraclePrice: run.oraclePrice,
+          oracleSources: run.oracleSources,
+          oracleDone: run.oracleDone,
+        });
+      } catch (e) {
+        setError((e as Error).message.slice(0, 200));
+      }
+    })();
+  }, [props.runId]);
+  if (error) return <p className="wrap error">{error}</p>;
+  if (missing) return <RunNotFound runId={props.runId} />;
+  if (!data || !pool) return <p className="wrap label">Reading run {props.runId.toString()} from the registry…</p>;
+  const onReplay = async () => {
+    const c = browserClient();
+    const [start, breach, end, judged] = await Promise.all([
+      replayRead(c, data.account, pool, data.start),
+      data.status === 3 ? replayRead(c, data.account, pool, data.breach) : Promise.resolve(null),
+      replayRead(c, data.account, pool, data.end),
+      data.status === 3 ? replayJudged(c, pool, data.breach) : Promise.resolve(null),
+    ]);
+    setReplay({ start, breach, end });
+    setBreachJudged(judged);
+  };
+  return <VerdictView data={data} replay={replay} onReplay={() => void onReplay()} breachJudged={breachJudged} />;
+}
+```
+
+- [ ] **Step 5: Type-check and build**
+Run: `npm run typecheck -w @basanos/web`
+Expected: exits 0 with no `error TS` lines.
+Run: `npm run build -w @basanos/web`
+Expected: `check-env` passes, then Vite prints `built in`.
+
+- [ ] **Step 6: Run the whole web suite**
+Run: `npm test -w @basanos/web`
+Expected: no failed tests.
+
+- [ ] **Step 7: Run the new test (the gate)**
+Run: `npm test -w @basanos/web -- test/verdict-judged.test.tsx`
+Expected: PASS — `3 passed`.
+
+- [ ] **Step 8: Commit (kernel-performed — no agent runs this)**
+Message: `fix(web): the verdict page replays the breach's closeable equity at the book of its block (P5)`

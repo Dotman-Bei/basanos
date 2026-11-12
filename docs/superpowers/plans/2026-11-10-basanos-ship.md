@@ -654,7 +654,7 @@ Message: `docs(evidence): featured run = the rehearsal's first real verdict`
 - Modify: `apps/landing/src/featured-verdict.json`
 - Modify: `apps/landing/src/img/verdict.png`
 
-**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2, landing:Task 4, referee:Task 12
+**Depends on:** Task 1, Task 2, referee:Task 7, referee:Task 8, referee:Task 10, landing:Task 2, landing:Task 4, referee:Task 12, referee:Task 14, referee:Task 15, web:Task 11
 **Effort:** medium
 **Model tier:** top
 **Provides:** `money shot take in docs/evidence/demo-takes.json (one PASS, one FAIL)`, `FEATURED_RUN_ID (the money-shot PASS run; set in .env)`
@@ -669,8 +669,8 @@ Expected: `referee watching registry 0x…`.
 - [ ] **Step 2: Take the money shot (terminal 2), with account A opened by a human from the terminal**
 Run: `npx tsx packages/bot/src/demo.ts --a-manual`
 Expected:
-1. The disclosure line, two `run <id>` lines, and `A: open the long from the Basanos terminal now (12x).`
-2. Open the app at `/app/#/challenge`, paste `ACCOUNT_A_PK` into the challenge wallet's import field, and press **Buy / long** at 12×.
+1. The disclosure line, two `run <id>` lines, and `A: open the long from the Basanos terminal now (5x).`
+2. Open the app at `/app/#/challenge`, paste `ACCOUNT_A_PK` into the challenge wallet's import field, and press **Buy / long** at the ticket's default 5× (the terminal caps the IOC from the book and shows the closeable equity the referee judges).
 3. Within about 15 minutes, one run is `Passed` and the other `Failed/<rule>`, and the take is recorded.
 
 - [ ] **Step 3: Make the money-shot PASS run the featured run**
@@ -1008,7 +1008,7 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 - Create: `deployments/site.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, Task 10, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, landing:Task 3, landing:Task 5, contracts:Task 10
+**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, Task 10, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, web:Task 11, web:Task 12, landing:Task 3, landing:Task 5, contracts:Task 10
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`
@@ -1458,3 +1458,81 @@ Expected: PASS — `1 passed`.
 
 - [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
 Message: `fix(ship): the deploy check refuses the landing's sample-fixture marker`
+
+---
+
+### Task 11: README — the referee judges closeable equity; the demo runs at 5× (P5)
+
+**Files:**
+- Modify: `README.md`
+
+**Depends on:** Task 5, referee:Task 14, referee:Task 15, web:Task 11, web:Task 12
+**Effort:** low
+**Model tier:** standard
+**Provides:** `README.md (closeable equity in How it works and Roadmap; the 5x demo in Quickstart)`
+**Requires:** `README.md (R1-web-app v1 + event-overlay; TBD-post-build lines for live facts)`
+
+Why (architect ruling P5, 2026-11-12): the README is ship:5's output. It says the demo opens opposite 12x positions, and it does not say what equity the rules judge. After referee:13 to referee:15 and web:11 and web:12, the rules judge closeable equity and the demo runs at 5×. These are five exact text replacements. Every heading stays, so `check-readme` still passes; each "old" text occurs exactly once in `README.md`.
+
+- [ ] **Step 1: Replace text 1 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+npx tsx packages/bot/src/demo.ts            # terminal 2: two accounts, opposite 12x positions, one PASS and one FAIL
+```
+New:
+```text
+npx tsx packages/bot/src/demo.ts            # terminal 2: two accounts, opposite 5x positions, one PASS and one FAIL
+```
+
+- [ ] **Step 2: Replace text 2 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+A watch gap pauses judging; the referee re-reads at head before it resumes. Money flows void a run; liquidations fail it.
+```
+New:
+```text
+A watch gap pauses judging; the referee re-reads at head before it resumes. Money flows void a run; liquidations fail it.
+- **Closeable equity.** Every rule judges the equity a close would leave: the MarginBank equity revalued from the mark to the book levels that would fill the close (bids for a long, asks for a short), read in the same block, since the price watch carries the book with each snapshot. On BTC-PERP the book trades about 19 bps above the mark, so equity at the mark alone would show a fresh long an instant loss and a fresh short a phantom gain; closeable equity charges only the spread actually crossed. A position the book cannot price pauses judging.
+```
+
+- [ ] **Step 3: Replace text 3 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+an evidence hash of the bundle in `docs/evidence/runs.json`. PASS is checked
+```
+New:
+```text
+an evidence hash of the bundle in `docs/evidence/runs.json`; a FAIL's bundle also carries the closeable equity it was judged on and the book it was revalued at. PASS is checked
+```
+
+- [ ] **Step 4: Replace text 4 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+- **Replay.** The verdict page re-runs every stored read at its block; past the public RPC's history it shows the values stored on-chain.
+```
+New:
+```text
+- **Replay.** The verdict page re-runs every stored read at its block, and for a FAIL re-reads the book at the breach block to show the closeable equity the rule judged; past the public RPC's history it shows the values stored on-chain.
+```
+
+- [ ] **Step 5: Replace text 5 of 5 in README.md**
+
+Old (exactly once in `README.md`):
+```text
+is not seen (gaps are logged in the evidence);
+```
+New:
+```text
+is not seen (gaps are logged in the evidence); a position the book read cannot price (an empty side, or a size beyond the 20 levels read) pauses judging for that snapshot;
+```
+
+- [ ] **Step 6: Check the schema (the gate)**
+Run: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-readme.ps1`
+Expected: PASS — `PASS`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `docs(readme): the referee judges closeable equity; the demo runs at 5x (P5)`

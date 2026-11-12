@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10. 2026-11-12 (P5, the book trades ~19 bps above the mark): referee:13 (core: book reads, the evaluator judges closeable equity, book-capped opens, DEMO_LEVERAGE_X 5), referee:14 (the referee judges with the book of the same block; FAIL evidence records it), referee:15 (bot opens from the book, 5x demo, demo-check measures the spread), spike:21 (skeleton opens from the book; the dry-run simulates the open), web:11 (terminal orders from the book, closeable equity, 5x ticket), web:12 (verdict replays the judged equity) and ship:11 (README) added; spike:11 depends on spike:21, referee:10 on referee:14 and referee:15, ship:3 on referee:14, referee:15 and web:11, ship:6 on web:11 and web:12.",
   "subsystems": [
     "spike",
     "contracts",
@@ -686,7 +686,8 @@
         "spike:10",
         "spike:14",
         "spike:18",
-        "spike:20"
+        "spike:20",
+        "spike:21"
       ],
       "effort": "medium",
       "model_tier": "top",
@@ -698,17 +699,17 @@
         "test": []
       },
       "provides": [
-        "docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage { voucherLeverageCapX, capX, capSource }, funding { unlockedWei }, entry { markBefore, avgEntryPrice, costBps }, costs)"
+        "docs/evidence/g1a-close.json (ok, txs with hashes, finalPositionSize, leverage { voucherLeverageCapX, capX, capSource }, funding { unlockedWei }, entry { markBefore, bestBidBefore, bestAskBefore, avgEntryPrice, costBps, costVsBookBps, spreadBps }, costs)"
       ],
       "requires": [
-        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send] (funded test: account A needs >= 1 USDso of unlocked MarginBank margin; records the leverage cap that applies)",
+        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send] (funded test; the open is capped from the book at best ask + 20 bps and the dry-run simulates it from account A; entry evidence against the mark and the book)",
         "CLI: npx tsx packages/spike/src/check-evidence.ts <name...> -> prints PASS or FAIL lines, exit 0 only when all PASS"
       ],
       "gate": {
         "run": "npx tsx packages/spike/src/check-evidence.ts g1a-close",
         "expect": "PASS — `PASS g1a-close`."
       },
-      "commit": "docs(evidence): G1(a) referee closes a voucher account on Hideki",
+      "commit": "docs(evidence): G1(a) referee closes a funded account on Hideki",
       "human_gate": true,
       "gate_profile": "wallet",
       "allow_empty": false,
@@ -1258,6 +1259,60 @@
         "expect": "PASS — `31 passed`."
       },
       "commit": "fix(spike): the skeleton tests a funded account and records the leverage cap that applies",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "spike:21",
+      "subsystem": "spike",
+      "title": "The skeleton opens from the book, and its dry-run simulates the open from account A (P5)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-spike.md",
+      "depends_on": [
+        "spike:2",
+        "spike:6",
+        "spike:14",
+        "spike:20",
+        "referee:13"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/spike/src/entry.ts"
+        ],
+        "modify": [
+          "packages/spike/src/skeleton-close.ts"
+        ],
+        "test": [
+          "packages/spike/test/entry.test.ts"
+        ]
+      },
+      "provides": [
+        "openProblem(plan: OrderPlan, levels: BookRead): string | null",
+        "entryRecord(plan: OrderPlan, mark: bigint, markBlock: bigint, levels: BookRead, avgEntryPrice: bigint): EntryRecord",
+        "interface EntryRecord { side: \"long\" | \"short\"; quantity: bigint; limitPrice: bigint; markBefore: bigint; markBlock: bigint; bookBlock: bigint; bestBidBefore: bigint; bestAskBefore: bigint; avgEntryPrice: bigint; costBps: number; costVsBookBps: number | null; spreadBps: number | null }",
+        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send] (funded test; the open is capped from the book at best ask + 20 bps and the dry-run simulates it from account A; entry evidence against the mark and the book)"
+      ],
+      "requires": [
+        "CLI: npx tsx packages/spike/src/skeleton-close.ts [--dry-run] [--sdk-send] (funded test: account A needs >= 1 USDso of unlocked MarginBank margin; records the leverage cap that applies)",
+        "BTC_POOL",
+        "ORDER_TYPE_IOC = 2",
+        "farFutureNs(nowMs?: number): bigint",
+        "ownerOrderCall(pool: Address, isBid: boolean, price: bigint, quantity: bigint, orderType: number, expireTimestampNs: bigint): UnsignedCall",
+        "interface OrderPlan { isBid: boolean; quantity: bigint; price: bigint }",
+        "planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan",
+        "interface BookRead extends BookSides { blockNumber: bigint }",
+        "readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>",
+        "fillableAt(isBid: boolean, limit: bigint, book: BookSides): bigint",
+        "planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps?: number): OrderPlan",
+        "OPEN_MARGIN_BPS = 20"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/spike -- test/entry.test.ts",
+        "expect": "PASS — `2 passed`."
+      },
+      "commit": "fix(spike): the skeleton opens from the book and its dry-run simulates the open (P5)",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"
@@ -2395,6 +2450,8 @@
         "referee:9",
         "referee:11",
         "referee:12",
+        "referee:14",
+        "referee:15",
         "contracts:10",
         "contracts:11",
         "spike:11",
@@ -2423,7 +2480,7 @@
       "requires": [
         "CLI: npx tsx packages/referee/src/cli.ts start | enroll <account> --rulebook <tokyo-sprint|tokyo-sprint-demo> | status",
         "CLI: npx tsx packages/bot/src/demo.ts [--a-manual] [--wait-min 10] [--one-account [--pass-side long|short]] (two funded accounts by default; --one-account is the A-only fallback)",
-        "CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (sizes from A's and B's live equity; checks the pool minimum)",
+        "CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (closeable-equity cost: the spread for the demo size walked from one book read, at DEMO_LEVERAGE_X)",
         "CLI: npx tsx packages/referee/src/register-rulebook.ts <tokyo-sprint|tokyo-sprint-demo> (owner = REFEREE_PK; updates deployments/hideki.json)",
         "CLI: npx tsx packages/referee/src/check-rehearsal.ts -> writes docs/evidence/rehearsal.json, prints PASS rehearsal",
         "deployments/hideki.json (registry address, deploy block, rulebook ids)"
@@ -2582,6 +2639,219 @@
         "expect": "PASS — `2 passed`."
       },
       "commit": "fix(bot): readiness tests funded accounts, not vouchers; the demo keeps a one-account fallback",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:13",
+      "subsystem": "referee",
+      "title": "Closeable equity — the core reads the book, the evaluator judges closeable equity, opens are capped from the book (P5)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:1",
+        "referee:2",
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [
+          "packages/core/src/book.ts"
+        ],
+        "modify": [
+          "packages/core/src/evaluate.ts",
+          "packages/core/src/demo-math.ts"
+        ],
+        "test": [
+          "packages/core/test/book.test.ts",
+          "packages/core/test/evaluate-closeable.test.ts",
+          "packages/core/test/demo-closeable.test.ts"
+        ]
+      },
+      "provides": [
+        "interface BookLevel { price: bigint; quantity: bigint }",
+        "interface BookSides { bids: readonly BookLevel[]; asks: readonly BookLevel[] } (best level first: bids descending, asks ascending)",
+        "interface BookRead extends BookSides { blockNumber: bigint }",
+        "BOOK_DEPTH = 20",
+        "OPEN_MARGIN_BPS = 20",
+        "bookCall(pool: Address, depth?: number): { to: Address; data: Hex } (one Multicall3 call: block number and both sides)",
+        "decodeBook(result: Hex): BookRead | null",
+        "readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>",
+        "closeableEquity(totalEquity: bigint, size: bigint, mark: bigint, book: BookSides, baseDecimals: number): bigint | null",
+        "averageFill(isBid: boolean, quantity: bigint, book: BookSides): bigint | null",
+        "fillableAt(isBid: boolean, limit: bigint, book: BookSides): bigint",
+        "planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps?: number): OrderPlan",
+        "interface MarketView { timestamp: bigint; markOk: boolean; markPrice: bigint; book?: BookSides | null }",
+        "interface Evaluation { state: RunState; verdict: Verdict; exposureX: number | null; judgedEquity: bigint | null }",
+        "equityToJudge(acct: AccountSnapshot, market: MarketView, baseDecimals: number): bigint | null",
+        "evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, market: MarketView): Evaluation (judges closeable equity when market.book is given; omitted, at the mark)",
+        "DEMO_LEVERAGE_X = 5",
+        "roundTripSpreadBps(buyAverage: bigint, sellAverage: bigint): number"
+      ],
+      "requires": [
+        "MULTICALL3",
+        "multicall3Abi",
+        "perpPoolAbi",
+        "BTC_POOL",
+        "alignDown(x: bigint, step: bigint): bigint",
+        "alignUp(x: bigint, step: bigint): bigint",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "interface OrderPlan { isBid: boolean; quantity: bigint; price: bigint }",
+        "iocPrice(isBid: boolean, mark: bigint, tickSize: bigint, slippageBps: number): bigint",
+        "planClose(size: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan | null",
+        "planOpen(isBid: boolean, quantity: bigint, mark: bigint, book: BookParams, slippageBps: number): OrderPlan",
+        "CLOSE_SLIPPAGE_STEPS_BPS = [20, 50, 100]",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }",
+        "evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, market: MarketView): Evaluation",
+        "initRunState(startTime: bigint, startEquity: bigint): RunState",
+        "interface RunState { startTime: bigint; startEquity: bigint; hwm: bigint; dayStart: bigint; day: bigint }",
+        "parseTape(raw: unknown): TapePoint[]",
+        "simulateTape(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions): { long: SimSide; short: SimSide; quantity: bigint }",
+        "roundTripEquityBps(oneWayCostBps: number, leverageX: number): number",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "repoPath(rel: string): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/core -- test/book.test.ts test/evaluate-closeable.test.ts test/demo-closeable.test.ts",
+        "expect": "PASS — `16 passed`."
+      },
+      "commit": "feat(core): closeable equity — book reads, the evaluator judges the book, opens capped from the book (P5)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:14",
+      "subsystem": "referee",
+      "title": "The referee judges closeable equity — the price watch carries the book of the same block; FAIL evidence records it (P5)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:3",
+        "referee:4",
+        "referee:7",
+        "referee:13",
+        "spike:3",
+        "spike:4"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "packages/referee/src/engine.ts",
+          "packages/referee/src/daemon.ts"
+        ],
+        "test": [
+          "packages/referee/test/engine-closeable.test.ts"
+        ]
+      },
+      "provides": [
+        "interface JudgedRead { equity: bigint; book: BookRead | null }",
+        "type Action = { kind: \"fail\"; runId: bigint; account: Address; rule: FailRule; breach: BreachRead; judged: JudgedRead | null } | { kind: \"lock\"; runId: bigint; account: Address } | { kind: \"void\"; runId: bigint; account: Address; reason: \"Flow\" | \"ForeignMarket\"; txHash: Hex | null }",
+        "Engine.onSnapshot(snap: Snapshot, book?: BookRead | null): Action[] (rules judge closeable equity; a trading log is no longer judged at the mark)",
+        "referee daemon: the price-feed watch attaches [snapshotCall, bookCall(BTC_POOL)], so every judged snapshot carries the book of its own block; FAIL bundles in docs/evidence/runs.json carry judged { equity, book }"
+      ],
+      "requires": [
+        "class Engine { paused; track(run): boolean; get(runId): EngineRun | undefined; watchedAccounts(): Address[]; retain(activeRunIds: readonly bigint[]): bigint[]; pause(); resume(); finish(runId); release(runId); onSnapshot(snap): Action[]; onAccountLog(account, topic0, txHash, snap): Action[] }",
+        "interface BreachRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }",
+        "runDaemon(d: DaemonDeps): Promise<void>",
+        "interface TrackedRun { runId: bigint; account: Address; rulebookId: Hex; rulebook: Rulebook; startTime: bigint; startEquity: bigint; startBlock: bigint }",
+        "interface Snapshot { blockNumber: bigint; timestamp: bigint; pool: Address; markOk: boolean; markPrice: bigint; accounts: AccountSnapshot[] }",
+        "rulebookId(rb: Rulebook): Hex",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "interface BookRead extends BookSides { blockNumber: bigint }",
+        "bookCall(pool: Address, depth?: number): { to: Address; data: Hex } (one Multicall3 call: block number and both sides)",
+        "decodeBook(result: Hex): BookRead | null",
+        "readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>",
+        "interface Evaluation { state: RunState; verdict: Verdict; exposureX: number | null; judgedEquity: bigint | null }",
+        "evaluate(rb: Rulebook, state: RunState, acct: AccountSnapshot, market: MarketView): Evaluation (judges closeable equity when market.book is given; omitted, at the mark)"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/referee -- test/engine-closeable.test.ts",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "fix(referee): judge closeable equity with the book of the same block; FAIL evidence records it (P5)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "referee:15",
+      "subsystem": "referee",
+      "title": "The bot opens from the book, the demo runs at 5×, and demo-check measures the spread (P5)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-referee.md",
+      "depends_on": [
+        "referee:2",
+        "referee:6",
+        "referee:8",
+        "referee:9",
+        "referee:11",
+        "referee:12",
+        "referee:13",
+        "spike:1",
+        "spike:2",
+        "spike:3",
+        "spike:4",
+        "spike:6"
+      ],
+      "effort": "medium",
+      "model_tier": "top",
+      "files": {
+        "create": [],
+        "modify": [
+          "packages/bot/src/actions.ts",
+          "packages/bot/src/sizing.ts",
+          "packages/bot/src/demo.ts",
+          "packages/bot/src/bot.ts",
+          "packages/bot/src/demo-check.ts"
+        ],
+        "test": [
+          "packages/bot/test/demo-cost.test.ts"
+        ]
+      },
+      "provides": [
+        "openIoc(markets: SomniaMarkets, client: PublicClient, isBid: boolean, quantity: bigint): Promise<TxRecord> (capped from the book: best ask + 20 bps to buy, best bid - 20 bps to sell)",
+        "demoCost(buyAverage: bigint, sellAverage: bigint, leverageX: number, targetBps: number): { spreadBps: number; equityBps: number; ok: boolean }",
+        "CLI: npx tsx packages/bot/src/demo-check.ts [--equity <USDso>] -> PASS demo-check, or FAIL with a recommended demo target (closeable-equity cost: the spread for the demo size walked from one book read, at DEMO_LEVERAGE_X)",
+        "demo.ts and bot.ts size every demo order at DEMO_LEVERAGE_X (5x); the exposure breach stays at 16x"
+      ],
+      "requires": [
+        "readBook(client: PublicClient): Promise<BookParams>",
+        "breachQuantity(currentSize: bigint, equity: bigint, targetX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "demoEquity(flagValue: string | null, live: readonly bigint[]): bigint | null",
+        "demoSize(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): { qty: bigint; problem: string | null }",
+        "preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei?: bigint): Promise<Preflight>",
+        "notReady(pf: Preflight): string[]",
+        "parseTape(raw: unknown): TapePoint[]",
+        "simulateTape(rb: Rulebook, tape: readonly TapePoint[], o: SimOptions): { long: SimSide; short: SimSide; quantity: bigint }",
+        "recommendDemoTargetBps(roundTripEqBps: number): number",
+        "makePublicClient(url: string): PublicClient",
+        "quantityForLeverage(equity: bigint, leverageX: number, mark: bigint, baseDecimals: number, book: BookParams): bigint",
+        "readSnapshot(client: PublicClient, accounts: readonly Address[], pool: Address, blockNumber?: bigint): Promise<Snapshot>",
+        "BTC_POOL",
+        "ORDER_TYPE_IOC = 2",
+        "loadRulebook(name: keyof typeof RULEBOOK_FILES): Rulebook",
+        "requireAddress(name: AddressName, env?: NodeJS.ProcessEnv): Address",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "loadDotEnv(path?: string): boolean",
+        "repoPath(rel: string): string",
+        "planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps?: number): OrderPlan",
+        "readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>",
+        "averageFill(isBid: boolean, quantity: bigint, book: BookSides): bigint | null",
+        "DEMO_LEVERAGE_X = 5",
+        "roundTripSpreadBps(buyAverage: bigint, sellAverage: bigint): number"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/bot -- test/demo-cost.test.ts",
+        "expect": "PASS — `2 passed`."
+      },
+      "commit": "fix(bot): open from the book, run the demo at 5x, measure the demo cost as the spread (P5)",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"
@@ -3144,6 +3414,124 @@
       "status": "pending"
     },
     {
+      "id": "web:11",
+      "subsystem": "web",
+      "title": "The terminal's market orders are capped from the book; it shows closeable equity; the ticket opens at 5× (P5)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:3",
+        "web:5",
+        "referee:13",
+        "spike:2",
+        "spike:4",
+        "spike:6"
+      ],
+      "effort": "medium",
+      "model_tier": "standard",
+      "files": {
+        "create": [
+          "apps/web/src/lib/order.ts",
+          "apps/web/src/hooks/useBook.ts"
+        ],
+        "modify": [
+          "apps/web/src/pages/Terminal.tsx",
+          "apps/web/src/components/Ticket.tsx"
+        ],
+        "test": [
+          "apps/web/test/order.test.tsx"
+        ]
+      },
+      "provides": [
+        "Ticket(props: { equity: bigint; mark: bigint; busy: boolean; defaultLeverage?: number; onOrder: (isBid: boolean, quantity: bigint) => void })",
+        "BTC_BOOK_PARAMS: BookParams (tick 0.1 USDso, min 13,000, lot 1,000)",
+        "ticketOrder(isBid: boolean, quantity: bigint, book: BookSides | null): OrderPlan",
+        "judgedNow(acct: AccountSnapshot | undefined, mark: bigint, book: BookSides | null): bigint | null",
+        "useBookAt(blockNumber: bigint | undefined): BookRead | null",
+        "Terminal() (market orders capped from the book; shows closeable equity and plots it on the rails; the ticket opens at DEMO_LEVERAGE_X)"
+      ],
+      "requires": [
+        "Terminal()",
+        "Ticket(props: { equity: bigint; mark: bigint; busy: boolean; onOrder: (isBid: boolean, quantity: bigint) => void })",
+        "useAccountSnapshot(address: Address | null): Snapshot | null",
+        "browserClient(): PublicClient",
+        "sendCall(key: Hex, call: ContractCall): Promise<{ hash: Hex; status: \"success\" | \"reverted\" }>",
+        "placeOrderCall(isBid: boolean, price: bigint, quantity: bigint, orderType: number): ContractCall",
+        "interface AccountSnapshot { account: Address; equityOk: boolean; equity: bigint; lockedCollateral: bigint; totalEquity: bigint; activePools: Address[]; size: bigint }",
+        "interface BookParams { tickSize: bigint; minQuantity: bigint; lotSize: bigint }",
+        "interface OrderPlan { isBid: boolean; quantity: bigint; price: bigint }",
+        "iocPrice(isBid: boolean, mark: bigint, tickSize: bigint, slippageBps: number): bigint",
+        "BTC_POOL",
+        "ORDER_TYPE_IOC = 2",
+        "interface BookSides { bids: readonly BookLevel[]; asks: readonly BookLevel[] } (best level first: bids descending, asks ascending)",
+        "interface BookRead extends BookSides { blockNumber: bigint }",
+        "closeableEquity(totalEquity: bigint, size: bigint, mark: bigint, book: BookSides, baseDecimals: number): bigint | null",
+        "planOpenFromBook(isBid: boolean, quantity: bigint, book: BookSides, params: BookParams, marginBps?: number): OrderPlan",
+        "readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>",
+        "DEMO_LEVERAGE_X = 5"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web -- test/order.test.tsx",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "fix(web): the terminal's orders are capped from the book and it shows closeable equity (P5)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "web:12",
+      "subsystem": "web",
+      "title": "The verdict page replays the judged equity: the breach revalued at the book of its block (P5)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-web.md",
+      "depends_on": [
+        "web:4",
+        "web:6",
+        "web:8",
+        "web:9",
+        "web:10",
+        "referee:13"
+      ],
+      "effort": "low",
+      "model_tier": "standard",
+      "files": {
+        "create": [
+          "apps/web/src/lib/judged.ts"
+        ],
+        "modify": [
+          "apps/web/src/components/VerdictView.tsx",
+          "apps/web/src/pages/Verdict.tsx"
+        ],
+        "test": [
+          "apps/web/test/verdict-judged.test.tsx"
+        ]
+      },
+      "provides": [
+        "interface JudgedView { equity: bigint | null; served: boolean }",
+        "judgedFromBook(read: StoredRead, book: BookSides | null): JudgedView",
+        "replayJudged(client: PublicClient, pool: Address, read: StoredRead): Promise<JudgedView>",
+        "VerdictView(props: { data: VerdictData; replay: Record<\"start\" | \"breach\" | \"end\", ReplayRow[] | null>; onReplay: () => void; breachJudged?: JudgedView | null })"
+      ],
+      "requires": [
+        "VerdictView(props: { data: VerdictData; replay: Record<\"start\" | \"breach\" | \"end\", ReplayRow[] | null>; onReplay: () => void })",
+        "VerdictPage(props: { runId: bigint })",
+        "interface VerdictData { runId: bigint; account: Address; status: number; rule: number; voidReason: number; rulebookLabel: string; rulebookId: Hex; rulebookJson: string | null; start: StoredRead; breach: StoredRead; end: StoredRead; closeTxs: readonly Hex[]; oraclePrice: bigint; oracleSources: number; oracleDone: boolean }",
+        "interface StoredRead { blockNumber: bigint; equityOk: boolean; equity: bigint; lockedCollateral: bigint; positionSize: bigint; markOk: boolean; markPrice: bigint }",
+        "replayRead(client: PublicClient, account: Address, pool: Address, stored: StoredRead): Promise<ReplayRow[]>",
+        "formatUsdso(raw: bigint, decimals?: number): string",
+        "interface BookSides { bids: readonly BookLevel[]; asks: readonly BookLevel[] } (best level first: bids descending, asks ascending)",
+        "closeableEquity(totalEquity: bigint, size: bigint, mark: bigint, book: BookSides, baseDecimals: number): bigint | null",
+        "readBookLevels(client: PublicClient, pool: Address, blockNumber?: bigint, depth?: number): Promise<BookRead | null>"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/web -- test/verdict-judged.test.tsx",
+        "expect": "PASS — `3 passed`."
+      },
+      "commit": "fix(web): the verdict page replays the breach's closeable equity at the book of its block (P5)",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
       "id": "ship:1",
       "subsystem": "ship",
       "title": "`@basanos/ship` — featured snapshot, X posts, checks, site assembly, evidence index",
@@ -3278,7 +3666,10 @@
         "referee:10",
         "landing:2",
         "landing:4",
-        "referee:12"
+        "referee:12",
+        "referee:14",
+        "referee:15",
+        "web:11"
       ],
       "effort": "medium",
       "model_tier": "top",
@@ -3416,6 +3807,8 @@
         "web:8",
         "web:9",
         "web:10",
+        "web:11",
+        "web:12",
         "landing:3",
         "landing:5",
         "contracts:10"
@@ -3628,6 +4021,42 @@
         "expect": "PASS — `1 passed`."
       },
       "commit": "fix(ship): the deploy check refuses the landing's sample-fixture marker",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
+      "id": "ship:11",
+      "subsystem": "ship",
+      "title": "README — the referee judges closeable equity; the demo runs at 5× (P5)",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:5",
+        "referee:14",
+        "referee:15",
+        "web:11",
+        "web:12"
+      ],
+      "effort": "low",
+      "model_tier": "standard",
+      "files": {
+        "create": [],
+        "modify": [
+          "README.md"
+        ],
+        "test": []
+      },
+      "provides": [
+        "README.md (closeable equity in How it works and Roadmap; the 5x demo in Quickstart)"
+      ],
+      "requires": [
+        "README.md (R1-web-app v1 + event-overlay; TBD-post-build lines for live facts)"
+      ],
+      "gate": {
+        "run": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-readme.ps1",
+        "expect": "PASS — `PASS`."
+      },
+      "commit": "docs(readme): the referee judges closeable equity; the demo runs at 5x (P5)",
       "human_gate": false,
       "allow_empty": false,
       "status": "pending"
