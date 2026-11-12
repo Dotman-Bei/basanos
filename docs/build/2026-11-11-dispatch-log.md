@@ -232,3 +232,17 @@ Workspace: 229 tests (core 75, referee 34, spike 35, web 39, ship 11, bot 24, la
 | referee:22 evidence | (concierge run) | a6eb2bf | `check-pass` (chain read, no key) → PASS pass-take (take 2: run 3 PASSED with its certificate, one FAILED); hideki.json lists tokyo-sprint-demo-v1 0x59e93903…0757 and tokyo-sprint-demo (v2) 0x5a5af7ee…c448, tx 0xab800465…c30c; runs.json / demo-takes.json additions only; no key material |
 
 Workspace: 229 tests. Idle at ship:3, ship:6 (gates) and ship:7 (after ship:3).
+
+## Resume — P8 + P9 (2026-11-12)
+
+Serial in the main tree, all standard tier → executor-high (sonnet). Each gate re-run by the orchestrator; scope clean; every added line found in the plan (added-in-plan.mjs, 0 misses on all five).
+
+| Task | Commit | Gate |
+|---|---|---|
+| web:13 | a1bf4ec | 3 passed (no 19-digit integer, no raw attribute name kept); web build OK |
+| web:14 | 89c64da | 5 passed |
+| landing:7 | bc43b77 | 3 passed |
+| ship:13 | cb4298b | 8 passed (argvLeaksToken guards every spawn; URL parsed from the CLI's JSON) |
+| ship:14 | 7e693be | 6 passed (setBaseUrl refuses unless site.json names https://basanos.suitz.xyz; basanos.vercel.app kept off public surfaces) |
+
+No Vercel network call, no human gate, no .env read. Full workspace: 250 (core 75, referee 34, spike 35, web 47, ship 21, bot 24, landing 14). SDK-write grep (markets.trader.) over packages/bot, packages/referee, apps/web: no matches. Deviations from plan: none (.env.example is LF in this checkout; one line added in its existing endings). Idle at ship:3, ship:6 (gates) and ship:7 (after ship:3).
