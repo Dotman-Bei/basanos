@@ -35,7 +35,8 @@ The referee watches the account on every price write with Somnia off-chain React
 account's MarginBank equity read and the order book attached in the same block). Every rule judges closeable
 equity: the account's equity revalued at the book prices that would close its position, because the BTC-PERP book
 trades about 19 bps above the mark. On a breach (daily-loss floor, trailing drawdown,
-exposure cap, time limit) it cancels resting orders and closes the position with real perps orders, then records
+exposure cap, time limit) it closes the position with real perps orders, priced from the breach block's own book and
+sent within about a second of the price push, then cancels resting orders and records
 **FAILED** on-chain with the rule, the breach block, the raw reads and the close transaction hashes. When the
 profit target is reached after the minimum time, the referee locks the gain by flattening, and the registry checks
 the end state itself (flat, equity at or above the target, minimum time, referee grant still held) before it

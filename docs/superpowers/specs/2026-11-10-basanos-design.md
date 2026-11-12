@@ -212,46 +212,71 @@ contract-checked fields; the full JSON is published in `rulebooks/` and on the v
 | market | BTC-PERP, pool `0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0` | same | registry (grant + flat checks are per pool) / referee |
 | `profitTargetBps` | 150 (+1.5%) | 50 (+0.5%) | **registry at mint** |
 | `minDurationSec` | 120 | 60 | **registry at mint** |
-| `timeLimitSec` | 1800 | 900 | **registry** (FAIL `TimeLimit` only after it) |
-| `dailyLossBps` | 150 (−1.5% from the UTC-day start equity) | 50 | referee, replay |
-| `trailingDrawdownBps` | 200 (−2.0% from the high-water mark) | 75 | referee, replay |
+| `timeLimitSec` | 1800 | 1200 (v1: 900) | **registry** (FAIL `TimeLimit` only after it) |
+| `dailyLossBps` | 150 (−1.5% from the UTC-day start equity) | 150 (v1: 50) | referee, replay |
+| `trailingDrawdownBps` | 200 (−2.0% from the high-water mark) | 200 (v1: 75) | referee, replay |
 | `maxExposureX` | 15 (account notional ≤ 15 × totalEquity) | 15 | referee, replay |
 | `oracleSymbol` | `BTC/USDC:PERP` | same | registry (oracle request) |
 | VOID on | money flow, a position in another market, grant revoked | same | referee / anyone |
 
+The demo column is **demo v2** (architect ruling P7, 2026-11-12; *Demo mode* below). `rulebooks/tokyo-sprint-demo-v1.json` keeps the first registered demo byte-identical (id `0x59e93903…0757`), so the rehearsal's runs 1 and 2 still resolve in the referee, the web app and the featured-run snapshot.
+
 **Tuning to the leverage cap.** The demo accounts are not voucher accounts. `claim()` reverts chain-wide (B14), so each account holds its own USDso, deposited into its MarginBank balance (≈ 50 USDso each, 2026-11-12).
 - **The cap that applies** is the market's 40× (`marketMaxLeverageBps` 400000). The voucher's 20× cap binds only a voucher account.
 - **Why the cap matters:** the exposure cap (15×) sits below either cap, so an exposure breach is still reachable on demand (the bot's breach goes to 16×).
-- **Demo sizing is 5×** (`DEMO_LEVERAGE_X`; ruling P5, 2026-11-12; it was 12×) of live equity. At ≈ 50 USDso that is ≈ 250 USDso of notional, ≈ 0.0034 BTC, about 26 times the 0.00013 BTC minimum. Sizing scales with equity, so nothing assumes 1,000 USDso (referee:11).
-- **What a move does at 5×:** a 0.10% BTC move is ±0.5% equity (the demo's target and daily floor), and a 0.30% move is ±1.5% (the standard rulebook's). Opening costs the spread × 5 at once (below).
+- **Demo sizing is 10×** (`DEMO_LEVERAGE_X`; ruling P7, 2026-11-12; 5× under P5, 12× before) of live equity. At ≈ 50 USDso that is ≈ 500 USDso of notional, ≈ 0.007 BTC, about 54 times the 0.00013 BTC minimum. Sizing scales with equity, so nothing assumes 1,000 USDso (referee:11).
+- **What a move does at 10×:** a 0.05% BTC move is ±0.5% equity (the demo's target), and a 0.15% move is ±1.5% (demo v2's daily floor). Opening costs the spread × 10 at once: the replay's median round trip, 1.57 bps of notional, is about 16 equity bps (below).
 
 **Closeable equity (architect ruling P5, 2026-11-12).** Every equity rule judges *closeable equity*, not the marked equity.
 - **What it is:** the MarginBank equity revalued from the mark to the book levels that would fill a close of the position (bids for a long, asks for a short), read in the same block. Flat, it equals the marked equity.
 - **Why (the measurement):** the BTC-PERP book trades about 19 bps above the on-chain mark. The guide's read-only samples showed best bid +18.1 to +19.9 bps and best ask +19.5 to +21.7 bps above `getMarkPrice`. The architect's re-read found a spread of 1.2 to 3.6 bps and zero taker and maker fees (`getPerpPoolParameters`).
 - **What the mark alone does:** opening books an instant paper PnL of about ±19 bps × leverage. A fresh 12× long reads −252 bps, an unearned DailyLoss on either rulebook. A fresh 12× short reads +228 bps, a phantom target that only a real move could realize. Under closeable equity, both start only the spread down.
-- **Consistency:** it is the number the PASS lock's `quotePerpClose` guard already predicts, and what the registry's flat-equity check at mint realizes.
+- **Consistency:** it is the number the PASS lock locks from (since P7, the push's own closeable equity with a 10 bps buffer; before, the SDK's `quotePerpClose` prediction), and what the registry's flat-equity check at mint realizes.
 - **Pause:** a position the levels read cannot price (an empty side, or a size beyond `BOOK_DEPTH` = 20 levels) pauses judging, like an unpriceable mark.
 - **Rejected:**
   - Lowering leverage or widening thresholds alone: the basis × leverage hits both rulebooks, and new thresholds would need a new registration.
   - Re-baselining after entry: stateful across fills and funding, and not replayable from one read.
 - **Unchanged:** both rulebooks and their registered ids.
 - **Opening orders:** IOCs are capped from the book too, at best ask + 20 bps to buy and best bid − 20 bps to sell (`OPEN_MARGIN_BPS`). An IOC fills at the book's prices, so the cap only bounds slippage. A mark + 20 bps buy sits below the whole ask side and reverts (`0xd48c4403`; spike:11's first GO stopped on it).
-- **Closing orders:** the close ladder stays at mark ± 20, 50, 100 bps (§8). On a book skewed either way the side against the skew fills at the 50 bps step (referee:13 test).
+- **Closing orders:** capped from the book too since P7: best ask + 20, 50, 100 bps to buy back a short, best bid − the same to sell a long. The mark ladder (mark ± 20, 50, 100 bps) is the fallback, and the more permissive limit wins (§8). In the rehearsal, B's first close at mark + 20 bps reverted under a book about 20 bps above the mark.
 
 **Demo mode (G4).** `tokyo-sprint-demo` is the same rulebook schema with tighter numbers, registered
 with its own id and labelled "Tokyo Sprint · Demo" on every surface that shows it. `npm run demo -w
-@basanos/bot` starts both challenge accounts on it, opens opposite 5× positions (human long from the
-terminal or by the runner, bot short), and streams both runs. Whichever way BTC drifts by ≈ 0.10% plus the spread, one
-account reaches the target (PASS after the 60 s minimum) and the other its daily-loss floor (FAIL). A
-PASS still needs real movement; if the market is still, `bot.ts breach` adds bot size past 15× for a
-FAIL on demand while the PASS waits. The wait is bounded: if no account has a verdict 10 minutes after
-the positions open, the runner reports "market still: exposure breach on B (FAIL on demand)", applies the
-exposure breach to the bot (FAIL) and leaves the human run to resolve or hit `TimeLimit` at 900 s; the next take
-starts after a faucet top-up. (A take that fails after a run started is aborted, which is a different case: §9.) The skeleton proves the math.
+@basanos/bot` starts both challenge accounts on it together and opens opposite 10× positions in the same block: the
+human's long from the terminal with B's short right after it, or both by the runner. It then streams both runs. Once one run PASSES, the runner pushes the other past the
+15× exposure cap, a FAIL on demand, so the take ends one PASS and one FAIL. If neither run PASSES within the 20-minute
+limit, both end FAILED and the next take starts after a faucet top-up. (A take that fails after a run started is
+aborted, which is a different case: §9.)
+
+**Demo v2, from data (architect ruling P7, 2026-11-12).**
+- **Why v1 failed:** the rehearsal's two runs both FAILED DailyLoss (guide diagnosis B19). At 5×, v1's 0.50% band is 10 bps of BTC price, which BTC crosses in tens of seconds. The target equalled the floor, and the two entries were 13 s apart.
+- **The replay:** `demo-replay` (`packages/bot/src/demo-replay.ts`) sampled 12 hours of on-chain history: blocks 47,994,246 to 48,426,246, one Multicall3 read a second at past blocks (timestamp, mark, 10 levels a side), 43,201 samples.
+  - It replayed an opposite pair opened in the same block every 60 s through the evaluator on closeable equity.
+  - It closed a FAIL, and locked a PASS, 3 s (or 7 s) after the verdict, at that later block's book.
+  - The results are in `docs/evidence/demo-replay.json`:
+
+| candidate | windows | P(≥ 1 PASS) | P(both FAIL) | first PASS, median / p90 |
+|---|---|---|---|---|
+| v1 at 5×, closes 7 s after the verdict (as rehearsed) | 705 | 64.7% | 35.3% | 296 s / 709 s |
+| **v2 at 10×, closes 3 s after (chosen)** | 700 | **95.6%** | 4.4% | 226 s / 703 s |
+| v2 at 10×, closes 7 s after | 700 | 94.9% | 5.1% | 233 s / 707 s |
+| v2 with a 900 s limit | 705 | 91.2% | 8.8% | 213 s / 616 s |
+| v2 at 5× / 8× / 12× | 700 | 69.7% / 90.9% / 97.4% | 30.3% / 9.1% / 2.6% | 356 / 269 / 192 s median |
+| v2 with a +0.40% target, at 10× | 700 | 98.6% | 1.4% | 189 s / 611 s |
+| v2 with v1's 0.50% / 0.75% floors, at 10× | 700 | 60.7% | 39.3% | 177 s / 521 s |
+
+- **Reading the table:** with the FAIL on demand, P(≥ 1 PASS) is also P(one PASS + one FAIL). Left to the market, the chosen set gives one PASS and one FAIL in 81.6% of windows. Refused locks: 0.6%. Funding is not modeled; fees are 0. Every 2-hour stretch of the sample clears 93% for the chosen set.
+- **Validation:** the replay reproduces the rehearsal. B judged −52.92 bps (actual −52.9) and realized −59.08 at 7 s (actual −57.8); A judged −54.46 (actual −54.8) and realized −65.52 (actual −65.7).
+- **Why these numbers:**
+  - The +0.50% target stays, so every surface that quotes it stays true. At 10× it is a 5 bps price move.
+  - The floors widen to 1.5% daily and 2% trailing: at 10×, v1's 0.50% floor is a 5 bps whipsaw that kills both sides (60.7%).
+  - The time limit grows to 20 minutes.
+  - 12× and a +0.40% target score higher, but 12× loses more to a close gap, and a +0.40% target is a weaker claim. 10× with +0.50% clears the guide's ~85% bar with room.
+- **The skeleton proves the math.**
 - **What the spike records:** a live 9-minute (540 s) BTC mark tape, and the real entry fill against the mark and the book (`docs/evidence/g1a-close.json`: `entry.costBps` is the basis, `entry.costVsBookBps` the slippage, `entry.spreadBps` the spread).
-- **The tape test:** a core test replays the tape at 5× with a 3.6 bps round trip paid at entry, and none at the close, since closeable equity already values the exit side. It asserts that both sides resolve.
-- **The live check:** `demo-check` measures the live round trip for the demo size from one book read and passes when it is at most half the 50 bps target. On 2026-11-12 it measured 1.98 to 2.84 bps of notional, which is 9.9 to 14.2 equity bps: PASS.
-- **If the check fails:** the referee plan raises the demo target before registration is repeated (a new demo rulebook id).
+- **The tape test:** a core test replays the tape at 10× on demo v2 with a 3.6 bps round trip paid at entry, and none at the close, since closeable equity already values the exit side. It asserts that both sides resolve.
+- **The live check:** `demo-check` measures the live round trip for the demo size from one book read. It passes when the round trip is at most half the 50 bps target, which is 2.5 bps of notional at 10×. The replay's median round trip is 1.57 bps and its p90 2.39, so the check fails about 7% of the time.
+- **If the check fails:** wait and re-run. A wide spread is a moment, not a parameter; the rulebook is never changed for it.
 
 **Who operates the demo accounts.** Both demo challenge accounts are burners operated by the builder:
 account A is driven by a human from the terminal, account B is the scripted bot. The README and the
@@ -275,8 +300,8 @@ which has no book, values at the mark.
 6. `totalEquity ≤ hwm × (10000 − trailingDrawdownBps) / 10000` → `fail` (`TrailingDrawdown`).
 7. `|size| × mark / 10^baseDecimals > totalEquity × maxExposureX` → `fail` (`MaxExposure`).
 8. `totalEquity ≥ start × (10000 + profitTargetBps) / 10000` and `nowSec ≥ startTime + minDurationSec`
-   → `target` (the referee locks only if `quotePerpClose` predicts the closed equity still clears the
-   target; otherwise it keeps watching).
+   → `target` (the referee locks only once that closeable equity clears the target by `LOCK_BUFFER_BPS` = 10, so
+   the close cannot slip back under it before the registry's check; otherwise it keeps watching).
 9. Otherwise `ok`.
 
 MarginBank log classes (account-filtered pushes): trading = `PositionUpdated`, `FundingSettled`,
@@ -448,18 +473,40 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
   to 30 s), resubscribe both watches, then read the snapshot and the book of its block once at head over HTTP and re-evaluate
   before resuming. Every gap is logged in the run's evidence (`fromBlock`, `toBlock`, duration). While
   paused or unpriceable the referee issues no verdict and no close.
-- **Close protocol (R4):** 1) cancel every resting order: ids from `getOwnOpenOrders()` with `eth_call`
-  `from = account`, then `cancelOrderFor(account, id)` each, waiting for receipts; 2) read the position
-  fresh at head; 3) if non-zero, send `placeOrderFor(account, isBid = size < 0, 0, price, qty,
-  farFuture, 2 /*IOC*/, 0, 0x0, 0)` with `qty = |size|` aligned down to `lotSize` and `price = mark ±
-  slippage` (20 bps, then 50, then 100), clamped to the pool's band; 4) read back the position; 5) repeat
-  from 2 at most 3 times (a flipped position closes the remainder the same way); 6) final cancel sweep.
-  Every tx hash, gasUsed and revert goes into the evidence bundle. The run's verdict does not depend on
+- **Close protocol (R4; reordered by architect ruling P7, 2026-11-12):**
+  1) On a FAIL or a PASS lock, plan the first close from the push that raised it (that block's position, mark and
+     book) and send it at once: `placeOrderFor(account, isBid = size < 0, 0, price, qty, farFuture, 2 /*IOC*/, 0,
+     0x0, 0)`, with `qty = |size|` aligned down to `lotSize` and `price` capped from the book (best ask + 20 bps to buy,
+     best bid − 20 bps to sell). The mark ladder (mark ± 20 bps) is the fallback, and the more permissive limit wins.
+  2) Cancel every resting order: ids from `getOwnOpenOrders()` with `eth_call` `from = account`, then
+     `cancelOrderFor(account, id)` each, waiting for receipts. A resting order can change the position only after the
+     close, so this sweep and the read-back catch it.
+  3) Read the position fresh at head.
+  4) If it is non-zero, close again from a fresh book at 50 bps, then 100 bps: at most 3 attempts in all. A flipped
+     position closes the remainder the same way.
+  5) A final cancel sweep and read-back.
+  Without a push (a resume at head) the protocol cancels first, as before. Every tx hash, gasUsed and revert goes into
+  the evidence bundle. The run's verdict does not depend on
   the close succeeding; a close that still leaves a position after 3 attempts is recorded as such.
+- **Latency (P7).** The rehearsal took 7.7 s from the breach block to the first close (B) and 7.1 s (A).
+  - **Why:** a read-only probe found 0.38 to 0.40 s per RPC round trip from the operator's machine, with 4.5 s
+    outliers, and seven sequential RPCs before the close left (open orders, book parameters, position, chain id,
+    nonce, fees, send).
+  - **The fix:** every referee write now goes through one fast sender. It tracks the nonce locally (forgotten after
+    a failed send, and adopted from the chain on idle refreshes when the chain is ahead), caches fees for 60 s, signs
+    locally (4.7 ms) and makes one `eth_sendRawTransaction`. Registry writes estimate gas with 30% headroom.
+  - **Expected:** about 1.1 s from the breach block to the close block (about 0.6 s of push lag, one round trip, one
+    block).
+  - **The lock:** the PASS lock no longer asks the SDK for `quotePerpClose`. It locks from the push's closeable
+    equity, the number the evaluator judged.
+- **What the gap still costs:** a FAIL's realized loss can exceed the rule's limit by the price move between the
+  verdict and the close: 4.9 and 10.9 equity bps in the rehearsal at 7 s, and a median of 7.1 bps in the replay at
+  3 s. The registry records the referee's breach read as the breach; the close txs and the end read show what was
+  realized.
 - **Verdict writes:** `recordFail(runId, rule, breachRead, evidenceHash, closeTxs)` and, after a lock,
   `recordPass(runId)`, both with `value = ORACLE_DEPOSIT` when `ORACLE_ENABLED=true` (true for this build); `recordVoid` for
   flows and foreign markets. **A VOID is recorded only: the referee does not cancel or close on a VOID**
-  (no rule was breached; the run is simply not judged). It closes only on a FAIL and on a PASS lock. A FAIL bundle carries `judged: { equity, book }`, the closeable equity the rule judged and the book it was revalued at. `evidenceHash = keccak256(canonicalJson(bundle))`; bundles are written to
+  (no rule was breached; the run is simply not judged). It closes only on a FAIL and on a PASS lock. A PASS bundle carries `lock: { blockNumber, judgedEquity, bufferBps }` (P7). A FAIL bundle carries `judged: { equity, book }`, the closeable equity the rule judged and the book it was revalued at. `evidenceHash = keccak256(canonicalJson(bundle))`; bundles are written to
   `docs/evidence/runs.json`, keyed by run id (one fixed file, so verdict tasks can declare it).
 - **CLI:** `basanos-referee start`, `basanos-referee enroll <account> --rulebook <name>` (bring-your-own
   account that already granted the referee, e.g. via dreamDEX Link a Bot), `basanos-referee status`.
@@ -470,9 +517,15 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
   the BTC pool, `startRun`, open a short IOC at the demo size, hold; `bot.ts breach` adds size past
   15×.
 - `npm run demo -w @basanos/bot`: preflight both accounts (STT ≥ 0.6, funded: unlocked MarginBank margin, flat, grants),
-  start both runs on `tokyo-sprint-demo`, open opposite 5× positions (`DEMO_LEVERAGE_X`) with IOCs capped from
-  the book (best ask + 20 bps / best bid − 20 bps), stream both runs until both have a
-  verdict, print every tx hash with explorer links.
+  start both runs on `tokyo-sprint-demo` together, then open opposite 10× positions (`DEMO_LEVERAGE_X`) in the same block.
+  - **The pair:** one book read, both IOCs capped from it (best ask + 20 bps / best bid − 20 bps), both signed, then
+    sent back to back (`openPair`). With `--a-manual`, B's short goes out as soon as A's long is seen (polled every
+    250 ms).
+  - **The FAIL on demand:** once one run PASSES, the other is pushed past the exposure cap (P7).
+  - **The stream:** both runs until both have a verdict (at most the time limit + 300 s), with every tx hash and its
+    explorer link.
+- **The PASS take's gate (P7, referee:22):** `check-pass` wants the latest take to be one PASSED run whose certificate
+  (`ownerOf(runId)`) its own account holds, and one FAILED run. It writes `docs/evidence/rehearsal-pass.json`.
 - **How account writes reach the chain (P6, 2026-11-12).** Every bot and demo write is viem-direct (`packages/bot/src/send.ts`): the grant, `startRun` and the opens.
   - **The send:** signed locally with `ORDER_GAS` and an explicit pending nonce, sent once with `eth_sendRawTransaction` to the standard RPC, receipt taken from the public client. The hash is known before the send, so a failed or timed-out send is still looked up.
   - **The calls:** built by `@basanos/core/owner-tx`, byte-identical to the SDK's own encoding (pinned by a test).
@@ -499,7 +552,7 @@ Routes (hash router): `#/challenge` (terminal), `#/run/:id` (verdict + replay), 
   fails if any `VITE_*` variable name ends in `_PK`.
 - **Terminal:** STT and voucher status (faucet link), the start flow (claim voucher if eligible → grant
   referee → `startRun`, each with its tx link), a BTC-PERP ticket (market IOC capped from the book, opening at
-  5×), closeable equity (what the referee judges) beside the equity at the mark, live closeable-equity rails
+  10×), closeable equity (what the referee judges) beside the equity at the mark, live closeable-equity rails
   (start, target, daily floor, trailing high-water line), run status, event log with explorer links.
   Cut (cut order, recorded 2026-11-11): the limit-order ticket and the exposure rail.
 - **Verdict page:** status, rule, rulebook (name, variant, JSON, id), the start / breach / end reads,
@@ -681,8 +734,15 @@ feedback, deploy; Nov 15 — buffer, submitted by 09:00.
 - A trader who self-trades against a second account at the band edge can manufacture a pass
   (anti-collusion forensics are out of scope).
 - Replay depends on the public RPC's history; past the horizon the page shows the stored reads.
-- An aborted demo take (§9) holds its accounts until the referee ends their runs, at most the demo's 900 s time limit;
-  no run is voided to free them sooner.
+- An aborted demo take (§9) holds its accounts until the referee ends their runs, at most the demo's 1,200 s time
+  limit (v2); no run is voided to free them sooner.
+- The close follows the verdict by about a second (§8); a FAIL's realized loss can exceed its limit by the move in
+  that gap.
+- The registry asks the Price Oracle with the 4-argument `createRequest`, which uses Majority consensus (byte-identical
+  answers). 3 of 4 requests finalized Failed although every validator answered Success, because the answers differ
+  in their source counts and timestamps (and sometimes the price); a reading is shown only when one is recorded.
+  Threshold consensus (`createAdvancedRequest`, the docs' advice for price data) would mean redeploying the registry,
+  and the guide and the architect judged that not worth its risk this late (P7; `feedback/`).
 - Rules judge closeable equity from the 20 best levels on each side; a position those levels cannot price
   pauses judging for that snapshot, so an account larger than the visible book is not judged until the book
   refills.
@@ -697,6 +757,7 @@ feedback, deploy; Nov 15 — buffer, submitted by 09:00.
 | Trust-model wording | "Every certificate is chain-checked at mint; every verdict is replayable." | user, 2026-11-10 |
 | Which equity do the rules judge? | Closeable equity: the marked equity revalued at the same-block book (bids for a long, asks for a short); opening IOCs capped from the book; demo at 5×; rulebooks unchanged | architect ruling P5 on the guide's measurement (the book ≈ 19 bps above the mark), 2026-11-12 |
 | How do the bot's own writes reach the chain, and what if one fails mid-take? | viem-direct (signed locally, `ORDER_GAS`, explicit pending nonce, standard RPC), read back from the chain, never re-sent; a take that fails after a run started aborts: the runs end by a rule or at their time limits (no void), recorded in `demo-aborted.json` | architect ruling P6 on the guide's diagnosis B18 (the SDK's send path ended "outcome unknown" twice), 2026-11-12 |
+| What makes a demo PASS likely, and how fast does the referee close? | Demo v2 (+0.50% target, 1.5% / 2% floors, 20 min) at 10×, chosen by replaying 12 h of on-chain history (95.6% of windows see a PASS); same-block entries; the FAIL on demand after the first PASS; closes capped from the book and sent in one round trip from the push; a 10 bps PASS lock buffer; the Price Oracle stays best-effort (no redeploy) | architect ruling P7 on the guide's diagnosis B19, 2026-11-12 |
 | Demo mode | `tokyo-sprint-demo`, a separately registered parameter set of the one rulebook, labelled on every surface; demo runner; exposure-breach fallback | user (fold-in list) + G4 |
 | Landing page | Required scope, additive `landing` plan, truthful content, kit checkers as gate | user directive via the guide |
 | Deploy host | Vercel | user, 2026-11-10 |

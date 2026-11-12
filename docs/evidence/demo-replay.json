@@ -1,0 +1,260 @@
+{
+  "evidence": "demo-replay",
+  "writtenAt": "2026-11-12T15:54:56.508Z",
+  "history": {
+    "fromBlock": "47994246",
+    "toBlock": "48426246",
+    "fromTime": "1794453618",
+    "toTime": "1794496874",
+    "samples": 43201,
+    "stepBlocks": "10"
+  },
+  "method": "An opposite pair (A long, B short, 50 USDso each) opened in the same block every `everySec` seconds of the history, each IOC walked through that block's book; both runs judged at every sample by the core evaluator on closeable equity; a FAIL closed and a PASS locked `latencySec` after the verdict at the book of that later sample; a lock only once closeable equity clears the target by `lockBufferBps`, and refused when the close realizes less than the target. With the demo's FAIL on demand (the other run pushed past the exposure cap once one PASSES), P(at least one PASS) is also P(one PASS + one FAIL). Funding and fees are not modeled (fees are 0 on BTC-PERP).",
+  "everySec": 60,
+  "candidates": [
+    {
+      "label": "demo v1 at 5x, closes 7 s after the verdict (the rehearsal)",
+      "rulebookId": "0x59e9390389b835396b7e3ea6e0f4cd8cf144e0d1bca17aa99ba4fd335df60757",
+      "rulebook": {
+        "profitTargetBps": 50,
+        "dailyLossBps": 50,
+        "trailingDrawdownBps": 75,
+        "maxExposureX": 15,
+        "minDurationSec": 60,
+        "timeLimitSec": 900
+      },
+      "leverageX": 5,
+      "latencySec": 7,
+      "lockBufferBps": 0,
+      "summary": {
+        "windows": 705,
+        "pAnyPass": 0.647,
+        "pOnePassOneFailNatural": 0.647,
+        "pBothPass": 0,
+        "pBothFail": 0.353,
+        "pRefused": 0.013,
+        "medianFirstPassSec": 296,
+        "p90FirstPassSec": 709,
+        "medianFailOvershootBps": 3.9099999999999966,
+        "worstFailOvershootBps": 113.87
+      }
+    },
+    {
+      "label": "demo v2 at 10x, closes 3 s after the verdict (chosen)",
+      "rulebookId": "0x5a5af7ee9971c4921c5616b1d462d5df50afc6872a13362337e520699608c448",
+      "rulebook": {
+        "profitTargetBps": 50,
+        "dailyLossBps": 150,
+        "trailingDrawdownBps": 200,
+        "maxExposureX": 15,
+        "minDurationSec": 60,
+        "timeLimitSec": 1200
+      },
+      "leverageX": 10,
+      "latencySec": 3,
+      "lockBufferBps": 10,
+      "summary": {
+        "windows": 700,
+        "pAnyPass": 0.956,
+        "pOnePassOneFailNatural": 0.816,
+        "pBothPass": 0.14,
+        "pBothFail": 0.044,
+        "pRefused": 0.006,
+        "medianFirstPassSec": 226,
+        "p90FirstPassSec": 703,
+        "medianFailOvershootBps": 7.1200000000000045,
+        "worstFailOvershootBps": 121.05000000000001
+      }
+    },
+    {
+      "label": "demo v2 at 10x, closes 7 s after the verdict",
+      "rulebookId": "0x5a5af7ee9971c4921c5616b1d462d5df50afc6872a13362337e520699608c448",
+      "rulebook": {
+        "profitTargetBps": 50,
+        "dailyLossBps": 150,
+        "trailingDrawdownBps": 200,
+        "maxExposureX": 15,
+        "minDurationSec": 60,
+        "timeLimitSec": 1200
+      },
+      "leverageX": 10,
+      "latencySec": 7,
+      "lockBufferBps": 10,
+      "summary": {
+        "windows": 700,
+        "pAnyPass": 0.949,
+        "pOnePassOneFailNatural": 0.813,
+        "pBothPass": 0.136,
+        "pBothFail": 0.051,
+        "pRefused": 0.011,
+        "medianFirstPassSec": 233,
+        "p90FirstPassSec": 707,
+        "medianFailOvershootBps": 9.120000000000005,
+        "worstFailOvershootBps": 177.75
+      }
+    },
+    {
+      "label": "demo v2 at 10x, 900 s time limit",
+      "rulebookId": "0x068ed7fc449b692f05d531cc82186de9020437ef8dff5432134e081740b24f0b",
+      "rulebook": {
+        "profitTargetBps": 50,
+        "dailyLossBps": 150,
+        "trailingDrawdownBps": 200,
+        "maxExposureX": 15,
+        "minDurationSec": 60,
+        "timeLimitSec": 900
+      },
+      "leverageX": 10,
+      "latencySec": 3,
+      "lockBufferBps": 10,
+      "summary": {
+        "windows": 705,
+        "pAnyPass": 0.912,
+        "pOnePassOneFailNatural": 0.803,
+        "pBothPass": 0.109,
+        "pBothFail": 0.088,
+        "pRefused": 0.006,
+        "medianFirstPassSec": 213,
+        "p90FirstPassSec": 616,
+        "medianFailOvershootBps": 7.639999999999986,
+        "worstFailOvershootBps": 121.05000000000001
+      }
+    },
+    {
+      "label": "demo v2 at 5x",
+      "rulebookId": "0x5a5af7ee9971c4921c5616b1d462d5df50afc6872a13362337e520699608c448",
+      "rulebook": {
+        "profitTargetBps": 50,
+        "dailyLossBps": 150,
+        "trailingDrawdownBps": 200,
+        "maxExposureX": 15,
+        "minDurationSec": 60,
+        "timeLimitSec": 1200
+      },
+      "leverageX": 5,
+      "latencySec": 3,
+      "lockBufferBps": 10,
+      "summary": {
+        "windows": 700,
+        "pAnyPass": 0.697,
+        "pOnePassOneFailNatural": 0.629,
+        "pBothPass": 0.069,
+        "pBothFail": 0.303,
+        "pRefused": 0.004,
+        "medianFirstPassSec": 356,
+        "p90FirstPassSec": 931,
+        "medianFailOvershootBps": 5.5800000000000125,
+        "worstFailOvershootBps": 116.69
+      }
+    },
+    {
+      "label": "demo v2 at 8x",
+      "rulebookId": "0x5a5af7ee9971c4921c5616b1d462d5df50afc6872a13362337e520699608c448",
+      "rulebook": {
+        "profitTargetBps": 50,
+        "dailyLossBps": 150,
+        "trailingDrawdownBps": 200,
+        "maxExposureX": 15,
+        "minDurationSec": 60,
+        "timeLimitSec": 1200
+      },
+      "leverageX": 8,
+      "latencySec": 3,
+      "lockBufferBps": 10,
+      "summary": {
+        "windows": 700,
+        "pAnyPass": 0.909,
+        "pOnePassOneFailNatural": 0.799,
+        "pBothPass": 0.11,
+        "pBothFail": 0.091,
+        "pRefused": 0.009,
+        "medianFirstPassSec": 269,
+        "p90FirstPassSec": 779,
+        "medianFailOvershootBps": 7.469999999999999,
+        "worstFailOvershootBps": 143.60000000000002
+      }
+    },
+    {
+      "label": "demo v2 at 12x",
+      "rulebookId": "0x5a5af7ee9971c4921c5616b1d462d5df50afc6872a13362337e520699608c448",
+      "rulebook": {
+        "profitTargetBps": 50,
+        "dailyLossBps": 150,
+        "trailingDrawdownBps": 200,
+        "maxExposureX": 15,
+        "minDurationSec": 60,
+        "timeLimitSec": 1200
+      },
+      "leverageX": 12,
+      "latencySec": 3,
+      "lockBufferBps": 10,
+      "summary": {
+        "windows": 700,
+        "pAnyPass": 0.974,
+        "pOnePassOneFailNatural": 0.834,
+        "pBothPass": 0.14,
+        "pBothFail": 0.026,
+        "pRefused": 0.001,
+        "medianFirstPassSec": 192,
+        "p90FirstPassSec": 611,
+        "medianFailOvershootBps": 9.159999999999997,
+        "worstFailOvershootBps": 133.95
+      }
+    },
+    {
+      "label": "demo v2 with a +0.40% target at 10x",
+      "rulebookId": "0xb077e85878582f98affbd2c5f19bf826b503d72fd60ffd3250d9c4d000c43c74",
+      "rulebook": {
+        "profitTargetBps": 40,
+        "dailyLossBps": 150,
+        "trailingDrawdownBps": 200,
+        "maxExposureX": 15,
+        "minDurationSec": 60,
+        "timeLimitSec": 1200
+      },
+      "leverageX": 10,
+      "latencySec": 3,
+      "lockBufferBps": 10,
+      "summary": {
+        "windows": 700,
+        "pAnyPass": 0.986,
+        "pOnePassOneFailNatural": 0.789,
+        "pBothPass": 0.197,
+        "pBothFail": 0.014,
+        "pRefused": 0.003,
+        "medianFirstPassSec": 189,
+        "p90FirstPassSec": 611,
+        "medianFailOvershootBps": 6.97999999999999,
+        "worstFailOvershootBps": 121.05000000000001
+      }
+    },
+    {
+      "label": "demo v2 with v1's floors (0.50% daily, 0.75% trailing) at 10x",
+      "rulebookId": "0xa694ff0963c3eee9c9f8efb21e6d5b89c0cf86dfbb2e96e7f9074a051f8db1f1",
+      "rulebook": {
+        "profitTargetBps": 50,
+        "dailyLossBps": 50,
+        "trailingDrawdownBps": 75,
+        "maxExposureX": 15,
+        "minDurationSec": 60,
+        "timeLimitSec": 1200
+      },
+      "leverageX": 10,
+      "latencySec": 3,
+      "lockBufferBps": 10,
+      "summary": {
+        "windows": 700,
+        "pAnyPass": 0.607,
+        "pOnePassOneFailNatural": 0.607,
+        "pBothPass": 0,
+        "pBothFail": 0.393,
+        "pRefused": 0.001,
+        "medianFirstPassSec": 177,
+        "p90FirstPassSec": 521,
+        "medianFailOvershootBps": 6.619999999999997,
+        "worstFailOvershootBps": 186.74
+      }
+    }
+  ],
+  "chosen": "demo v2 at 10x, closes 3 s after the verdict (chosen)"
+}
