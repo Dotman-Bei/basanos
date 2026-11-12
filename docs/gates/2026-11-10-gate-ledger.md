@@ -64,7 +64,7 @@ P1–P3 feed the Nov 11 tripwire (spike:11 needs ACCOUNT_A's voucher and the ref
 
 | # | Gate | Tier | Pass | Who | Needs from preflight | Status |
 |---|---|---|---|---|---|---|
-| spike:11 | LIVE: the referee closes a voucher account (G1 a, e; the Nov 11 tripwire), `gate_profile: wallet` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK`, `ACCOUNT_A_PK`, A's voucher (P3), STT on both | **guide GO 2026-11-12 ~12:38 WAT (spike:11 only); STOPPED before the live run, nothing sent**: dry-run clean, but the opening IOC (mark + 20 bps) is below the whole ask side (best ask +22.4 bps vs mark) and simulates a revert `0xd48c4403`; the same IOC at 100 bps simulates OK (see Evidence) |
+| spike:11 | LIVE: the referee closes a voucher account (G1 a, e; the Nov 11 tripwire), `gate_profile: wallet` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK`, `ACCOUNT_A_PK`, A's voucher (P3), STT on both | **DONE 2026-11-12 ~14:20 WAT: PASS g1a-close** (second guide GO, after the book-capped open landed in `9f48687`): FLAT after 1 close, 5 txs, entry 21.05 bps over mark, 0.0436 STT. The first GO (~12:38 WAT) stopped before the live run with nothing sent: the mark + 20 bps IOC was below the whole ask side (see Evidence) |
 | spike:12 | LIVE: one Price Oracle request on Tokyo testnet (about 0.031 STT), `wallet` | A | orchestrator-pause, **run by the concierge on the user's explicit go (2026-11-11)** | concierge (user consent for spike:12 only) | `REFEREE_PK` + STT | **run**: gate prints `PASS g1d-oracle`. On-chain outcome **Failed** (RequestFinalized status 3), no prices. The evidence file records `Pending` (read-back bug), so it is left uncommitted for the orchestrator (see Evidence) |
 | spike:16 P1 | LIVE: oracle probe P1, one symbol `BTC/USDC:PERP`, 4-argument `createRequest` (Majority), about 0.031 STT (outside the manifest; runbook in spike:16) | A | **run by the concierge on the user's explicit go (2026-11-11, P1 only; P2 needs a separate go)** | concierge | `REFEREE_PK` + STT | **run**: `PASS g1d-probe-p1`. Request 7782661 **Success** (status 2), 2 of 3 validators answered, answers IDENTICAL, BTC/USDC:PERP 73,735.85 (6 sources). Evidence left uncommitted for the orchestrator (see Evidence) |
 | contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | **DONE 2026-11-11 ~14:40 WAT by the concierge (user go: faucet top-up + contracts:10, 0.6 STT cap)**: `PASS deployment`. Registry **`0xf5D8099239200DF961E0910A42C105214D1E9370`**, deploy block 47503978, tx `0x0046bcd4…3190`; rulebooks `tokyo-sprint` `0x2b322b0c…3223` and `tokyo-sprint-demo` `0x59e93903…0757` registered. Spent 0.31665231 STT; referee 1.6778143 STT. `.env` += `REGISTRY_ADDRESS`, `ORACLE_ENABLED=true`. `deployments/hideki.json` left uncommitted for the orchestrator. (First go ~14:30 stopped at the 0.3 STT cap; see Evidence) |
@@ -528,3 +528,58 @@ Matches the GO's expected line.
 - The close side is a sell IOC at mark − slippage. With bids above the mark it should fill.
 - The entry cost against the mark will be at least about 22 bps on today's book. That matters for the demo's
   +0.5% target.
+
+### spike:11 re-run: the tripwire with the book-capped open. PASS 2026-11-12 ~14:20 WAT (second guide GO, spike:11 only)
+
+**PASS g1a-close.** The referee closed account A: FLAT after 1 close attempt, 5 txs, all `success`, 0.043569054 STT in
+total. The GO covered spike:11 only: no spike:19, no voucher claim, nothing moved between accounts, no `--sdk-send`.
+- **Sync:** `git fetch origin main` then `git merge --ff-only origin/main` was already up to date at `2719b12`, which
+  contains the plan change `9f48687` (P5, spike:21: the opening IOC is capped at best ask + 20 bps, not mark + 20 bps).
+  `package-lock.json` is unchanged, so `npm install` was not run.
+- **Dry-run:** the first attempt failed at a read before any send (the SDK indexer `IndexedChains` connect timeout,
+  `UND_ERR_CONNECT_TIMEOUT`). The read-only retry was clean (exit 0):
+  ```
+  preflight ok: owner 0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1, referee 0xE358D82209ea9360F411A041C0200adc385877eb, unlocked margin 50 USDso, leverage cap 40x (market), voucher none, mark 72591570715883144000000, open qty 13000, send path viem
+  open plan: IOC buy 13000 capped at 72866600000000000000000 = best ask 72721100000000000000000 + 20 bps (best ask 17.84 bps above the mark); simulated from account A: fills
+  dry-run: no transaction sent
+  ```
+- **Cost check (cap 0.3 STT, read-only, no key):** grant 1,837,607 gas, open 4,712,337 (it now estimates; it reverted
+  before), rest 3,609,366. That puts A's writes at 0.061 STT, and the normal path (plus the cancel and 1 close at the
+  10M limit) at most 0.181 STT. 0.361 STT would need all 3 close attempts and a sweep, each at the full limit.
+
+**Live run, once: `npx tsx packages/spike/src/skeleton-close.ts`** (exit 0)
+```
+preflight ok: … mark 72505934229737018000000, open qty 13000, send path viem
+open plan: IOC buy 13000 capped at 72814000000000000000000 = best ask 72668600000000000000000 + 20 bps (best ask 22.43 bps above the mark); simulated from account A: fills
+entry: avg 72652500000000000000000 vs mark 72499837407613528000000 = 21.05 bps (basis); vs best ask 0 bps; spread 0.13 bps
+skeleton-close: FLAT after 1 close attempt(s); 5 txs (owner writes via viem)
+```
+
+| tx | signer | nonce | block | gas used | STT | hash |
+|---|---|---|---|---|---|---|
+| grant (place + cancel to the referee) | A | 3 | 48357057 | 558,405 | 0.00335043 | [`0x05b5b794…5bd7c`](https://explorer.testnet.somnia.network/tokyo/tx/0x05b5b7946e42f295b1d65bb245831ac10dbdb00b28085f61a4e5fd6d0825bd7c) |
+| open (IOC buy 13000) | A | 4 | 48357097 | 3,149,456 | 0.018896736 | [`0x96cf340b…9f828`](https://explorer.testnet.somnia.network/tokyo/tx/0x96cf340b42337cc9fc9575adf4a78b3227c2b619f37ddf48c1e6e097e9a4f828) |
+| rest (far bid at 90% of mark) | A | 5 | 48357126 | 1,631,893 | 0.009791358 | [`0xa31573cb…db050`](https://explorer.testnet.somnia.network/tokyo/tx/0xa31573cbf6e3affd29a32d7882b1540397217830df2071ce9d071080ef0db050) |
+| cancel (`cancelOrderFor`) | referee | 7 | 48357156 | 170,793 | 0.001024758 | [`0xb1944897…a79dfd`](https://explorer.testnet.somnia.network/tokyo/tx/0xb19448976d7a829a72a4a9fda89a3d92420487f598627d8880f37ba296a79dfd) |
+| close (`placeOrderFor`, IOC sell) | referee | 8 | 48357179 | 1,750,962 | 0.010505772 | [`0xcde89eae…d2b4b`](https://explorer.testnet.somnia.network/tokyo/tx/0xcde89eae57d2f3719fd05fbdb0c2289d639275e10d03c5527f1407003c1d2b4b) |
+
+**Entry (from `g1a-close.json`, mark and book both read at block 48357075):**
+- **Basis:** fill 72,652.5 against mark 72,499.84 = **21.05 bps**.
+- **Slippage:** the fill equals the best ask read just before the open (72,652.5), so **0 bps** against the book.
+  The IOC limit was 72,797.9 (that best ask + 20 bps).
+- **Spread:** best bid 72,651.5 against best ask 72,652.5 = **0.13 bps**.
+- The dry-run and the live preflight saw the best ask at 17.8 and 22.4 bps over the mark. The basis moves from block to
+  block, and for the demo's +0.5% target it is the cost that matters, not slippage.
+
+**Gate:** `npx tsx packages/spike/src/check-evidence.ts g1a-close` → `PASS g1a-close`.
+
+**Read-back (on-chain, read-only, no key):**
+- All 5 receipts read `success`, with signers and nonces as in the table.
+- **A's position on the BTC pool:** size 0, avgEntryPrice 0.
+- **A's resting orders:** `getOwnOpenOrders` read as A returns 0.
+- **A's MarginBank account:** unlocked 49.999025 USDso, locked 0, active perp pools 0. The round trip cost 0.000975 USDso
+  in fees and price, down from 50 USDso.
+- **STT spent:** A 0.032038524 (50.99373159 → 50.961693066, nonce 3 → 6). The referee 0.01153053 (1.6778143165982 →
+  1.6662837865982, nonce 7 → 9). Each drop equals the sum of that signer's receipts exactly.
+- The operator grant (place + cancel) from A to the referee stays in place; the script does not revoke it.
+- `docs/evidence/g1a-close.json` is left uncommitted for the orchestrator.
