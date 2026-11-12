@@ -64,7 +64,7 @@ P1–P3 feed the Nov 11 tripwire (spike:11 needs ACCOUNT_A's voucher and the ref
 
 | # | Gate | Tier | Pass | Who | Needs from preflight | Status |
 |---|---|---|---|---|---|---|
-| spike:11 | LIVE: the referee closes a voucher account (G1 a, e; the Nov 11 tripwire), `gate_profile: wallet` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK`, `ACCOUNT_A_PK`, A's voucher (P3), STT on both | pending (not this seat) |
+| spike:11 | LIVE: the referee closes a voucher account (G1 a, e; the Nov 11 tripwire), `gate_profile: wallet` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK`, `ACCOUNT_A_PK`, A's voucher (P3), STT on both | **guide GO 2026-11-12 ~12:38 WAT (spike:11 only); STOPPED before the live run, nothing sent**: dry-run clean, but the opening IOC (mark + 20 bps) is below the whole ask side (best ask +22.4 bps vs mark) and simulates a revert `0xd48c4403`; the same IOC at 100 bps simulates OK (see Evidence) |
 | spike:12 | LIVE: one Price Oracle request on Tokyo testnet (about 0.031 STT), `wallet` | A | orchestrator-pause, **run by the concierge on the user's explicit go (2026-11-11)** | concierge (user consent for spike:12 only) | `REFEREE_PK` + STT | **run**: gate prints `PASS g1d-oracle`. On-chain outcome **Failed** (RequestFinalized status 3), no prices. The evidence file records `Pending` (read-back bug), so it is left uncommitted for the orchestrator (see Evidence) |
 | spike:16 P1 | LIVE: oracle probe P1, one symbol `BTC/USDC:PERP`, 4-argument `createRequest` (Majority), about 0.031 STT (outside the manifest; runbook in spike:16) | A | **run by the concierge on the user's explicit go (2026-11-11, P1 only; P2 needs a separate go)** | concierge | `REFEREE_PK` + STT | **run**: `PASS g1d-probe-p1`. Request 7782661 **Success** (status 2), 2 of 3 validators answered, answers IDENTICAL, BTC/USDC:PERP 73,735.85 (6 sources). Evidence left uncommitted for the orchestrator (see Evidence) |
 | contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | **DONE 2026-11-11 ~14:40 WAT by the concierge (user go: faucet top-up + contracts:10, 0.6 STT cap)**: `PASS deployment`. Registry **`0xf5D8099239200DF961E0910A42C105214D1E9370`**, deploy block 47503978, tx `0x0046bcd4…3190`; rulebooks `tokyo-sprint` `0x2b322b0c…3223` and `tokyo-sprint-demo` `0x59e93903…0757` registered. Spent 0.31665231 STT; referee 1.6778143 STT. `.env` += `REGISTRY_ADDRESS`, `ORACLE_ENABLED=true`. `deployments/hideki.json` left uncommitted for the orchestrator. (First go ~14:30 stopped at the 0.3 STT cap; see Evidence) |
@@ -487,3 +487,44 @@ deposit A: OK — unlocked margin 0 -> 50 USDso (+50); wallet 50 -> 0 USDso
 
 **Evidence:** `docs/evidence/deposit-a.json` is left **UNCOMMITTED** for the orchestrator.
 **Note for later gates:** A's next nonce is 3, and both A and B still have an unclaimed voucher.
+
+### spike:11: the tripwire (referee closes account A). STOPPED before the live run 2026-11-12 ~12:40 WAT (guide GO, spike:11 only)
+
+**Nothing was sent.** A is unchanged: nonce 3, 50 USDso unlocked in the MarginBank, flat. The referee is unchanged at
+nonce 7. No grant was made, and no `g1a-close.json` was written (the dry-run writes none).
+- **Sync:** `git fetch origin main` then `git merge --ff-only origin/main` was already up to date at `1be02d8`.
+  `package-lock.json` is unchanged, so `npm install` was not run.
+- **Read first:** `packages/spike/src/skeleton-close.ts` (last changed `0bf0275`). Without `--sdk-send`, every write
+  is viem-direct. A signs the grant, the open (IOC at `planOpen(…, 20)`, i.e. mark + 20 bps) and one resting far bid.
+  The referee signs the cancel, up to 3 IOC closes and the sweep.
+
+**1. `npx tsx packages/spike/src/skeleton-close.ts --dry-run`** (exit 0)
+```
+preflight ok: owner 0x917Fa4Fd95d80d0dbf2823bFa1F07496Aca4AEc1, referee 0xE358D82209ea9360F411A041C0200adc385877eb, unlocked margin 50 USDso, leverage cap 40x (market), voucher none, mark 72859527414071191500000, open qty 13000, send path viem
+dry-run: no transaction sent
+```
+Matches the GO's expected line.
+
+**Pre-send checks (read-only, no key):**
+- **Cost (cap 0.3 STT):** the grant estimates 1,837,607 gas and the resting order 3,618,352. The referee's cancel and
+  closes can only be estimated after the grant and a position exist, so they are bounded by `ORDER_GAS` (10M). The
+  normal path (grant, open, rest, cancel, 1 close) is bounded at about 0.21 STT at 6 gwei. Only all 3 close
+  attempts plus a sweep, each at the full gas limit, would reach about 0.39 STT.
+- **Blocker:** the opening IOC's `eth_estimateGas` **reverted**. An `eth_call` from A gives:
+  - IOC buy, 13000 qty at mark + 20 bps (73,084.5 at mark 72,938.6): **REVERT `0xd48c4403`**. The selector is not in
+    the repo ABIs; most likely "IOC unfilled".
+  - The same IOC at mark + 100 bps (73,668.0): OK.
+  - A LIMIT buy at mark + 20 bps: OK. Margin and the order itself are fine; only the IOC fill fails.
+- **Book** (`getBookLevels`, mark 72,879.99):
+  - Asks: 73,043.8 (+22.4 bps), 73,064.9 (+25.3), 73,066.7 (+25.6), …
+  - Bids: 73,042.2 (+22.2 bps), 73,037.6 (+21.6), …
+  - The whole book trades about 21–26 bps above the mark, so a buy limited to mark + 20 bps cannot fill.
+- **Decision:** not run live. The predicted outcome was a grant tx, then a reverted open, then `STOP — the opening
+  IOC reverted` with `ok:false`. The 20 bps is a plan constant, and the concierge does not change plans.
+
+**For the orchestrator/architect:**
+- The opening IOC needs room over the book, not over the mark: for example, price it from the best ask plus a margin,
+  or raise the open slippage to about 50 bps.
+- The close side is a sell IOC at mark − slippage. With bids above the mark it should fill.
+- The entry cost against the mark will be at least about 22 bps on today's book. That matters for the demo's
+  +0.5% target.
