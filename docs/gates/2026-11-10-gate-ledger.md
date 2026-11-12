@@ -68,7 +68,7 @@ P1–P3 feed the Nov 11 tripwire (spike:11 needs ACCOUNT_A's voucher and the ref
 | spike:12 | LIVE: one Price Oracle request on Tokyo testnet (about 0.031 STT), `wallet` | A | orchestrator-pause, **run by the concierge on the user's explicit go (2026-11-11)** | concierge (user consent for spike:12 only) | `REFEREE_PK` + STT | **run**: gate prints `PASS g1d-oracle`. On-chain outcome **Failed** (RequestFinalized status 3), no prices. The evidence file records `Pending` (read-back bug), so it is left uncommitted for the orchestrator (see Evidence) |
 | spike:16 P1 | LIVE: oracle probe P1, one symbol `BTC/USDC:PERP`, 4-argument `createRequest` (Majority), about 0.031 STT (outside the manifest; runbook in spike:16) | A | **run by the concierge on the user's explicit go (2026-11-11, P1 only; P2 needs a separate go)** | concierge | `REFEREE_PK` + STT | **run**: `PASS g1d-probe-p1`. Request 7782661 **Success** (status 2), 2 of 3 validators answered, answers IDENTICAL, BTC/USDC:PERP 73,735.85 (6 sources). Evidence left uncommitted for the orchestrator (see Evidence) |
 | contracts:10 | LIVE: deploy BasanosRegistry on Hideki and register Tokyo Sprint, `deploy` | A in principle | orchestrator-pause | user + guide | `REFEREE_PK` + STT (deploy cost measured by the spike) | **DONE 2026-11-11 ~14:40 WAT by the concierge (user go: faucet top-up + contracts:10, 0.6 STT cap)**: `PASS deployment`. Registry **`0xf5D8099239200DF961E0910A42C105214D1E9370`**, deploy block 47503978, tx `0x0046bcd4…3190`; rulebooks `tokyo-sprint` `0x2b322b0c…3223` and `tokyo-sprint-demo` `0x59e93903…0757` registered. Spent 0.31665231 STT; referee 1.6778143 STT. `.env` += `REGISTRY_ADDRESS`, `ORACLE_ENABLED=true`. `deployments/hideki.json` left uncommitted for the orchestrator. (First go ~14:30 stopped at the 0.3 STT cap; see Evidence) |
-| referee:10 | LIVE: referee rehearsal (Nov 12), the first real verdicts, `wallet` | A in principle | orchestrator-pause | user + guide | all three burners funded; `REGISTRY_ADDRESS` | pending (not this seat) |
+| referee:10 | LIVE: referee rehearsal (Nov 12), the first real verdicts, `wallet` | A in principle | orchestrator-pause | user + guide | all three burners funded; `REGISTRY_ADDRESS` | **guide GO 2026-11-12 ~15:00 WAT (referee:10 only, one take); STOPPED, take aborted before any run**: preflight + `PASS demo-check` clean; the demo crashed on B's operator grant with `TransactionOutcomeUnknownError` (send WS timeout); the tx never landed, nothing changed on-chain, runCount still 0 (see Evidence) |
 | ship:3 | LIVE: money shot (one PASS, one FAIL) + `FEATURED_RUN_ID`, `wallet` | A in principle | orchestrator-pause | user + guide | as referee:10 | pending (not this seat) |
 | ship:6 | LIVE: deploy to Vercel + `setBaseUrl`, `deploy` | B (Vercel account) | orchestrator-pause | user + guide | `VERCEL_TOKEN` (C4), `REFEREE_PK` + STT | pending (not this seat) |
 
@@ -620,3 +620,38 @@ skeleton-close: FLAT after 1 close attempt(s); 5 txs (owner writes via viem)
 - **A, unchanged:** unlocked 49.999025 USDso, locked 0, active pools 0, BTC position 0, open orders 0, wallet 0 USDso,
   STT 50.961693066, nonce 6.
 - `docs/evidence/deposit-b.json` is left uncommitted for the orchestrator.
+
+### referee:10: the rehearsal. STOPPED, take 1 aborted before any run, 2026-11-12 ~15:05 WAT (guide GO, referee:10 only)
+
+**Nothing changed on-chain.** No run started (registry `runCount` 0, no active runs). No balance, nonce, margin or
+position moved on A, B or the referee. No `runs.json`, `demo-takes.json` or `rehearsal.json` was written. I did not
+retry and did not start a second take (GO step 6).
+- **Sync:** already up to date at `9c32e98`. `package-lock.json` is unchanged, so `npm install` was not run.
+- **Preflight (read-only, block 48379860):** OK.
+  - Registry `runCount` 0, no active runs. The demo rulebook `0x59e93903…5df60757` is registered (target 50 bps,
+    60 s minimum, 900 s limit).
+  - A: flat, 49.999025 USDso unlocked, 50.961693066 STT, nonce 6, `previewStart` 0.
+  - B: flat, 50 USDso unlocked, 0.995308612 STT, nonce 2, `previewStart` 3 (grant missing). That is expected: `demo.ts`
+    grants place + cancel to the referee before `startRun`.
+  - Referee: 1.6662837865982 STT, nonce 9.
+  - `REGISTRY_ADDRESS` and `REFEREE_ADDRESS` are set, and `ORACLE_ENABLED=true`.
+- **`npx tsx packages/bot/src/demo-check.ts`:** `PASS demo-check`. Demo size 345000 (5x on 49.999 USDso). The round
+  trip is 0.49 bps of notional, or 2.45 equity bps against half the target (25). Tape with costs: long fail, short target.
+- **Referee:** `npx tsx packages/referee/src/cli.ts start` ran in the background, logging to the scratch folder
+  outside the repo. It printed `referee watching registry 0xf5D8…9370` at 14:04:38Z. It saw no run, because none started.
+- **Demo:** `npx tsx packages/bot/src/demo.ts` ran in the background. It printed the burner line and both preflight
+  lines (A and B flat), then exited with code 1. The SDK's `setOperatorApprovalForPool` (B's grant, via
+  `ensureGrant`) threw `TransactionOutcomeUnknownError`: `eth_sendRawTransactionSync` timed out on
+  `wss://send.hideki.infra.testnet.somnia.network/ws`, hash `0x5eeb2d31550222bad4ce6a7197a9d0ed94f758e7b52e6e583536399dd72e0e5b`,
+  "may have been sent; its receipt was not observed".
+- **Re-check without sending (block 48381096):** OK.
+  - The tx is not found and has no receipt.
+  - B's nonce is 2 (latest) and 2 (pending), and B's grant to the referee is still false for both place and cancel.
+  - Every balance and nonce is identical to the preflight, and `runCount` is still 0.
+  - Because the signed grant used B's nonce 2, it could in principle still land later. That would be harmless: it is
+    the same grant the next take sends first.
+- **Clean-up:** I stopped the referee daemon by its exact PIDs (node 26572, tsx 15996, npx 15524), and none remain.
+
+**For the user and guide:** the failure is a transient send-endpoint timeout in the SDK path, not a plan or rulebook
+problem. A new take needs a new GO. Before the second take, re-check B's grant and nonce, because the signed grant might
+still land.
