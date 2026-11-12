@@ -2,7 +2,7 @@
 import { BTC_POOL, readSnapshot, rulebookId, quantityForLeverage } from "@basanos/core";
 import { RULEBOOK_FILES, loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
 import { makePublicClient } from "@basanos/referee";
-import { breachQuantity, ensureGrant, makeAccountWallet, makeMarkets, openIoc, preflight, readBook, startRunAs } from "./actions";
+import { breachQuantity, ensureGrant, makeAccountWallet, makeMarkets, notReady, openIoc, preflight, readBook, startRunAs } from "./actions";
 
 loadDotEnv();
 const [cmd, ...rest] = process.argv.slice(2);
@@ -23,8 +23,9 @@ if (cmd === "start") {
   const side = opt("--side", "short");
   const leverage = Number(opt("--leverage", "12"));
   const pf = await preflight(client, markets, account);
-  if (!pf.sttOk || !pf.voucherClaimed || !pf.flat) {
-    console.error(`bot preflight failed: ${JSON.stringify({ sttOk: pf.sttOk, voucherClaimed: pf.voucherClaimed, flat: pf.flat })}`);
+  const problems = notReady(pf);
+  if (problems.length > 0) {
+    console.error(`bot preflight failed: ${problems.join("; ")}`);
     process.exit(1);
   }
   const grant = await ensureGrant(client, markets, account, referee);

@@ -16,6 +16,7 @@ import {
   STT_WRITE_HEADROOM,
   alignUp,
   basanosRegistryAbi,
+  marginBankAbi,
   perpPoolAbi,
   planOpen,
   readSnapshot,
@@ -29,9 +30,17 @@ export interface Preflight {
   stt: bigint;
   sttOk: boolean;
   voucherClaimed: boolean;
+  /** MarginBank getAccountState().unlockedCollateralBalance: the account's own deposited USDso not locked in a position. */
+  unlockedCollateral: bigint;
+  /** unlockedCollateral at or above what a demo run needs (DEMO_MIN_UNLOCKED unless the caller passes another need). */
+  funded: boolean;
   flat: boolean;
   equity: bigint;
 }
+
+/** The least unlocked MarginBank margin a demo run needs: its 12x size must clear the 0.00013 BTC pool minimum
+ *  (about 0.8 USDso of equity) with room for costs. */
+export const DEMO_MIN_UNLOCKED = 5n * 10n ** 18n;
 
 /** Inferred return type: bound to CHAIN and the key's account. */
 export function makeAccountWallet(pk: Hex, url: string) {
@@ -44,12 +53,14 @@ export function makeMarkets(pk: Hex): SomniaMarkets {
   return new SomniaMarkets({ chain: CHAIN, indexerUrl: INDEXER_URL, addresses: HIDEKI_ADDRESSES, privateKey: pk });
 }
 
-/** Reads only. Never claims a voucher: the Step 3 preflight claimed one per account. */
-export async function preflight(client: PublicClient, markets: SomniaMarkets, account: Address): Promise<Preflight> {
-  const [stt, voucher, snap] = await Promise.all([
+/** Reads only. Never claims a voucher: claim() reverts chain-wide (B14), so an account is ready when it is FUNDED,
+ *  with its own wallet USDso deposited into its own MarginBank balance (spike:18 for A, spike:19 for B). */
+export async function preflight(client: PublicClient, markets: SomniaMarkets, account: Address, needWei: bigint = DEMO_MIN_UNLOCKED): Promise<Preflight> {
+  const [stt, voucher, snap, state] = await Promise.all([
     client.getBalance({ address: account }),
     markets.client.getPerpVoucher(MARGIN_BANK, account),
     readSnapshot(client, [account], BTC_POOL),
+    client.readContract({ address: MARGIN_BANK, abi: marginBankAbi, functionName: "getAccountState", args: [account] }),
   ]);
   const a = snap.accounts[0];
   return {
@@ -57,9 +68,24 @@ export async function preflight(client: PublicClient, markets: SomniaMarkets, ac
     stt,
     sttOk: stt >= STT_WRITE_HEADROOM,
     voucherClaimed: voucher?.claimed ?? false,
+    unlockedCollateral: state.unlockedCollateralBalance,
+    funded: state.unlockedCollateralBalance >= needWei,
     flat: a ? a.size === 0n && a.lockedCollateral === 0n && a.activePools.length === 0 : false,
     equity: a?.totalEquity ?? 0n,
   };
+}
+
+/** Why an account cannot start a demo run, or [] when it can. A voucher is never required. */
+export function notReady(pf: Preflight): string[] {
+  const p: string[] = [];
+  if (!pf.sttOk) p.push(`STT ${pf.stt} is below the 0.6 write headroom (top up from the Tokyo faucet)`);
+  if (!pf.funded) {
+    p.push(
+      `unlocked MarginBank margin is ${pf.unlockedCollateral} wei, below what a demo run needs; deposit the account's own wallet USDso first (deposit.ts: spike:18 for A, spike:19 for B)`,
+    );
+  }
+  if (!pf.flat) p.push("the account is not flat (flatten it in the dreamDEX app first)");
+  return p;
 }
 
 export async function readBook(client: PublicClient): Promise<BookParams> {
