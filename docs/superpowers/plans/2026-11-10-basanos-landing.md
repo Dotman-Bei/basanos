@@ -351,18 +351,28 @@ Message: `feat(landing): featured snapshot from the first real verdict run`
 - Create: `apps/landing/src/landing.css`
 - Create: `apps/landing/scripts/build.ts`
 - Create: `apps/landing/scripts/oracle-row.ts`
+- Create: `apps/landing/scripts/sample-guard.ts`
+- Create: `apps/landing/scripts/check-sample.ts`
+- Create: `apps/landing/test/fixtures/featured-sample.json`
 - Test: `apps/landing/test/page.test.ts`
+- Test: `apps/landing/test/sample-guard.test.ts`
 
-**Depends on:** Task 1, Task 2, web:Task 1, spike:Task 1
+**Depends on:** Task 1, web:Task 1, spike:Task 1
 **Effort:** high
-**Provides:** `apps/landing/src/page.html (the template)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `apps/landing/dist/index.html (+ assets/ and img/)`, `withOracleRow(template: string, f: FeaturedLike): string (the Price Oracle row only with a real reading)`
-**Requires:** `renderPage(template: string, f: FeaturedLike): string`, `findUnbacked(html: string, f: FeaturedLike): string[]`, `apps/landing/src/featured-verdict.json (the page's only data source)`, `@basanos/design package (exports "./tokens.css", "./system.css", "./motion.css", "./motion.js")`, `apps/landing/vendor/manifest.json (four landing kit files with sha256)`, `repoPath(rel: string): string`
+**Provides:** `apps/landing/src/page.html (the template)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `apps/landing/dist/index.html (+ assets/ and img/)`, `withOracleRow(template: string, f: FeaturedLike): string (the Price Oracle row only with a real reading)`, `SAMPLE_MARKER = "BASANOS-SAMPLE-FIXTURE"`, `sampleProblems(snapshot: unknown, html?: string): string[]`, `CLI: node --import tsx apps/landing/scripts/check-sample.ts -> PASS no sample, or FAIL sample (the real snapshot or the built page is a sample)`, `apps/landing/test/fixtures/featured-sample.json (a labelled test fixture, "sample": true; lives under test/ only)`
+**Requires:** `renderPage(template: string, f: FeaturedLike): string`, `findUnbacked(html: string, f: FeaturedLike): string[]`, `@basanos/design package (exports "./tokens.css", "./system.css", "./motion.css", "./motion.js")`, `apps/landing/vendor/manifest.json (four landing kit files with sha256)`, `repoPath(rel: string): string`
 
 Applies `docs/design/frontend.md` (§1 kind = software; §2 tech plan; house rules 1–9; checklist §5):
 - **Hero:** the dealt collage, from the kit's `assets/layout/hero-collage.html` structure (`hero hero--collage`, `hero__text span-5`, `hero__art span-6 start-7`, `ly-piece--main d-win`, `ly-piece--note d-card`). Its window shows the real verdict as live HTML.
 - **Copy (`copy.md`):** the h1 names the category and the buyer; the proof line is a hard fact from the run; every heading has a noun; buttons are a verb plus an object.
 - **Buttons:** one `.btn--primary` per screen; `.btn--xl` once, in the type close.
 - **Imagery:** no caption under any image; the only picture besides the live window is the real verdict page screenshot from Task 4.
+
+**Runs before the real verdict (guide GO, 2026-11-12).** The page tests render a labelled test fixture, `apps/landing/test/fixtures/featured-sample.json`. It is marked `"sample": true`, and its visible text carries `BASANOS-SAMPLE-FIXTURE`. The guards:
+1. **The fixture lives under `test/` only,** never `src/` or `vendor/`. `sample-guard.test.ts` scans `src/` and `vendor/` and fails if either holds the marker or `"sample": true`.
+2. **`build.ts` refuses a sample** snapshot, or a page rendered from one, before it writes anything. landing:5 runs the same check (`check-sample.ts`) before any kit checker. `sample-guard.test.ts` proves the refusal.
+3. **The deploy check (ship:10, run in ship:6)** fails if a live page or the assembled `site/basanos` output carries the marker.
+4. **landing:2 stays the only owner of `src/featured-verdict.json`.** landing:4, landing:5 and ship:6 stay blocked on the real verdict.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -375,7 +385,9 @@ import { renderPage, type FeaturedLike } from "../scripts/render";
 import { findUnbacked } from "../scripts/truth";
 
 const template = readFileSync(new URL("../src/page.html", import.meta.url), "utf8");
-const f = JSON.parse(readFileSync(new URL("../src/featured-verdict.json", import.meta.url), "utf8")) as FeaturedLike;
+// A labelled test fixture ("sample": true): landing:3 runs before the real verdict exists. The real snapshot,
+// src/featured-verdict.json, is landing:2's alone, and build.ts refuses this fixture (sample-guard.ts).
+const f = JSON.parse(readFileSync(new URL("./fixtures/featured-sample.json", import.meta.url), "utf8")) as FeaturedLike;
 const html = renderPage(withOracleRow(template, f), f);
 
 describe("landing page", () => {
@@ -412,9 +424,118 @@ describe("landing page", () => {
 });
 ```
 
+`apps/landing/test/fixtures/featured-sample.json` (the labelled test fixture; never copy it into `src/`):
+```json
+{
+  "sample": true,
+  "note": "TEST FIXTURE (BASANOS-SAMPLE-FIXTURE): not a real verdict. It lives under apps/landing/test/ only. build.ts, landing:5 (check-sample.ts) and the ship deploy check refuse it.",
+  "schema": "basanos.featured/1",
+  "chainId": 50383,
+  "registry": "0x00000000000000000000000000000000000000f0",
+  "runId": "0",
+  "status": "Passed",
+  "rule": null,
+  "rulebook": {
+    "label": "Tokyo Sprint · Demo (BASANOS-SAMPLE-FIXTURE)",
+    "id": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "profitTargetBps": 50,
+    "dailyLossBps": 50,
+    "trailingDrawdownBps": 75,
+    "maxExposureX": 15,
+    "minDurationSec": 60,
+    "timeLimitSec": 900
+  },
+  "account": "0x00000000000000000000000000000000000000a1",
+  "start": {
+    "block": "46900100",
+    "equity": "1,000.00",
+    "equityRaw": "1000000000000000000000",
+    "size": "0",
+    "mark": "74,500.00"
+  },
+  "breach": null,
+  "end": {
+    "block": "46900950",
+    "equity": "1,006.00",
+    "equityRaw": "1006000000000000000000",
+    "size": "0",
+    "mark": "74,560.00"
+  },
+  "closeTxs": [
+    {
+      "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "url": "https://explorer.testnet.somnia.network/tokyo/tx/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "verdictTx": {
+    "hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "url": "https://explorer.testnet.somnia.network/tokyo/tx/0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "oracle": {
+    "price": "74,510.00",
+    "sources": 3
+  },
+  "links": {
+    "verdict": "/app/#/run/0",
+    "certificate": "/app/#/cert/0"
+  },
+  "trustLine": "Every certificate is chain-checked at mint; every verdict is replayable.",
+  "demoDisclosure": "Both demo accounts are burners operated by the builder: one human-driven, one scripted.",
+  "testnetNotice": "BASANOS-SAMPLE-FIXTURE: a test fixture. Somnia Tokyo testnet, paper USDso. No real funds, no payouts; not a financial service."
+}
+```
+
+`apps/landing/test/sample-guard.test.ts`:
+```ts
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { withOracleRow } from "../scripts/oracle-row";
+import { renderPage, type FeaturedLike } from "../scripts/render";
+import { SAMPLE_MARKER, sampleProblems } from "../scripts/sample-guard";
+
+const template = readFileSync(new URL("../src/page.html", import.meta.url), "utf8");
+const sample = JSON.parse(readFileSync(new URL("./fixtures/featured-sample.json", import.meta.url), "utf8")) as FeaturedLike & { sample?: boolean };
+const app = fileURLToPath(new URL("..", import.meta.url));
+
+function filesUnder(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    return statSync(p).isDirectory() ? filesUnder(p) : [p];
+  });
+}
+
+describe("the sample fixture can never ship", () => {
+  it("refuses the labelled fixture and any page rendered from it", () => {
+    expect(SAMPLE_MARKER).toBe("BASANOS-SAMPLE-FIXTURE");
+    expect(sample.sample).toBe(true);
+    expect(sampleProblems(sample)).toContain('the featured snapshot is marked "sample": true (a test fixture, not a real verdict)');
+    const html = renderPage(withOracleRow(template, sample), sample);
+    expect(html).toContain(SAMPLE_MARKER);
+    expect(sampleProblems({}, html)).toEqual([`the built page carries the sample marker ${SAMPLE_MARKER}`]);
+  });
+  it("accepts a real snapshot and the page built from it", () => {
+    const real = JSON.parse(JSON.stringify(sample).split(SAMPLE_MARKER).join("real run")) as FeaturedLike & { sample?: boolean };
+    delete real.sample;
+    expect(sampleProblems(real, renderPage(withOracleRow(template, real), real))).toEqual([]);
+  });
+  it("keeps the fixture under test/ only: nothing in src/ or vendor/ is a sample", () => {
+    const shipped = [...filesUnder(join(app, "src")), ...filesUnder(join(app, "vendor"))];
+    expect(shipped.length).toBeGreaterThan(0);
+    for (const file of shipped.filter((f) => /\.(json|html|css|js|ts)$/.test(f))) {
+      const text = readFileSync(file, "utf8");
+      expect(text.includes(SAMPLE_MARKER), file).toBe(false);
+      expect(/"sample"\s*:\s*true/.test(text), file).toBe(false);
+    }
+  });
+});
+```
+
 - [ ] **Step 2: Run to confirm it fails**
-Run: `npm test -w @basanos/landing -- test/page.test.ts`
-Expected: FAIL — `ENOENT … src/page.html`.
+Run: `npm test -w @basanos/landing -- test/page.test.ts test/sample-guard.test.ts`
+Expected: FAIL — `ENOENT … src/page.html` and `Cannot find module '../scripts/sample-guard'` (2 test files failed).
 
 - [ ] **Step 3: Write the template**
 
@@ -590,6 +711,44 @@ Expected: FAIL — `ENOENT … src/page.html`.
 
 - [ ] **Step 4: Write the build script**
 
+`apps/landing/scripts/sample-guard.ts`:
+```ts
+// A labelled test fixture must never become the landing page. The fixture (apps/landing/test/fixtures/
+// featured-sample.json) is marked "sample": true and carries SAMPLE_MARKER in its visible text. The only real
+// snapshot is apps/landing/src/featured-verdict.json, which landing:2 writes from a real verdict run.
+export const SAMPLE_MARKER = "BASANOS-SAMPLE-FIXTURE";
+
+/** Why a snapshot, and optionally the HTML rendered from it, must not be built or shipped; [] when it is real. */
+export function sampleProblems(snapshot: unknown, html?: string): string[] {
+  const p: string[] = [];
+  const s = (snapshot !== null && typeof snapshot === "object" ? snapshot : {}) as Record<string, unknown>;
+  if (s.sample === true) p.push('the featured snapshot is marked "sample": true (a test fixture, not a real verdict)');
+  if (JSON.stringify(snapshot ?? null).includes(SAMPLE_MARKER)) p.push(`the featured snapshot carries the sample marker ${SAMPLE_MARKER}`);
+  if (html !== undefined && html.includes(SAMPLE_MARKER)) p.push(`the built page carries the sample marker ${SAMPLE_MARKER}`);
+  return p;
+}
+```
+
+`apps/landing/scripts/check-sample.ts`:
+```ts
+// The sample refusal as a command (landing:5 runs it before the kit's checkers): the real snapshot and the built page
+// must carry no sample marker. Run from the repo root: node --import tsx apps/landing/scripts/check-sample.ts
+import { existsSync, readFileSync } from "node:fs";
+import { repoPath } from "@basanos/core/node";
+import { sampleProblems } from "./sample-guard";
+
+const snapshot = repoPath("apps/landing/src/featured-verdict.json");
+const page = repoPath("apps/landing/dist/index.html");
+if (!existsSync(snapshot)) {
+  console.log("FAIL sample: apps/landing/src/featured-verdict.json is missing (landing:2 writes it from a real verdict)");
+  process.exit(1);
+}
+const problems = sampleProblems(JSON.parse(readFileSync(snapshot, "utf8")), existsSync(page) ? readFileSync(page, "utf8") : undefined);
+for (const p of problems) console.log(`FAIL sample: ${p}`);
+console.log(problems.length === 0 ? "PASS no sample" : "FAIL sample");
+process.exit(problems.length === 0 ? 0 : 1);
+```
+
 `apps/landing/scripts/oracle-row.ts`:
 ```ts
 // The Price Oracle row shows only when the featured-run snapshot holds a real reading (truth by construction).
@@ -605,18 +764,23 @@ export function withOracleRow(template: string, f: FeaturedLike): string {
 `apps/landing/scripts/build.ts`:
 ```ts
 // Renders dist/index.html from the template and the featured snapshot, copies the design and kit files,
-// then refuses to finish if the page shows anything the snapshot does not hold.
+// then refuses to finish if the page shows anything the snapshot does not hold. It refuses a sample snapshot outright
+// (sample-guard.ts): only landing:2's real snapshot may become the page.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { repoPath } from "@basanos/core/node";
 import { withOracleRow } from "./oracle-row";
 import { renderPage, type FeaturedLike } from "./render";
+import { sampleProblems } from "./sample-guard";
 import { findUnbacked } from "./truth";
 
 const app = repoPath("apps/landing");
 const dist = join(app, "dist");
 const f = JSON.parse(readFileSync(join(app, "src", "featured-verdict.json"), "utf8")) as FeaturedLike;
 const html = renderPage(withOracleRow(readFileSync(join(app, "src", "page.html"), "utf8"), f), f);
+const samples = sampleProblems(f, html);
+for (const p of samples) console.log(`FAIL sample: ${p}`);
+if (samples.length > 0) process.exit(1);
 const copies: [string, string][] = [
   [repoPath("packages/design/vendor/system.css"), "assets/system.css"],
   [repoPath("packages/design/vendor/motion/motion.css"), "assets/motion/motion.css"],
@@ -643,9 +807,9 @@ if (unbacked.length > 0) process.exit(1);
 console.log(`PASS truth (run ${f.runId}); built apps/landing/dist${existsSync(shot) ? "" : " (no screenshot yet: Task 4 adds img/verdict.png)"}`);
 ```
 
-- [ ] **Step 5: Run the page tests (the gate)**
-Run: `npm test -w @basanos/landing -- test/page.test.ts`
-Expected: PASS — `4 passed`.
+- [ ] **Step 5: Run the page and sample-guard tests (the gate)**
+Run: `npm test -w @basanos/landing -- test/page.test.ts test/sample-guard.test.ts`
+Expected: PASS — `7 passed`.
 
 - [ ] **Step 6: Commit (kernel-performed — no agent runs this)**
 Message: `feat(landing): collage hero, three steps, real verdict, replay, testnet notice and the name`
@@ -715,14 +879,15 @@ Message: `feat(landing): real verdict page screenshot for the featured run`
 - Modify: `apps/landing/src/page.html`
 - Modify: `apps/landing/src/landing.css`
 
-**Depends on:** Task 3, Task 4
+**Depends on:** Task 2, Task 3, Task 4
 **Effort:** high
 **Provides:** `landing checkers PASS (consistency, check, perf, shoot at 1440/1024/820/768/390)`, `CLI: node apps/landing/scripts/run-checkers.mjs`
-**Requires:** `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `apps/landing/src/img/verdict.png (1440x900 shoot.mjs screenshot of /app/#/run/<featured id>, real product UI)`, `apps/landing/src/page.html (the template)`
+**Requires:** `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `apps/landing/src/img/verdict.png (1440x900 shoot.mjs screenshot of /app/#/run/<featured id>, real product UI)`, `apps/landing/src/page.html (the template)`, `apps/landing/src/featured-verdict.json (the page's only data source)`, `CLI: node --import tsx apps/landing/scripts/check-sample.ts -> PASS no sample, or FAIL sample (the real snapshot or the built page is a sample)`
 
 Applies `docs/design/frontend.md` §4 step 6 and the §5 checklist. The kit's checkers are the gate, and every `check.mjs` finding fails the page.
 - **Fixing findings:** only `page.html` and `landing.css` may change. Never edit kit files to clear a check; a check that flags a kit file is reported instead.
 - **Truth:** a fix must keep the truth check passing, so every figure still comes from the snapshot.
+- **No sample:** the runner first runs landing:3's sample guard (`check-sample.ts`). A sample snapshot, or a page built from one, fails the gate before any kit checker runs. The page is built from landing:2's real snapshot only.
 - **Timebox: 3 hours.** If the gate still fails after that, apply the cut order: remove the hero's `data-ground` lit ground and any moment markup first, re-run, and report every remaining FAIL with its reason. Never cut the hero, its two CTAs, the three steps or the link to a real verdict.
 
 - [ ] **Step 1: Write the checker runner**
@@ -736,6 +901,12 @@ import { fileURLToPath } from "node:url";
 const KIT = "C:\\Users\\bamig\\Documents\\VIBE CODE\\Hackathons\\.claude\\skills\\design-taste-frontend";
 const page = fileURLToPath(new URL("../dist/index.html", import.meta.url));
 const shots = fileURLToPath(new URL("../shots/", import.meta.url));
+// landing:3's sample guard first: a sample snapshot, or a page built from one, never reaches the checkers or a deploy.
+const guard = spawnSync(process.execPath, ["--import", "tsx", fileURLToPath(new URL("./check-sample.ts", import.meta.url))], { stdio: "inherit" });
+if (guard.status !== 0) {
+  console.log("FAIL landing checkers: the featured snapshot or the built page is a sample (see above)");
+  process.exit(1);
+}
 const runs = [
   ["consistency", [`${KIT}\\scripts\\consistency.mjs`, page, "--widths", "1440,1024,820,768,390", "--rhythm-widths", "1440,820,768,390", "--page", "software", "--category", "Prop-firm challenges for dreamDEX perps", "--primary", "Take a challenge"]],
   ["layout check", [`${KIT}\\assets\\layout\\check.mjs`, "--url", page, "--sizes", "1440x900,1024x768,820x1180,768x1024,390x844", "--shots", `${shots}layout`]],

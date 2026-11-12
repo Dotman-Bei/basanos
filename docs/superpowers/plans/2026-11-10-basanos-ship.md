@@ -1008,11 +1008,11 @@ Message: `docs: README (R1-web-app v1 + event overlay) and MIT licence`
 - Create: `deployments/site.json`
 - Modify: `deployments/hideki.json`
 
-**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, landing:Task 3, landing:Task 5, contracts:Task 10
+**Depends on:** Task 1, Task 3, Task 5, Task 8, Task 9, Task 10, web:Task 2, web:Task 7, web:Task 8, web:Task 9, web:Task 10, landing:Task 3, landing:Task 5, contracts:Task 10
 **Effort:** medium
 **Model tier:** top
 **Provides:** `deployments/site.json ({ url, deployedAt, baseUrlTx })`, `public site: landing at /, app at /app/`
-**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, and the registry's baseUrl() is the live certificate route)`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json`
+**Requires:** `CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, the registry's baseUrl() is the live certificate route, and no live page or assembled site/basanos file carries the sample marker)`, `CLI: npm run build -w @basanos/web (check-env, then vite build)`, `CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)`, `deployments/hideki.json (registry address, deploy block, rulebook ids)`, `CLI: npx tsx packages/ship/src/deploy-vercel.ts -> deploys site/basanos to Vercel production with VERCEL_TOKEN in the child env (never on argv), writes deployments/site.json`, `CLI: npx tsx packages/ship/src/set-base-url.ts -> registry.setBaseUrl(<site>/app/#/cert/) as the owner, reads baseUrl() back (FAIL unless equal), records it in deployments/site.json and deployments/hideki.json`
 
 **Human-gated (deploy).**
 - **Needs:** a Vercel account and `VERCEL_TOKEN` in `.env`, both from the concierge signup gate. `setBaseUrl` signs with `REFEREE_PK`, the registry owner.
@@ -1037,7 +1037,7 @@ Expected: `setBaseUrl success 0x… -> https://<project>.vercel.app/app/#/cert/`
 - This replaces the constructor's placeholder `https://basanos.vercel.app/app/#/cert/` in the registry and in `deployments/hideki.json`.
 - A `FAIL registry baseUrl() …` line means the read-back differs: stop, and fix it before Step 4.
 - [ ] **Step 4: Check the live site (the gate)**
-This also reads the registry's `baseUrl()` and fails unless it is the live certificate route.
+This also reads the registry's `baseUrl()` and fails unless it is the live certificate route. It also fails if a live page or the assembled `site/basanos` output carries the landing's sample-fixture marker (ship:10).
 Run: `npx tsx packages/ship/src/check-deploy.ts`
 Expected: PASS — `PASS deploy (https://<project>.vercel.app)`.
 
@@ -1350,3 +1350,111 @@ Expected: PASS — `2 passed`.
 
 - [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
 Message: `fix(ship): setBaseUrl reads baseUrl() back; the deploy check verifies the certificates' base URL`
+
+---
+
+### Task 10: The deploy check refuses a built output that carries the landing's sample-fixture marker
+
+**Files:**
+- Create: `packages/ship/src/sample.ts`
+- Modify: `packages/ship/src/check-deploy.ts`
+- Test: `packages/ship/test/sample.test.ts`
+
+**Depends on:** Task 1, Task 9, contracts:Task 8, spike:Task 3, spike:Task 1, referee:Task 6
+**Effort:** low
+**Provides:** `SAMPLE_MARKER = "BASANOS-SAMPLE-FIXTURE"`, `sampleInBuild(pages: Record<string, string>): string[]`, `CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, the registry's baseUrl() is the live certificate route, and no live page or assembled site/basanos file carries the sample marker)`
+**Requires:** `basanosRegistryAbi (as const, generated from the forge artifact)`, `loadDotEnv(path?: string): boolean`, `repoPath(rel: string): string`, `rpcHttp(env?: NodeJS.ProcessEnv): string`, `makePublicClient(url: string): PublicClient`, `baseUrlProblem(expected: string, onChain: string): string | null`, `certBaseUrl(siteUrl: string): string`
+
+Why (guide GO, 2026-11-12): landing:3 now runs before the real verdict, on a labelled test fixture. That fixture's visible text carries `BASANOS-SAMPLE-FIXTURE`, so a page built from it would show the marker.
+- **What this adds:** `check-deploy.ts`, ship:6's gate, also fails if a live page (`/`, `/app/`) or the assembled `site/basanos/index.html` / `site/basanos/app/index.html` carries the marker.
+- **Earlier guards:** `build.ts` and landing:5 already refuse a sample (landing:3); this is the last check before the site is called live.
+- **The marker literal** is pinned in both this test and landing:3's.
+
+- [ ] **Step 1: Write the failing test**
+
+`packages/ship/test/sample.test.ts`:
+```ts
+import { describe, expect, it } from "vitest";
+import { SAMPLE_MARKER, sampleInBuild } from "../src/sample";
+
+describe("the deploy carries no sample fixture", () => {
+  it("pins the marker landing:3 uses and finds it in any built or served page", () => {
+    expect(SAMPLE_MARKER).toBe("BASANOS-SAMPLE-FIXTURE");
+    expect(sampleInBuild({ "https://x.vercel.app/": "<h1>Run 3: PASSED</h1>", "https://x.vercel.app/app/": '<div id="root"></div>' })).toEqual([]);
+    expect(sampleInBuild({ "site/basanos/index.html": "<small>Tokyo Sprint · Demo (BASANOS-SAMPLE-FIXTURE)</small>" })).toEqual([
+      "site/basanos/index.html carries the sample marker BASANOS-SAMPLE-FIXTURE (a test fixture, not a real verdict)",
+    ]);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+Run: `npm test -w @basanos/ship -- test/sample.test.ts`
+Expected: FAIL — `Cannot find module '../src/sample'`.
+
+- [ ] **Step 3: Write the marker check**
+
+`packages/ship/src/sample.ts`:
+```ts
+// The deploy must never carry a test fixture. landing:3's labelled sample (apps/landing/test/fixtures/
+// featured-sample.json) shows this marker in its visible text, so any page built from it would contain it. The same
+// literal is pinned in landing:3's sample-guard test.
+export const SAMPLE_MARKER = "BASANOS-SAMPLE-FIXTURE";
+
+/** One problem per built or served page that carries the sample marker; [] when none does. */
+export function sampleInBuild(pages: Record<string, string>): string[] {
+  return Object.entries(pages)
+    .filter(([, body]) => body.includes(SAMPLE_MARKER))
+    .map(([where]) => `${where} carries the sample marker ${SAMPLE_MARKER} (a test fixture, not a real verdict)`);
+}
+```
+
+- [ ] **Step 4: Add it to the deploy check**
+
+Replace `packages/ship/src/check-deploy.ts` with:
+```ts
+// The live site answers at / and /app/, the registry's baseUrl() points the certificates at this site, and neither the
+// live pages nor the assembled site/basanos output carries the landing's sample-fixture marker (ship:10).
+import { existsSync, readFileSync } from "node:fs";
+import type { Address } from "viem";
+import { basanosRegistryAbi } from "@basanos/core";
+import { loadDotEnv, repoPath, rpcHttp } from "@basanos/core/node";
+import { makePublicClient } from "@basanos/referee";
+import { baseUrlProblem, certBaseUrl } from "./base-url";
+import { sampleInBuild } from "./sample";
+
+loadDotEnv();
+const { url } = JSON.parse(readFileSync(repoPath("deployments/site.json"), "utf8")) as { url: string };
+const { registry } = JSON.parse(readFileSync(repoPath("deployments/hideki.json"), "utf8")) as { registry: Address };
+const problems: string[] = [];
+const bodies: Record<string, string> = {};
+for (const path of ["/", "/app/"]) {
+  const res = await fetch(`${url}${path}`);
+  const body = await res.text();
+  bodies[`${url}${path}`] = body;
+  if (res.status !== 200) problems.push(`${path} returned ${res.status}`);
+  if (!body.includes("Basanos")) problems.push(`${path} does not mention Basanos`);
+}
+for (const rel of ["site/basanos/index.html", "site/basanos/app/index.html"]) {
+  const p = repoPath(rel);
+  if (existsSync(p)) bodies[rel] = readFileSync(p, "utf8");
+}
+problems.push(...sampleInBuild(bodies));
+const onChain = String(await makePublicClient(rpcHttp()).readContract({ address: registry, abi: basanosRegistryAbi, functionName: "baseUrl" }));
+const wrong = baseUrlProblem(certBaseUrl(url), onChain);
+if (wrong) problems.push(wrong);
+for (const p of problems) console.log(`FAIL ${p}`);
+console.log(problems.length === 0 ? `PASS deploy (${url})` : "FAIL deploy");
+process.exit(problems.length === 0 ? 0 : 1);
+```
+
+- [ ] **Step 5: Type-check (ship:6 runs the check)**
+Run: `npm run typecheck -w @basanos/ship`
+Expected: exits 0 with no `error TS` lines.
+
+- [ ] **Step 6: Run the test (the gate)**
+Run: `npm test -w @basanos/ship -- test/sample.test.ts`
+Expected: PASS — `1 passed`.
+
+- [ ] **Step 7: Commit (kernel-performed — no agent runs this)**
+Message: `fix(ship): the deploy check refuses the landing's sample-fixture marker`

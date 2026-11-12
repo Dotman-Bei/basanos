@@ -2,7 +2,7 @@
   "project": "basanos",
   "spec": "docs/superpowers/specs/2026-11-10-basanos-design.md",
   "push": 2,
-  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it.",
+  "note": "Push 2 complete (append-only): referee, web, ship and landing appended. Push-1 task ids, files, gates and depends_on are unchanged; contracts:3 and contracts:6 gained Model tier: top (access control). 2026-11-11: spike:14 added (account A owner-side writes via viem, SDK send opt-in); spike:11 now depends on it. contracts:10 no longer depends on spike:13 (B14: the deploy needs only the spike:12 oracle result). spike:15 added (oracle outcome from logs, --from-tx rebuild, strict g1d check); spike:12 depends on it. web:8 added (oracle cut: verdict-page copy, ORACLE_ENABLED=false in .env.example); landing:4 and ship:6 depend on it. spike:16 added (oracle probes P1/P2, run by the gate-concierge; contracts:10 holds for the result). P1 succeeded: oracle un-cut - web:9 added (no-reading line, ORACLE_ENABLED=true); landing:3 gains oracle-row.ts; landing:4 and ship:6 depend on web:9. ship:4 no longer depends on spike:13 and ship:5 no longer depends on landing:5 (B14 decouples). contracts:11 depends on spike:11 (its gate needs account A granted, flat and funded). ship:8 added (VERCEL_TOKEN only in the child env); ship:6 depends on it. ship:9 added (setBaseUrl read-back; check-deploy verifies baseUrl()); ship:6 depends on it and declares deployments/hideki.json. referee:11 added (demo-check sizes from real equity, checks the pool minimum); referee:10 depends on it. spike:17 (deposit tool) + spike:18/19 (LIVE deposits, A and B) added: spike:11 depends on spike:18, referee:10 on both. spike:20 added (skeleton funded test + applicable leverage cap); spike:11 depends on it. referee:12 added (bot/demo readiness = funded; one-account demo fallback); referee:10 and ship:3 depend on it. web:10 added (kit header markup, plain empty states); landing:4 and ship:6 depend on it. landing:3 no longer waits for landing:2 (labelled test fixture under test/; build.ts, landing:5 and ship:10 refuse any sample); ship:6 depends on ship:10.",
   "subsystems": [
     "spike",
     "contracts",
@@ -3410,6 +3410,7 @@
         "ship:5",
         "ship:8",
         "ship:9",
+        "ship:10",
         "web:2",
         "web:7",
         "web:8",
@@ -3436,7 +3437,7 @@
       ],
       "requires": [
         "CLI: npx tsx packages/ship/src/assemble-site.ts -> writes site/basanos/ (landing at /, app at /app/)",
-        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, and the registry's baseUrl() is the live certificate route)",
+        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, the registry's baseUrl() is the live certificate route, and no live page or assembled site/basanos file carries the sample marker)",
         "CLI: npm run build -w @basanos/web (check-env, then vite build)",
         "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
         "deployments/hideki.json (registry address, deploy block, rulebook ids)",
@@ -3584,6 +3585,54 @@
       "status": "pending"
     },
     {
+      "id": "ship:10",
+      "subsystem": "ship",
+      "title": "The deploy check refuses a built output that carries the landing's sample-fixture marker",
+      "plan": "docs/superpowers/plans/2026-11-10-basanos-ship.md",
+      "depends_on": [
+        "ship:1",
+        "ship:9",
+        "contracts:8",
+        "spike:3",
+        "spike:1",
+        "referee:6"
+      ],
+      "effort": "low",
+      "files": {
+        "create": [
+          "packages/ship/src/sample.ts"
+        ],
+        "modify": [
+          "packages/ship/src/check-deploy.ts"
+        ],
+        "test": [
+          "packages/ship/test/sample.test.ts"
+        ]
+      },
+      "provides": [
+        "SAMPLE_MARKER = \"BASANOS-SAMPLE-FIXTURE\"",
+        "sampleInBuild(pages: Record<string, string>): string[]",
+        "CLI: npx tsx packages/ship/src/check-deploy.ts -> PASS deploy (the site answers at / and /app/, the registry's baseUrl() is the live certificate route, and no live page or assembled site/basanos file carries the sample marker)"
+      ],
+      "requires": [
+        "basanosRegistryAbi (as const, generated from the forge artifact)",
+        "loadDotEnv(path?: string): boolean",
+        "repoPath(rel: string): string",
+        "rpcHttp(env?: NodeJS.ProcessEnv): string",
+        "makePublicClient(url: string): PublicClient",
+        "baseUrlProblem(expected: string, onChain: string): string | null",
+        "certBaseUrl(siteUrl: string): string"
+      ],
+      "gate": {
+        "run": "npm test -w @basanos/ship -- test/sample.test.ts",
+        "expect": "PASS — `1 passed`."
+      },
+      "commit": "fix(ship): the deploy check refuses the landing's sample-fixture marker",
+      "human_gate": false,
+      "allow_empty": false,
+      "status": "pending"
+    },
+    {
       "id": "landing:1",
       "subsystem": "landing",
       "title": "Landing package, the four landing kit files, render and truth libraries",
@@ -3678,7 +3727,6 @@
       "plan": "docs/superpowers/plans/2026-11-10-basanos-landing.md",
       "depends_on": [
         "landing:1",
-        "landing:2",
         "web:1",
         "spike:1"
       ],
@@ -3688,30 +3736,37 @@
           "apps/landing/src/page.html",
           "apps/landing/src/landing.css",
           "apps/landing/scripts/build.ts",
-          "apps/landing/scripts/oracle-row.ts"
+          "apps/landing/scripts/oracle-row.ts",
+          "apps/landing/scripts/sample-guard.ts",
+          "apps/landing/scripts/check-sample.ts",
+          "apps/landing/test/fixtures/featured-sample.json"
         ],
         "modify": [],
         "test": [
-          "apps/landing/test/page.test.ts"
+          "apps/landing/test/page.test.ts",
+          "apps/landing/test/sample-guard.test.ts"
         ]
       },
       "provides": [
         "apps/landing/src/page.html (the template)",
         "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
         "apps/landing/dist/index.html (+ assets/ and img/)",
-        "withOracleRow(template: string, f: FeaturedLike): string (the Price Oracle row only with a real reading)"
+        "withOracleRow(template: string, f: FeaturedLike): string (the Price Oracle row only with a real reading)",
+        "SAMPLE_MARKER = \"BASANOS-SAMPLE-FIXTURE\"",
+        "sampleProblems(snapshot: unknown, html?: string): string[]",
+        "CLI: node --import tsx apps/landing/scripts/check-sample.ts -> PASS no sample, or FAIL sample (the real snapshot or the built page is a sample)",
+        "apps/landing/test/fixtures/featured-sample.json (a labelled test fixture, \"sample\": true; lives under test/ only)"
       ],
       "requires": [
         "renderPage(template: string, f: FeaturedLike): string",
         "findUnbacked(html: string, f: FeaturedLike): string[]",
-        "apps/landing/src/featured-verdict.json (the page's only data source)",
         "@basanos/design package (exports \"./tokens.css\", \"./system.css\", \"./motion.css\", \"./motion.js\")",
         "apps/landing/vendor/manifest.json (four landing kit files with sha256)",
         "repoPath(rel: string): string"
       ],
       "gate": {
-        "run": "npm test -w @basanos/landing -- test/page.test.ts",
-        "expect": "PASS — `4 passed`."
+        "run": "npm test -w @basanos/landing -- test/page.test.ts test/sample-guard.test.ts",
+        "expect": "PASS — `7 passed`."
       },
       "commit": "feat(landing): collage hero, three steps, real verdict, replay, testnet notice and the name",
       "human_gate": false,
@@ -3765,6 +3820,7 @@
       "title": "The kit's checkers pass on the built landing (the gate)",
       "plan": "docs/superpowers/plans/2026-11-10-basanos-landing.md",
       "depends_on": [
+        "landing:2",
         "landing:3",
         "landing:4"
       ],
@@ -3786,7 +3842,9 @@
       "requires": [
         "CLI: npm run build -w @basanos/landing (render from the featured snapshot, then the truth check)",
         "apps/landing/src/img/verdict.png (1440x900 shoot.mjs screenshot of /app/#/run/<featured id>, real product UI)",
-        "apps/landing/src/page.html (the template)"
+        "apps/landing/src/page.html (the template)",
+        "apps/landing/src/featured-verdict.json (the page's only data source)",
+        "CLI: node --import tsx apps/landing/scripts/check-sample.ts -> PASS no sample, or FAIL sample (the real snapshot or the built page is a sample)"
       ],
       "gate": {
         "run": "node apps/landing/scripts/run-checkers.mjs",
