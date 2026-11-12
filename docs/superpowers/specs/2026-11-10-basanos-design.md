@@ -96,7 +96,7 @@ FAIL at the breach block by re-reading equity before the close); an on-chain Rea
 |---|---|---|
 | Start equity, start block, account flat, referee grant held | **the registry, in the `startRun` tx** (it calls MarginBank and the pool itself) | read the tx's stored `start` read; replay the same calls at `start.blockNumber` |
 | PASS: flat in every market, no locked collateral, equity ≥ target, min time elapsed, within time limit, grant held | **the registry, in the `recordPass` tx**; the certificate mints only if all hold | same as above at `end.blockNumber` |
-| FAIL: which rule, breach block, breach reads | the referee (attested), stored on-chain with raw reads + close tx hashes + evidence hash | replay the four calls at `breach.blockNumber`; re-run the evaluator over the stored reads |
+| FAIL: which rule, breach block, breach reads | the referee (attested), stored on-chain with raw reads + close tx hashes + evidence hash | replay the four calls at `breach.blockNumber`; re-read the book (`getBookLevels`, both sides) at that block and revalue the stored equity to the closeable equity the rule judged (§5); re-run the evaluator over the stored reads and that book |
 | FAIL end state (equity after the close) | the registry, in the `recordFail` tx | replay at `end.blockNumber` |
 | FAIL by time limit | the registry checks `block.timestamp > startTime + timeLimitSec` | the block timestamp |
 | VOID (flow, foreign market) | the referee (attested) with the triggering tx hash | look up that tx |
@@ -108,7 +108,10 @@ lockedCollateral, positionSize, markOk, markPrice}`, and each field is the retur
 `MarginBank.tryGetAccountEquity(account)`, `MarginBank.getAccountState(account).lockedCollateral`,
 `MarginBank.getPosition(account, pool).size`, `PerpPool.tryGetMarkPrice()`. The replay page re-runs those
 calls at that block; when the RPC no longer serves that state, it shows the stored values labelled
-"stored on-chain, state no longer served by the public RPC".
+"stored on-chain, state no longer served by the public RPC". The closeable equity a FAIL was judged on (§5) is
+not a stored field, because the `Read` struct is fixed. It is the stored equity revalued at the book in the breach
+block. The referee's evidence bundle records that equity and that book (its hash is on-chain), and the verdict
+page re-reads the book at the block to show it (web:12).
 
 **Replay horizon.** Stage-1 probe (2026-11-10 ~17:03 WAT, block 46,725,618): the public Hideki RPC
 served `USDso.totalSupply()` at **10,000,000 blocks back (2026-10-30, ≈ 11.6 days)**, with values that
@@ -219,24 +222,36 @@ contract-checked fields; the full JSON is published in `rulebooks/` and on the v
 **Tuning to the leverage cap.** The demo accounts are not voucher accounts. `claim()` reverts chain-wide (B14), so each account holds its own USDso, deposited into its MarginBank balance (≈ 50 USDso each, 2026-11-12).
 - **The cap that applies** is the market's 40× (`marketMaxLeverageBps` 400000). The voucher's 20× cap binds only a voucher account.
 - **Why the cap matters:** the exposure cap (15×) sits below either cap, so an exposure breach is still reachable on demand (the bot's breach goes to 16×).
-- **Demo sizing is 12×** of live equity. At ≈ 50 USDso that is ≈ 600 USDso of notional, ≈ 0.008 BTC, about 60 times the 0.00013 BTC minimum. Sizing scales with equity, so nothing assumes 1,000 USDso (referee:11).
-- **What a move does:** a 0.125% BTC move is ±1.5% equity (standard), and a 0.042% move is ±0.5% (demo).
+- **Demo sizing is 5×** (`DEMO_LEVERAGE_X`; ruling P5, 2026-11-12; it was 12×) of live equity. At ≈ 50 USDso that is ≈ 250 USDso of notional, ≈ 0.0034 BTC, about 26 times the 0.00013 BTC minimum. Sizing scales with equity, so nothing assumes 1,000 USDso (referee:11).
+- **What a move does at 5×:** a 0.10% BTC move is ±0.5% equity (the demo's target and daily floor), and a 0.30% move is ±1.5% (the standard rulebook's). Opening costs the spread × 5 at once (below).
+
+**Closeable equity (architect ruling P5, 2026-11-12).** Every equity rule judges *closeable equity*, not the marked equity.
+- **What it is:** the MarginBank equity revalued from the mark to the book levels that would fill a close of the position (bids for a long, asks for a short), read in the same block. Flat, it equals the marked equity.
+- **Why (the measurement):** the BTC-PERP book trades about 19 bps above the on-chain mark. The guide's read-only samples showed best bid +18.1 to +19.9 bps and best ask +19.5 to +21.7 bps above `getMarkPrice`. The architect's re-read found a spread of 1.2 to 3.6 bps and zero taker and maker fees (`getPerpPoolParameters`).
+- **What the mark alone does:** opening books an instant paper PnL of about ±19 bps × leverage. A fresh 12× long reads −252 bps, an unearned DailyLoss on either rulebook. A fresh 12× short reads +228 bps, a phantom target that only a real move could realize. Under closeable equity, both start only the spread down.
+- **Consistency:** it is the number the PASS lock's `quotePerpClose` guard already predicts, and what the registry's flat-equity check at mint realizes.
+- **Pause:** a position the levels read cannot price (an empty side, or a size beyond `BOOK_DEPTH` = 20 levels) pauses judging, like an unpriceable mark.
+- **Rejected:**
+  - Lowering leverage or widening thresholds alone: the basis × leverage hits both rulebooks, and new thresholds would need a new registration.
+  - Re-baselining after entry: stateful across fills and funding, and not replayable from one read.
+- **Unchanged:** both rulebooks and their registered ids.
+- **Opening orders:** IOCs are capped from the book too, at best ask + 20 bps to buy and best bid − 20 bps to sell (`OPEN_MARGIN_BPS`). An IOC fills at the book's prices, so the cap only bounds slippage. A mark + 20 bps buy sits below the whole ask side and reverts (`0xd48c4403`; spike:11's first GO stopped on it).
+- **Closing orders:** the close ladder stays at mark ± 20, 50, 100 bps (§8). On a book skewed either way the side against the skew fills at the 50 bps step (referee:13 test).
 
 **Demo mode (G4).** `tokyo-sprint-demo` is the same rulebook schema with tighter numbers, registered
 with its own id and labelled "Tokyo Sprint · Demo" on every surface that shows it. `npm run demo -w
-@basanos/bot` starts both challenge accounts on it, opens opposite 12× positions (human long from the
-terminal or by the runner, bot short), and streams both runs. Whichever way BTC drifts by ≈ 0.04%, one
+@basanos/bot` starts both challenge accounts on it, opens opposite 5× positions (human long from the
+terminal or by the runner, bot short), and streams both runs. Whichever way BTC drifts by ≈ 0.10% plus the spread, one
 account reaches the target (PASS after the 60 s minimum) and the other its daily-loss floor (FAIL). A
 PASS still needs real movement; if the market is still, `bot.ts breach` adds bot size past 15× for a
 FAIL on demand while the PASS waits. The wait is bounded: if no account has a verdict 10 minutes after
 the positions open, the runner reports "market still — take aborted", applies the exposure breach to the
 bot (FAIL) and leaves the human run to resolve or hit `TimeLimit` at 900 s; the next take starts after a
-faucet top-up. The skeleton proves the math: the spike records a live 9-minute (540 s) BTC mark tape and the
-real entry fill against the mark (`docs/evidence/g1a-close.json` → `entry.costBps`), and an evaluator
-test replays the tape at 12× **with that measured entry cost (and the same cost again for the lock's
-close) charged against equity** and asserts the demo rulebook resolves; the +0.5% demo target is trusted
-only after that test passes. If the measured round-trip cost eats more than half of the 50 bps target,
-the referee plan raises the demo target before registration is repeated (a new demo rulebook id).
+faucet top-up. The skeleton proves the math.
+- **What the spike records:** a live 9-minute (540 s) BTC mark tape, and the real entry fill against the mark and the book (`docs/evidence/g1a-close.json`: `entry.costBps` is the basis, `entry.costVsBookBps` the slippage, `entry.spreadBps` the spread).
+- **The tape test:** a core test replays the tape at 5× with a 3.6 bps round trip paid at entry, and none at the close, since closeable equity already values the exit side. It asserts that both sides resolve.
+- **The live check:** `demo-check` measures the live round trip for the demo size from one book read and passes when it is at most half the 50 bps target. On 2026-11-12 it measured 1.98 to 2.84 bps of notional, which is 9.9 to 14.2 equity bps: PASS.
+- **If the check fails:** the referee plan raises the demo target before registration is repeated (a new demo rulebook id).
 
 **Who operates the demo accounts.** Both demo challenge accounts are burners operated by the builder:
 account A is driven by a human from the terminal, account B is the scripted bot. The README and the
@@ -247,9 +262,13 @@ landing page say so in plain words; no surface implies independent traders.
 `recordPass` see the same clock the contract checks. The spike records the timestamp unit (seconds
 expected; the RPC's block headers are seconds).
 
-**Evaluation order per snapshot (referee, pure function in `@basanos/core`):**
+**Evaluation order per snapshot (referee, pure function in `@basanos/core`).** `totalEquity` below is the closeable
+equity whenever the referee has the book of the snapshot's block (always, since referee:14); the tape simulator,
+which has no book, values at the mark.
 1. `equityOk` or `markOk` false → `pause` (unpriceable; no verdict, no breach).
 2. Any active pool other than the rulebook pool → `void` (`ForeignMarket`).
+2a. An open position the same-block book cannot price (book read failed, a side empty, or deeper than the levels
+   read) → `pause` (unpriceable).
 3. Update the high-water mark and the UTC-day start equity (first snapshot of a new UTC day).
 4. `nowSec > startTime + timeLimitSec` → `fail` (`TimeLimit`).
 5. `totalEquity ≤ dayStart × (10000 − dailyLossBps) / 10000` → `fail` (`DailyLoss`).
@@ -419,12 +438,14 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
 ## 8. Referee (`@basanos/referee`)
 
 - **Discovery:** `getActiveRunIds()` + `getRun()` at boot and after every `RunStarted` push.
-- **Watches (R3):** (i) PriceFeedScheduler logs with the snapshot multicall attached and
-  `push_changes_only: true`; (ii) MarginBank logs with `topics: [null, [account topics…]]` (account-
+- **Watches (R3):** (i) PriceFeedScheduler logs with two calls attached, the snapshot multicall and the book
+  multicall (`bookCall`: block number and 20 levels per side), with `push_changes_only: true`. Both run at the push's
+  block: 73 of 73 pushes matched in a read-only check, 2026-11-12. This watch judges, on closeable equity (§5); (ii) MarginBank logs with `topics: [null, [account topics…]]` (account-
   filtered pushes) and the same attached call. Pushes for accounts that are not under an active run are
-  ignored.
+  ignored. A trading-class log is classified but not judged: it carries no book, and the price watch judges
+  within about a second. Flows void and liquidations fail on the log as before.
 - **Gaps (R3):** on socket close/error every run goes to `paused`; reconnect with backoff (0.5 s doubling
-  to 30 s), resubscribe both watches, then read the snapshot once at head over HTTP and re-evaluate
+  to 30 s), resubscribe both watches, then read the snapshot and the book of its block once at head over HTTP and re-evaluate
   before resuming. Every gap is logged in the run's evidence (`fromBlock`, `toBlock`, duration). While
   paused or unpriceable the referee issues no verdict and no close.
 - **Close protocol (R4):** 1) cancel every resting order: ids from `getOwnOpenOrders()` with `eth_call`
@@ -438,7 +459,7 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
 - **Verdict writes:** `recordFail(runId, rule, breachRead, evidenceHash, closeTxs)` and, after a lock,
   `recordPass(runId)`, both with `value = ORACLE_DEPOSIT` when `ORACLE_ENABLED=true` (true for this build); `recordVoid` for
   flows and foreign markets. **A VOID is recorded only: the referee does not cancel or close on a VOID**
-  (no rule was breached; the run is simply not judged). It closes only on a FAIL and on a PASS lock. `evidenceHash = keccak256(canonicalJson(bundle))`; bundles are written to
+  (no rule was breached; the run is simply not judged). It closes only on a FAIL and on a PASS lock. A FAIL bundle carries `judged: { equity, book }`, the closeable equity the rule judged and the book it was revalued at. `evidenceHash = keccak256(canonicalJson(bundle))`; bundles are written to
   `docs/evidence/runs.json`, keyed by run id (one fixed file, so verdict tasks can declare it).
 - **CLI:** `basanos-referee start`, `basanos-referee enroll <account> --rulebook <name>` (bring-your-own
   account that already granted the referee, e.g. via dreamDEX Link a Bot), `basanos-referee status`.
@@ -449,7 +470,8 @@ attested `breach`, the chain-read `end`, the close tx hashes, the evidence hash.
   the BTC pool, `startRun`, open a short IOC at the demo size, hold; `bot.ts breach` adds size past
   15×.
 - `npm run demo -w @basanos/bot`: preflight both accounts (STT ≥ 0.6, funded: unlocked MarginBank margin, flat, grants),
-  start both runs on `tokyo-sprint-demo`, open opposite 12× positions, stream both runs until both have a
+  start both runs on `tokyo-sprint-demo`, open opposite 5× positions (`DEMO_LEVERAGE_X`) with IOCs capped from
+  the book (best ask + 20 bps / best bid − 20 bps), stream both runs until both have a
   verdict, print every tx hash with explorer links.
 - No bot or demo command ever claims a voucher. The demo accounts are funded by depositing their own wallet USDso (spike:18, spike:19), because `claim()` reverts chain-wide (B14).
   The web terminal's "Claim voucher" button (§10) is the only claim path in the product; it fires only on
@@ -466,12 +488,13 @@ Routes (hash router): `#/challenge` (terminal), `#/run/:id` (verdict + replay), 
   export button; a fixed "testnet challenge wallet" label. Never in the build or the repo; the web build
   fails if any `VITE_*` variable name ends in `_PK`.
 - **Terminal:** STT and voucher status (faucet link), the start flow (claim voucher if eligible → grant
-  referee → `startRun`, each with its tx link), a BTC-PERP ticket (market IOC), live equity rails
+  referee → `startRun`, each with its tx link), a BTC-PERP ticket (market IOC capped from the book, opening at
+  5×), closeable equity (what the referee judges) beside the equity at the mark, live closeable-equity rails
   (start, target, daily floor, trailing high-water line), run status, event log with explorer links.
   Cut (cut order, recorded 2026-11-11): the limit-order ticket and the exposure rail.
 - **Verdict page:** status, rule, rulebook (name, variant, JSON, id), the start / breach / end reads,
   close tx hashes, the Price Oracle cross-check line (the recorded reading beside the mark, or "No Price Oracle reading was recorded for this verdict."), and **Replay**: re-run each stored call at
-  its block and show "chain: X — registry: X" or the stored-value fallback (R2); the X share card is
+  its block (for a FAIL, also re-read the book there and show the breach's closeable equity) and show "chain: X — registry: X" or the stored-value fallback (R2); the X share card is
   cuttable polish.
 
 ## 11. Landing page (`@basanos/landing`, served at `/`)
@@ -648,6 +671,9 @@ feedback, deploy; Nov 15 — buffer, submitted by 09:00.
 - A trader who self-trades against a second account at the band edge can manufacture a pass
   (anti-collusion forensics are out of scope).
 - Replay depends on the public RPC's history; past the horizon the page shows the stored reads.
+- Rules judge closeable equity from the 20 best levels on each side; a position those levels cannot price
+  pauses judging for that snapshot, so an account larger than the visible book is not judged until the book
+  refills.
 
 ## 20. Design decisions
 
@@ -657,6 +683,7 @@ feedback, deploy; Nov 15 — buffer, submitted by 09:00.
 | How much does the registry verify? | Chain-checked certificate: start and PASS checked in-tx; FAIL/VOID referee-recorded with raw reads, replayable; registry-checks-every-breach is a documented upgrade | user, 2026-11-10 |
 | Tokyo Sprint PASS conditions | All contract-checkable at the end state (flat, equity ≥ target, min time, within time limit, grant); path rules referee-enforced, shown by replay | user, 2026-11-10 |
 | Trust-model wording | "Every certificate is chain-checked at mint; every verdict is replayable." | user, 2026-11-10 |
+| Which equity do the rules judge? | Closeable equity: the marked equity revalued at the same-block book (bids for a long, asks for a short); opening IOCs capped from the book; demo at 5×; rulebooks unchanged | architect ruling P5 on the guide's measurement (the book ≈ 19 bps above the mark), 2026-11-12 |
 | Demo mode | `tokyo-sprint-demo`, a separately registered parameter set of the one rulebook, labelled on every surface; demo runner; exposure-breach fallback | user (fold-in list) + G4 |
 | Landing page | Required scope, additive `landing` plan, truthful content, kit checkers as gate | user directive via the guide |
 | Deploy host | Vercel | user, 2026-11-10 |

@@ -32,7 +32,9 @@ from the dreamDEX MarginBank itself. The trader trades any way they like: the Ba
 their own bot.
 
 The referee watches the account on every price write with Somnia off-chain Reactivity (`somnia_watch` with the
-account's MarginBank equity read attached in the same block). On a breach (daily-loss floor, trailing drawdown,
+account's MarginBank equity read and the order book attached in the same block). Every rule judges closeable
+equity: the account's equity revalued at the book prices that would close its position, because the BTC-PERP book
+trades about 19 bps above the mark. On a breach (daily-loss floor, trailing drawdown,
 exposure cap, time limit) it cancels resting orders and closes the position with real perps orders, then records
 **FAILED** on-chain with the rule, the breach block, the raw reads and the close transaction hashes. When the
 profit target is reached after the minimum time, the referee locks the gain by flattening, and the registry checks
