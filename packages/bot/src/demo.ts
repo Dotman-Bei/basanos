@@ -1,11 +1,13 @@
-// The demo runner. Primary: both builder-operated accounts take Tokyo Sprint · Demo with opposite 12x positions.
-// Fallback (--one-account, only if account B cannot be funded): account A takes two runs in sequence. Run 1 is a FAIL
-// on demand: 12x long, then size past the 15x exposure cap. Run 2 is the PASS attempt: 12x (--pass-side long|short),
+// The demo runner. Primary: both builder-operated accounts take Tokyo Sprint · Demo with opposite positions at
+// DEMO_LEVERAGE_X (5x; rules judge closeable equity, spec §5). Fallback (--one-account, only if account B cannot be
+// funded): account A takes two runs in sequence. Run 1 is a FAIL on demand: a 5x long, then size past the 15x
+// exposure cap. Run 2 is the PASS attempt: 5x (--pass-side long|short),
 // held until the referee locks the target or a rule ends it. A PASS is not guaranteed with one account, which is why
 // the two-account demo is primary. Accounts must be FUNDED (own USDso deposited, spike:18 / spike:19); no voucher.
 // The referee daemon (packages/referee/src/cli.ts start) must already be running in another terminal.
 import type { Address, Hex } from "viem";
 import { BTC_POOL, RULE_NAMES, RUN_STATUS, basanosRegistryAbi, explorerTx, quantityForLeverage, readSnapshot, rulebookId } from "@basanos/core";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
 import { loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
 import { makePublicClient, type TxRecord } from "@basanos/referee";
 import { appendDemoTake, breachQuantity, ensureGrant, makeAccountWallet, makeMarkets, notReady, openIoc, preflight, readBook, startRunAs } from "./actions";
@@ -76,7 +78,7 @@ if (oneAccount) {
   txs.push(r1.tx);
   say(`run 1 (${r1.runId}) on ${rb.label}: ${r1.tx.explorer}`);
   const s1 = await readSnapshot(client, [accA.address], BTC_POOL);
-  txs.push(await openIoc(accA.markets, client, true, quantityForLeverage(s1.accounts[0]?.totalEquity ?? 0n, 12, s1.markPrice, 8, book)));
+  txs.push(await openIoc(accA.markets, client, true, quantityForLeverage(s1.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s1.markPrice, 8, book)));
   const s1b = (await readSnapshot(client, [accA.address], BTC_POOL)).accounts[0];
   if (s1b && s1b.size !== 0n) {
     txs.push(await openIoc(accA.markets, client, true, breachQuantity(s1b.size, s1b.totalEquity, 16, s1.markPrice, 8, book)));
@@ -88,9 +90,9 @@ if (oneAccount) {
   const r2 = await startRunAs(accA.wallet, client, registry, id);
   runIds.push(r2.runId);
   txs.push(r2.tx);
-  say(`run 2 (${r2.runId}) on ${rb.label}, ${passSide} 12x: ${r2.tx.explorer}`);
+  say(`run 2 (${r2.runId}) on ${rb.label}, ${passSide} ${DEMO_LEVERAGE_X}x: ${r2.tx.explorer}`);
   const s2 = await readSnapshot(client, [accA.address], BTC_POOL);
-  txs.push(await openIoc(accA.markets, client, passSide === "long", quantityForLeverage(s2.accounts[0]?.totalEquity ?? 0n, 12, s2.markPrice, 8, book)));
+  txs.push(await openIoc(accA.markets, client, passSide === "long", quantityForLeverage(s2.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, s2.markPrice, 8, book)));
   const v2 = await waitVerdict(r2.runId);
   const take = appendDemoTake({
     at: new Date().toISOString(),
@@ -119,15 +121,15 @@ const book = await readBook(client);
 const snap = await readSnapshot(client, accounts.map((a) => a.address), BTC_POOL);
 const [accA, accB] = accounts;
 if (!accA || !accB) throw new Error("two accounts expected");
-const qtyB = quantityForLeverage(snap.accounts[1]?.totalEquity ?? 0n, 12, snap.markPrice, 8, book);
+const qtyB = quantityForLeverage(snap.accounts[1]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
 txs.push(await openIoc(accB.markets, client, false, qtyB));
-say(`B short ${qtyB} at 12x`);
+say(`B short ${qtyB} at ${DEMO_LEVERAGE_X}x`);
 if (manualA) {
-  say("A: open the long from the Basanos terminal now (12x).");
+  say(`A: open the long from the Basanos terminal now (${DEMO_LEVERAGE_X}x).`);
 } else {
-  const qtyA = quantityForLeverage(snap.accounts[0]?.totalEquity ?? 0n, 12, snap.markPrice, 8, book);
+  const qtyA = quantityForLeverage(snap.accounts[0]?.totalEquity ?? 0n, DEMO_LEVERAGE_X, snap.markPrice, 8, book);
   txs.push(await openIoc(accA.markets, client, true, qtyA));
-  say(`A long ${qtyA} at 12x`);
+  say(`A long ${qtyA} at ${DEMO_LEVERAGE_X}x`);
 }
 const openedAt = Date.now();
 let breached = false;

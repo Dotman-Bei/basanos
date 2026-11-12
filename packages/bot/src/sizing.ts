@@ -1,6 +1,7 @@
 // Demo sizing from real equity (guide, 2026-11-11). The demo accounts may hold 100–200 USDso instead of the
 // 1,000-USDso voucher, so nothing assumes 1,000, and every size is checked against the pool's minimum order.
 import { quantityForLeverage, type BookParams } from "@basanos/core";
+import { roundTripSpreadBps } from "@basanos/core/demo-math";
 
 const E18 = 10n ** 18n;
 
@@ -39,4 +40,13 @@ export function demoSize(
     qty,
     problem: `the demo size ${qty} is below the pool minimum ${book.minQuantity}; at ${leverageX}x the account needs at least ${minEquityFor(book, leverageX, mark, baseDecimals)} wei of equity`,
   };
+}
+
+/** The demo-cost verdict at closeable equity (spec §5, P5 ruling 2026-11-12): a run pays the spread between the quoted
+ *  buy and sell averages for the demo size at entry, and nothing more at the close. The round trip may use at most half
+ *  the demo target. */
+export function demoCost(buyAverage: bigint, sellAverage: bigint, leverageX: number, targetBps: number): { spreadBps: number; equityBps: number; ok: boolean } {
+  const spreadBps = roundTripSpreadBps(buyAverage, sellAverage);
+  const equityBps = Math.round(spreadBps * leverageX * 100) / 100;
+  return { spreadBps, equityBps, ok: equityBps <= targetBps / 2 };
 }

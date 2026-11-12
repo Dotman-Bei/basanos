@@ -18,10 +18,10 @@ import {
   basanosRegistryAbi,
   marginBankAbi,
   perpPoolAbi,
-  planOpen,
   readSnapshot,
   type BookParams,
 } from "@basanos/core";
+import { planOpenFromBook, readBookLevels } from "@basanos/core/book";
 import { repoPath } from "@basanos/core/node";
 import { jsonSafe, txRecord, type TxRecord } from "@basanos/referee";
 
@@ -38,8 +38,8 @@ export interface Preflight {
   equity: bigint;
 }
 
-/** The least unlocked MarginBank margin a demo run needs: its 12x size must clear the 0.00013 BTC pool minimum
- *  (about 0.8 USDso of equity) with room for costs. */
+/** The least unlocked MarginBank margin a demo run needs: its DEMO_LEVERAGE_X (5x) size must clear the 0.00013 BTC
+ *  pool minimum (about 1.9 USDso of equity) with room for costs. */
 export const DEMO_MIN_UNLOCKED = 5n * 10n ** 18n;
 
 /** Inferred return type: bound to CHAIN and the key's account. */
@@ -146,11 +146,13 @@ export function breachQuantity(currentSize: bigint, equity: bigint, targetX: num
   return qty < book.minQuantity ? book.minQuantity : qty;
 }
 
+/** An opening IOC capped from the book (best ask + 20 bps to buy, best bid - 20 bps to sell), never from the mark:
+ *  the BTC-PERP book trades about 19 bps above the mark, so a mark + 20 bps buy does not fill (P5, 2026-11-12). */
 export async function openIoc(markets: SomniaMarkets, client: PublicClient, isBid: boolean, quantity: bigint): Promise<TxRecord> {
-  const book = await readBook(client);
-  const snap = await readSnapshot(client, [], BTC_POOL);
-  if (!snap.markOk) throw new Error("BTC-PERP has no fresh mark");
-  const plan = planOpen(isBid, quantity, snap.markPrice, book, 20);
+  const params = await readBook(client);
+  const levels = await readBookLevels(client, BTC_POOL);
+  if (!levels) throw new Error("the BTC-PERP book could not be read");
+  const plan = planOpenFromBook(isBid, quantity, levels, params);
   const r = await markets.trader.placePerpOrder({ pool: BTC_POOL, isBid, price: plan.price, quantity: plan.quantity, orderType: ORDER_TYPE_IOC });
   return txRecord(isBid ? "open long" : "open short", r.receipt);
 }

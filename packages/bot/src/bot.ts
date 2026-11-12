@@ -1,5 +1,6 @@
 // The scripted challenger (account B). It signs as itself; the referee's grant is the only delegation.
 import { BTC_POOL, readSnapshot, rulebookId, quantityForLeverage } from "@basanos/core";
+import { DEMO_LEVERAGE_X } from "@basanos/core/demo-math";
 import { RULEBOOK_FILES, loadDotEnv, loadRulebook, requireAddress, requirePrivateKey, rpcHttp } from "@basanos/core/node";
 import { makePublicClient } from "@basanos/referee";
 import { breachQuantity, ensureGrant, makeAccountWallet, makeMarkets, notReady, openIoc, preflight, readBook, startRunAs } from "./actions";
@@ -21,7 +22,7 @@ const referee = requireAddress("REFEREE_ADDRESS");
 if (cmd === "start") {
   const name = opt("--rulebook", "tokyo-sprint-demo") as keyof typeof RULEBOOK_FILES;
   const side = opt("--side", "short");
-  const leverage = Number(opt("--leverage", "12"));
+  const leverage = Number(opt("--leverage", String(DEMO_LEVERAGE_X)));
   const pf = await preflight(client, markets, account);
   const problems = notReady(pf);
   if (problems.length > 0) {
@@ -50,6 +51,6 @@ if (cmd === "start") {
   console.log(`exposure breach: +${add} ${tx.status} ${tx.explorer}`);
   process.exit(0);
 } else {
-  console.error("usage: bot.ts start [--rulebook <name>] [--side short|long] [--leverage 12] | breach [--leverage 16]");
+  console.error(`usage: bot.ts start [--rulebook <name>] [--side short|long] [--leverage ${DEMO_LEVERAGE_X}] | breach [--leverage 16]`);
   process.exit(2);
 }
