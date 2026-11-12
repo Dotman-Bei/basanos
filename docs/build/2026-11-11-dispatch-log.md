@@ -224,3 +224,11 @@ Synced to `7790737` (manifest 85 tasks, 9 human gates).
 - landing:4 Step 2 reads `REFEREE_ADDRESS` from `.env`; the public address in `deployments/hideki.json` was used instead.
 
 Workspace: 229 tests (core 75, referee 34, spike 35, web 39, ship 11, bot 24, landing 11); typecheck 0; web build clean. `\.trader\.` grep in packages/bot, packages/referee, apps/web: no matches. Remaining: referee:22, ship:3, ship:6 (gates); ship:7 (after ship:3).
+
+## referee:22 evidence (2026-11-12)
+
+| Task | By | Commit | Check |
+|---|---|---|---|
+| referee:22 evidence | (concierge run) | a6eb2bf | `check-pass` (chain read, no key) → PASS pass-take (take 2: run 3 PASSED with its certificate, one FAILED); hideki.json lists tokyo-sprint-demo-v1 0x59e93903…0757 and tokyo-sprint-demo (v2) 0x5a5af7ee…c448, tx 0xab800465…c30c; runs.json / demo-takes.json additions only; no key material |
+
+Workspace: 229 tests. Idle at ship:3, ship:6 (gates) and ship:7 (after ship:3).
